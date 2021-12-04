@@ -11,38 +11,72 @@
 .section .text
 .globl _start
 _start:
-    csrr    a0, CSR_MHARTID
-    /*
-	 * Save hart id and dtb pointer. The thread pointer register is not
-	 * modified by C code. It is used by secondary_hart_loop.
-	 */
-    mv  tp, a0
-    mv  s1, a1
-    /*
-	 * Set the global data pointer to a known value in case we get a very
-	 * early trap. The global data pointer will be set its actual value only
-	 * after it has been initialized.
-	 */
-	mv	gp, zero
-    /*
-	 * Set the trap handler. This must happen after initializing gp because
-	 * the handler may use it.
-	 */
-	la  t0, trap_entry
-	csrw    mtvec, t0
-    /*
-	 * Mask all interrupts. Interrupts are disabled globally (in m/sstatus)
-	 * for U-Boot, but we will need to read m/sip to determine if we get an
-	 * IPI
-	 */
-	csrw	mie, zero
-
-    /* set xSIE bit to receive IPIs */
-    li  t0, MIE_MSIE
-
-/*
- * Set stackpointer in internal/ex RAM to call board_init_f
- */
-call_board_init_f:
-    li  t0, -16
+	li x1, 0
+	li x2, 0
+	li x3, 0
+	li x4, 0
+	li x5, 0
+	li x6, 0
+	li x7, 0
+	li x8, 0
+	li x9, 0
+	# skip a0 and a1
+	# a0 is hart id
+	# a1 is dtb address
+	li x12, 0
+	li x13, 0
+	li x14, 0
+	li x15, 0
+	li x16, 0
+	li x17, 0
+	li x18, 0
+	li x19, 0
+	li x20, 0
+	li x21, 0
+	li x22, 0
+	li x23, 0
+	li x24, 0
+	li x25, 0
+	li x26, 0
+	li x27, 0
+	li x28, 0
+	li x29, 0
+	li x30, 0
+	li x31, 0
     
+    # setup PMP config
+    # 0x00000000-0xffffffff RWX
+    li t0, 0b00001111
+    csrw pmpcfg0, t0
+    li t0, 0xffffffff
+    csrw pmpaddr0, t0
+
+    csrw mscratch, x0
+
+    la t0, trap_vector
+    csrw mtvec, t0
+try:
+    csrr t1, mtvec
+    bne t0, t1, try
+
+    # setup boot stack space
+    la sp, bootstacktop
+
+    # save sp to mscratch
+    csrw mscratch, sp
+
+    # first hart first
+    bnez a0, other_hart
+    j boot_first_hart
+
+other_hart:
+    # we have only one hart now
+    wfi
+    j other_hart
+
+.section .bss.stack
+.align 12 # PAGE_SIZE
+bootstack:
+    # 4KB stack
+    .space 0x1000
+bootstacktop:

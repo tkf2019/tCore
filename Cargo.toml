@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 riscv = "0.7"
 log = "0.4"
+volatile = "0.3"
