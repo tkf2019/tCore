@@ -1,7 +1,7 @@
 /*
  * @Date: 2021-12-06 17:44:58
  * @Author: Kaifu Tian
- * @LastEditTime: 2021-12-06 17:52:33
+ * @LastEditTime: 2021-12-09 11:23:48
  * @FilePath: /tCore/sbi/libs/string.c
  */
 
@@ -34,7 +34,9 @@ void *memmove(void *dst, const void *src, size_t n) {
 void *memcpy(void *dst, const void *src, size_t n) {
   const char *s = src;
   char *d = dst;
-  while (n-- > 0) *d++ = *s++;
+  while (n-- > 0) {
+    *d++ = *s++;
+  }
   return dst;
 }
 

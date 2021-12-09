@@ -1,21 +1,21 @@
 /*
  * @Date: 2021-12-05 15:46:21
  * @Author: Kaifu Tian
- * @LastEditTime: 2021-12-07 23:40:34
+ * @LastEditTime: 2021-12-08 18:33:52
  * @FilePath: /tCore/sbi/start.S
  */
 
 #include <include/common.h>
 #include <include/smp.h>
-#include <include/encoding.h>
+#include <include/riscv.h>
 
 .altmacro
 .macro LI_ZERO n
   li x\n, 0
 .endm
 
-  .section .text.entry
-  .globl _start
+.section .text.entry
+.globl _start
 _start:
   // flush the instruction cache
   # fence.i
@@ -51,7 +51,7 @@ _start:
   slli t1, t0, LOG_STACK_SIZE
   sub sp, sp, t1
 
-  li t1, 1
+  li t1, ZERO_HART
   bne t0, t1, other_main
 
   // HART 0
@@ -79,11 +79,3 @@ _start:
   bltu t0, t1, 1b
 2:
   tail main
-
-other_main:
-  wfi
-  // TODO
-  j other_main
-
-trap_entry:
-  j trap_entry

@@ -1,7 +1,7 @@
 /*
  * @Date: 2021-12-06 10:27:57
  * @Author: Kaifu Tian
- * @LastEditTime: 2021-12-06 19:47:06
+ * @LastEditTime: 2021-12-08 22:13:56
  * @FilePath: /tCore/sbi/include/io.h
  */
 
@@ -9,15 +9,13 @@
 #define _SBI_IO_H
 
 #include <include/common.h>
-
-#define RISCV_FENCE(p, s) \
-  __asm__ __volatile__("fence " #p "," #s : : : "memory")
+#include <include/riscv.h>
 
 #define __io_br() \
   do {            \
   } while (0)
-#define __io_ar() RISCV_FENCE(i, r)
-#define __io_bw() RISCV_FENCE(w, o)
+#define __io_ar() fence(i, r)
+#define __io_bw() fence(w, o)
 #define __io_aw() \
   do {            \
   } while (0)

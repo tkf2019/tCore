@@ -1,7 +1,7 @@
 /*
  * @Date: 2021-12-04 23:41:36
  * @Author: Kaifu Tian
- * @LastEditTime: 2021-12-07 23:32:39
+ * @LastEditTime: 2021-12-09 10:16:34
  * @FilePath: /tCore/sbi/include/common.h
  */
 
@@ -17,7 +17,7 @@
 #define BIT_MASK(nr) (1UL << ((nr) % BITS))
 #define BIT_WORD(bit) ((bit) / BITS)
 
-#define LOG_STACK_SIZE 12
+#define LOG_STACK_SIZE 14
 #define STACK_SIZE (1UL << LOG_STACK_SIZE)
 
 #if XLEN == 8
@@ -38,8 +38,8 @@
 #define int8_t char
 #define uint8_t unsigned char
 
-#define DEFAULT_UART 0
-#define DEFAULT_UART_FREQ 0
-#define DEFAULT_UART_BAUDRATE 115200
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
 
 #endif

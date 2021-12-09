@@ -26,8 +26,11 @@ HEADER := $(foreach sdir, $(INCLUDE), $(wildcard $(sdir)/*.h))
 
 LIB_SBI1_O := start.o
 LIB_SBI2_O := $(LIB_SBI1_O) \
+	trap.o \
 	devices/uart/uart.o \
-	devices/clint/clint.o
+	devices/clint/clint.o \
+	libs/string.o \
+	libs/console.o
 
 QEMU := qemu-system-$(ARCH)
 QEMUFLAGS := -M sifive_u -smp 5 -m 4G
@@ -39,6 +42,8 @@ SD_IMAGE := $(BINDIR)/sd-image.dts
 TARGET_IMAGE := $(BINDIR)/sd-part-2.img
 
 all: $(BIN) $(ASM)
+
+image: $(BIN) $(ASM)
 	@mkimage -f $(SD_IMAGE) $(TARGET_IMAGE)
 	@sudo dd if=$(TARGET_IMAGE) of=/dev/sda seek=2082
 
@@ -54,7 +59,7 @@ $(ELF): $(LIB_SBI1_O) main.o $(LIB_SBI2_O) $(LDSCRIPT)
 	$(OBJCOPY) -S -R .comment -R .note.gnu.build-id -O binary $^ $@
 
 %.asm: %.elf
-	$(OBJDUMP) -S $^ > $@
+	$(OBJDUMP) -d $^ > $@
 
 %.o: %.c $(HEADER)
 	$(CC) $(CFLAGS) -o $@ -c $<

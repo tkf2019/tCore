@@ -43,6 +43,6 @@ SECTIONS
     PROVIDE(ebss = .);
   }
 
-  PROVIDE(stack = ALIGN(ebss + 65536 - 7, 8));
+  PROVIDE(stack = ALIGN(ebss + 262144 - 7, 8));
   PROVIDE(end = .);
 }
