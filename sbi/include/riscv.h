@@ -1,7 +1,7 @@
 /*
  * @Date: 2021-12-08 16:05:40
  * @Author: Kaifu Tian
- * @LastEditTime: 2021-12-08 22:36:38
+ * @LastEditTime: 2021-12-10 11:00:22
  * @FilePath: /tCore/sbi/include/riscv.h
  */
 
@@ -72,17 +72,6 @@
 #define MCAUSE32_INT 0x80000000
 #define MCAUSE64_INT 0x8000000000000000
 
-#define SSTATUS_UIE 0x00000001
-#define SSTATUS_SIE 0x00000002
-#define SSTATUS_UPIE 0x00000010
-#define SSTATUS_SPIE 0x00000020
-#define SSTATUS_SPP 0x00000100
-#define SSTATUS_FS 0x00006000
-#define SSTATUS_XS 0x00018000
-#define SSTATUS_PUM 0x00040000
-#define SSTATUS32_SD 0x80000000
-#define SSTATUS64_SD 0x8000000000000000
-
 #define IRQ_S_SOFT 1
 #define IRQ_VS_SOFT 2
 #define IRQ_M_SOFT 3
@@ -102,20 +91,10 @@
 #define MIP_SEIP BIT(IRQ_S_EXT)
 #define MIP_MEIP BIT(IRQ_M_EXT)
 
-#define SIP_SSIP MIP_SSIP
-#define SIP_STIP MIP_STIP
-
 #define PRV_U 0
 #define PRV_S 1
 #define PRV_H 2
 #define PRV_M 3
-
-#define VM_MBARE 0
-#define VM_MBB 1
-#define VM_MBBID 2
-#define VM_SV32 8
-#define VM_SV39 9
-#define VM_SV48 10
 
 #define CAUSE_MISALIGNED_FETCH 0
 #define CAUSE_FETCH_ACCESS 1
@@ -132,12 +111,7 @@
 #define CAUSE_LOAD_PAGE_FAULT 13
 #define CAUSE_STORE_PAGE_FAULT 15
 
-#define DEFAULT_RSTVEC 0x00001000
-#define DEFAULT_NMIVEC 0x00001004
-#define DEFAULT_MTVEC 0x00001010
-#define CONFIG_STRING_ADDR 0x0000100C
-#define EXT_IO_BASE 0x40000000
-#define DRAM_BASE 0x80000000
+#define CAUSE_INT_MASK 0x80
 
 #define fence(p, s) __asm__ __volatile__("fence " #p "," #s : : : "memory")
 
