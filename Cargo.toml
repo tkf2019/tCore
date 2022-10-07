@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "kernel",
+    "xtask",
+    "crates/*",
+]
+default-members = ["xtask"]

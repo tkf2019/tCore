@@ -1,0 +1,1 @@
+pub const KERNEL_STACK_SIZE: usize = 16 * 4096;
