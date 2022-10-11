@@ -3,8 +3,8 @@
 #![feature(naked_functions, asm_sym, asm_const)]
 
 mod config;
-mod console;
 mod trap;
+mod console;
 
 use config::BOOT_STACK_SIZE;
 

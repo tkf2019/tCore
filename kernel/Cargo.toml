@@ -5,5 +5,9 @@ edition = "2021"
 authors = ["TKF <kaifu6821@qq.com>"]
 
 [dependencies]
+buddy_system_allocator = "0.4"
+log = "0.4"
+once_cell = "1.15"
+riscv = "0.9"
 sbi-rt = { git = "https://github.com/rustsbi/sbi-rt", branch = "main" }
-riscv = "0.9.0"
+xmas-elf = "0.8"

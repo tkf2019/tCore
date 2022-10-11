@@ -19,9 +19,7 @@ unsafe extern "C" fn trampoline() {
     uservec:
         ",
         // Now sp points to user trapframe, and sscratch points to user stack.
-        "
-        csrrw sp, sscratch, sp
-        ",
+        "csrrw sp, sscratch, sp",
         // Save user registers in trapframe.
         "
         sd ra, 40(sp)
@@ -93,7 +91,9 @@ unsafe extern "C" fn trampoline() {
         sfence.vma zero, zero
         csrw satp, a1
         sfence.vma zero, zero
-        "
+        ",
+        // Now sscratch agiain points to user trapframe
+        "csrw sscratch, a0",
         // Restore user registers
         "
         ld ra, 40(a0)
@@ -135,9 +135,7 @@ unsafe extern "C" fn trampoline() {
         csrw sstatus, t1
         ",
         // Finally restore a0
-        "
-        ld a0, 112(a0)
-        ",
+        "ld a0, 112(a0)",
         // Return to user context
         "sret",
         options(noreturn),

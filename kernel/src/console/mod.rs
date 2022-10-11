@@ -1,4 +1,5 @@
-use sbi_rt::*;
+mod logger;
+mod panic;
 
 struct Console;
 
@@ -27,18 +28,4 @@ macro_rules! println {
     ($fmt: literal $(, $($arg: tt)+)?) => {
         $crate::console::print(format_args!(concat!($fmt, "\n") $(, $($arg)+)?))
     }
-}
-
-macro_rules! with_color {
-    ($args: ident, $color_code: ident) => {{
-        format_args!("\u{1B}[{}m{}\u{1B}[0m", $color_code as u8, $args)
-    }};
-}
-
-
-
-#[panic_handler]
-fn panic(_: &core::panic::PanicInfo) -> ! {
-    system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
-    unreachable!()
 }
