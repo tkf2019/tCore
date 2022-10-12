@@ -5,10 +5,9 @@
 //! In this way, after switching page table root in `satp` register, virtual memory is still
 //! the same, so it can continue to execute without crash.
 
-use crate::config::TRAPFRAME_VA;
-
 #[naked]
 #[no_mangle]
+#[allow(named_asm_labels)]
 #[link_section = ".text.trampoline"]
 unsafe extern "C" fn trampoline() {
     core::arch::asm!(
@@ -61,7 +60,7 @@ unsafe extern "C" fn trampoline() {
         csrr t1, sstatus
         sd t0, 24(sp)
         sd t1, 32(sp)
-        "
+        ",
         // Load the virtual address of trap handler
         "ld t0, 16(sp)",
         // Load the kernel page table root address
@@ -79,13 +78,12 @@ unsafe extern "C" fn trampoline() {
         "sfence.vma zero, zero",
         // Jump to trap handler
         "jr t0",
-
         // userret(trapframe_va, page_table_root)
         // switch from kernel to user
         "
         .globl userret
     userret:
-        "
+        ",
         // Restore user page table (see uservec)
         "
         sfence.vma zero, zero

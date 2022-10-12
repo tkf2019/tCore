@@ -1,13 +1,11 @@
-use core::fmt;
-use log::{info, Log, Metadata, Record};
-use once_cell::sync::Lazy;
+use log::{info, Level, LevelFilter, Log, Metadata, Record};
 
 use crate::println;
 
 struct Logger;
 
 impl Log for Logger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
+    fn enabled(&self, _metadata: &Metadata) -> bool {
         true
     }
 
@@ -23,7 +21,8 @@ impl Log for Logger {
             Level::Trace => 90, // BrightBlack
         };
         println!(
-            "\u{1B}[{color_code}m[{:>5}] {}\u{1B}[0m",
+            "\u{1B}[{}m[{:>5}] {}\u{1B}[0m",
+            color_code,
             record.level(),
             record.args(),
         );
@@ -34,7 +33,14 @@ impl Log for Logger {
 
 pub fn init() {
     static LOGGER: Logger = Logger;
-    log::set_logger(&LOGGER);
-    log::set_max_level(option_env!("LOG"));
+    log::set_logger(&LOGGER).expect("Failed to initialize logger");
+    log::set_max_level(match option_env!("LOG") {
+        Some("error") => LevelFilter::Error,
+        Some("warn") => LevelFilter::Warn,
+        Some("info") => LevelFilter::Info,
+        Some("debug") => LevelFilter::Debug,
+        Some("trace") => LevelFilter::Trace,
+        _ => LevelFilter::Off,
+    });
     info!("Initialize console logger successfully.")
 }

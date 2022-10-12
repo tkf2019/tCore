@@ -8,3 +8,4 @@ authors = ["TKF <kaifu6821@qq.com>"]
 
 [dependencies]
 clap = { version = "4.0.10", features = ["derive"] }
+once_cell = "1.15"

@@ -1,10 +1,11 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions, asm_sym, asm_const)]
+#![feature(panic_info_message)]
 
 mod config;
-mod trap;
 mod console;
+mod trap;
 
 use config::BOOT_STACK_SIZE;
 
@@ -30,5 +31,6 @@ unsafe extern "C" fn _start() -> ! {
 }
 
 extern "C" fn rust_main() -> ! {
+    console::init();
     panic!("Panic")
 }

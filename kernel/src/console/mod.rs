@@ -1,18 +1,24 @@
 mod logger;
 mod panic;
 
+use core::fmt::{Arguments, Result, Write};
+use sbi_rt::*;
+
+pub use logger::init;
+
 struct Console;
 
 impl Write for Console {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
+    fn write_str(&mut self, s: &str) -> Result {
         for c in s.chars() {
-            legacy::console_putchar(c)
+            #[allow(deprecated)]
+            legacy::console_putchar(c as _);
         }
         Ok(())
     }
 }
 
-pub fn print(args: fmt::Arguments) {
+pub fn print(args: Arguments) {
     Console.write_fmt(args).unwrap();
 }
 
