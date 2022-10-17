@@ -1,4 +1,3 @@
-/// Take up a single page itself just under the trampoline page mapped in user page table.
 /// User context is saved in trapframe for the trap handling code in trampoline.
 #[repr(C)]
 #[derive(Debug)]

@@ -1,10 +1,9 @@
-//! Tampoline page stores naked code (mostly ASM) to provide the bridge between user and
-//! kernel space. The page is mapped at the same virtual address in user and kernel space.
-//! **RISC-V** hardware doesn't switch page tables during a trap, we need the user page table
-//! to include a mapping for the trap vector instructions that `stvec` points to.
-//! In this way, after switching page table root in `satp` register, virtual memory is still
-//! the same, so it can continue to execute without crash.
-
+/// Tampoline page stores naked code (mostly ASM) to provide the bridge between user and
+/// kernel space. The page is mapped at the same virtual address in user and kernel space.
+/// **RISC-V** hardware doesn't switch page tables during a trap, we need the user page table
+/// to include a mapping for the trap vector instructions that `stvec` points to.
+/// In this way, after switching page table root in `satp` register, virtual memory is still
+/// the same, so it can continue to execute without crash.
 #[naked]
 #[no_mangle]
 #[allow(named_asm_labels)]
@@ -67,11 +66,6 @@ unsafe extern "C" fn trampoline() {
         "ld t1, 0(sp)",
         // Initialize kernel stack pointer
         "ld sp, 8(sp)",
-        // See RISC-V priv. spec.: Standard CSRs do not have side effects on reads but may have
-        // side effects on writes. Implementations in Superscalar Processors may not guarantee
-        // writing CSRs in commit stage. So memory operations before writing `satp` may read a
-        // wrong address in satp due to out-of-order executions.
-        "sfence.vma zero, zero",
         // Change to the kernel page table root
         "csrw satp, t1",
         // Flush all satle TLB entries
@@ -86,7 +80,6 @@ unsafe extern "C" fn trampoline() {
         ",
         // Restore user page table (see uservec)
         "
-        sfence.vma zero, zero
         csrw satp, a1
         sfence.vma zero, zero
         ",
