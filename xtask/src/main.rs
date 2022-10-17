@@ -64,6 +64,10 @@ struct BuildArgs {
     /// Dump binary file to ASM
     #[clap(long)]
     dump: bool,
+
+    /// Use global or local user tests
+    #[clap(long)]
+    global: bool,
 }
 
 impl BuildArgs {
@@ -79,6 +83,11 @@ impl BuildArgs {
         } else {
             ("build", opt_level)
         };
+        let features = if self.global {
+            "global_test"
+        } else {
+            "local_test"
+        };
 
         // Linker file for target platform to configure kernel layout
         let linker = PROJECT
@@ -91,6 +100,7 @@ impl BuildArgs {
             .arg(subcmd)
             .args(&["--package", self.kernel.as_ref().unwrap().as_str()])
             .args(&["--target", self.target.as_ref().unwrap().as_str()])
+            .args(&["--features", features])
             .arg(options)
             .env("LOG", self.log.as_ref().unwrap().as_str())
             .env(

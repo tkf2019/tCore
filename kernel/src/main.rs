@@ -2,10 +2,15 @@
 #![no_main]
 #![feature(naked_functions, asm_sym, asm_const)]
 #![feature(panic_info_message)]
+#![feature(alloc_error_handler)]
 
 mod config;
-mod console;
+mod cons;
+mod heap;
+mod task;
 mod trap;
+
+extern crate alloc;
 
 use config::BOOT_STACK_SIZE;
 
@@ -31,6 +36,7 @@ unsafe extern "C" fn _start() -> ! {
 }
 
 extern "C" fn rust_main() -> ! {
-    console::init();
+    cons::init();
+    heap::init();
     panic!("Panic")
 }

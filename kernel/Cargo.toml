@@ -5,6 +5,17 @@ edition = "2021"
 authors = ["TKF <kaifu6821@qq.com>"]
 
 [dependencies]
+bitflags = "1.2.1"
+buddy_system_allocator = "0.8"
+lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 log = "0.4"
 riscv = "0.9"
 sbi-rt = { git = "https://github.com/rustsbi/sbi-rt", branch = "main" }
+spin = "0.9"
+talloc = { path = "../crates/talloc" }
+# tsync = { path = "../crates/tsync" }
+
+[features]
+default = []
+global_test = []
+local_test = []
