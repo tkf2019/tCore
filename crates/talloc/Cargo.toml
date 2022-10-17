@@ -1,5 +1,5 @@
 [package]
-name = "tcore-alloc"
+name = "talloc"
 version = "0.1.0"
 edition = "2021"
 
