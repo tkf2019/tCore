@@ -1,6 +1,6 @@
 mod context;
 mod manager;
-mod sched;
+mod schedule;
 mod task;
 
 pub use manager::TASK_MANAGER;

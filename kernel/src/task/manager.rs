@@ -6,20 +6,20 @@ use talloc::RecycleAllocator;
 
 use crate::println;
 
-use super::sched::{QueueScheduler, Scheduler};
+use super::schedule::{QueueScheduler, Scheduler};
 use super::task::Task;
 
 /// Handlers packed for global task managers
 pub struct TaskManager {
     /// PID allocator
-    pid_allocator: RefCell<RecycleAllocator>,
+    pub pid_allocator: RefCell<RecycleAllocator>,
 
     /// Task scheduler
-    sched: QueueScheduler,
+    pub sched: QueueScheduler,
 
     /// PID is mapped to Task in this table.
     /// Speed up locating the task by PID to fetch or modify the task data.
-    task_table: BTreeMap<usize, Arc<Mutex<Task>>>,
+    pub task_table: BTreeMap<usize, Arc<Mutex<Task>>>,
 }
 
 impl TaskManager {
