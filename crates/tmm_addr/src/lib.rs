@@ -1,17 +1,21 @@
+#![no_std]
 #![feature(step_trait)]
-#![allow(unused_imports)]
+#![allow(unused)]
 
-#[macro_use]
+#[cfg(test)]
+mod test;
+
 extern crate derive_more;
 extern crate paste;
 
-use core::{
+pub use core::{
     cmp::{max, min},
     fmt,
     iter::Step,
     ops::*,
 };
-use paste::paste;
+pub use derive_more::*;
+pub use paste::paste;
 
 /// A macro for defining `VirtualAddress` and `PhysicalAddress` structs and implementing their
 /// common traits.
@@ -208,7 +212,7 @@ macro_rules! implement_page_frame {
                 fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                     write!(
                         f,
-                        concat!(stringify!($TypeName), "(", $prefix, "{:#X})"),
+                        concat!(stringify!($TypeName), "(", $prefix, "={:#X})"),
                         self.start_address()
                     )
                 }
@@ -422,51 +426,4 @@ macro_rules! implement_page_frame_range {
             }
         }
     };
-}
-
-#[cfg(test)]
-#[allow(unused)]
-mod tests {
-    use super::*;
-    fn is_canonical_va(va: usize) -> bool {
-        true
-    }
-    const fn canonicalize_va(va: usize) -> usize {
-        va
-    }
-
-    implement_address!(
-        VirtAddr,
-        "virtual",
-        "v",
-        is_canonical_va,
-        canonicalize_va,
-        page,
-        0x1000
-    );
-
-    implement_page_frame!(Page, "virtual", "v", VirtAddr, 0x1000, usize::MAX / 0x1000);
-
-    implement_page_frame_range!(PageRange, "physical", virt, Page, VirtAddr, 0x1000);
-
-    #[test]
-    fn it_works() {
-        let mut va = VirtAddr::new(0).unwrap();
-        va += 0x1001;
-        assert!(va.page_offset() == 1);
-        assert!(va != VirtAddr::new(0x1000).unwrap());
-
-        let p = Page::from(va);
-        let v: VirtAddr = p.into();
-        assert!(p.number() == 1);
-        assert!(Page::ceil(v) == Page::from(1));
-
-        let pr = PageRange::from_virt_addr(0x1002.into(), 0x3124);
-        let mut iter = pr.into_iter().map(|p| p.number());
-        assert!(iter.next() == Some(1));
-        assert!(iter.next() == Some(2));
-        assert!(iter.next() == Some(3));
-        assert!(iter.next() == Some(4));
-        assert!(iter.next() == None);
-    }
 }
