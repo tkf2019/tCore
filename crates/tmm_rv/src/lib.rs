@@ -1,5 +1,6 @@
 #![no_std]
-#![feature(step_trait)]
+#![feature(step_trait, core_intrinsics)]
+#![allow(unused)]
 
 extern crate alloc;
 

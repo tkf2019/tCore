@@ -164,13 +164,6 @@ macro_rules! implement_page_frame {
                 }
 
                 #[doc = "Returns the `" $TypeName "` containing the given `" $address "`."]
-                pub const fn containing_address(addr: $address) -> $TypeName {
-                    $TypeName {
-                        number: addr.value() / $page_size,
-                    }
-                }
-
-                #[doc = "Returns the `" $TypeName "` containing the given `" $address "`."]
                 pub const fn ceil(addr: $address) -> $TypeName {
                     $TypeName {
                         number: addr.value() / $page_size,
@@ -308,10 +301,10 @@ macro_rules! implement_page_frame_range {
                     size_in_bytes: usize
                 ) -> $TypeName {
                     assert!(size_in_bytes > 0);
-                    let start = $chunk::containing_address(start_addr);
+                    let start = $chunk::ceil(start_addr);
                     // The end bound is inclusive, hence the -1. Parentheses are needed to
                     // avoid overflow.
-                    let end = $chunk::containing_address(start_addr + (size_in_bytes - 1));
+                    let end = $chunk::ceil(start_addr + (size_in_bytes - 1));
                     $TypeName::new(start, end)
                 }
 
@@ -338,7 +331,7 @@ macro_rules! implement_page_frame_range {
                 #[doc = "Returns `true` if this `" $TypeName "` contains the given \
                     [`" $address "`]."]
                 pub fn contains_address(&self, addr: $address) -> bool {
-                    self.0.contains(&$chunk::containing_address(addr))
+                    self.0.contains(&$chunk::ceil(addr))
                 }
 
                 #[doc = "Returns the offset of the given [`" $address "`] within this \

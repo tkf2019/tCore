@@ -1,4 +1,6 @@
+use buddy_system_allocator::LockedFrameAllocator;
 use core::{fmt, ops::Deref};
+use spin::Lazy;
 
 use super::address::{Frame, FrameRange};
 
@@ -26,3 +28,14 @@ impl fmt::Debug for AllocatedFrames {
         write!(f, "Allocated frames: {:?}", self.frames)
     }
 }
+
+impl Drop for AllocatedFrames {
+    fn drop(&mut self) {
+        FRAME_ALLOCATOR
+            .lock()
+            .dealloc(self.start().number(), self.size_in_frames());
+    }
+}
+
+/// Use global frame allocator. This implementation is based on buddy system allocator.
+static FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> = Lazy::new(|| LockedFrameAllocator::new());

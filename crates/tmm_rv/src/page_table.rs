@@ -1,54 +1,131 @@
+use _core::mem::size_of;
+use alloc::vec::Vec;
 use bitflags::*;
 
+use crate::{frame::AllocatedFrames, Frame, PhysAddr, PPN_MASK_SV39};
+
 bitflags! {
-    /// Page table entry flag bits
-    pub struct PTEFlags: u8 {
-        /// Iff V = 1, the entry is valid.
-        const V = 1 << 0;
-        /// If R = 1, the virtual page is readable.
-        const R = 1 << 1;
-        /// If W = 1, the virtual page is writable.
-        const W = 1 << 2;
-        /// If X = 1, the virtual page is executable.
-        const X = 1 << 3;
-        /// If U = 1, the virtual page is accessible in user privilege.
-        const U = 1 << 4;
-        /// If G = 1, the virtual page is accessible in all privileges.
-        const G = 1 << 5;
+    /// Page table entry flag bits in SV39
+    pub struct PTEFlags: u64 {
+        /// Iff set, the entry is valid.
+        const VALID = 1 << 0;
+
+        /// If set, reads to this page is allowed.
+        const READABLE = 1 << 1;
+
+        /// If set, writes to this page is allowed.
+        const WRITABLE = 1 << 2;
+
+        /// If set, bytes in this page can be executed as programs.
+        /// If not set, this page is only used for data storage.
+        const EXECUTABLE = 1 << 3;
+
+        /// If set, this page is accessible in user space (U-mode).
+        /// If not set, only kernel space (S-mode) can access this page.
+        const USER_ACCESSIBLE = 1 << 4;
+
+        /// If set, this page is accessible in all privileges.
+        const GLOBAL = 1 << 5;
+
         /// If the entry is recently accessed.
-        const A = 1 << 6;
+        const ACCESSED = 1 << 6;
+
         /// If the entry is recently modified.
-        const D = 1 << 7;
+        /// Must be zero in page directory.
+        const DIRTY = 1 << 7;
     }
 }
 
-/// Page Table Entry:
-/// - 63:54 -> Reserved
+impl PTEFlags {
+    /// Returns a new, all-zero [`PTEFlags`] with no bits set.
+    ///
+    /// This is a `const` version of `Default::default`
+    pub const fn zero() -> PTEFlags {
+        PTEFlags::from_bits_truncate(0)
+    }
+
+    /// Returns true if the page is valid.
+    pub const fn is_valid(&self) -> bool {
+        self.intersects(PTEFlags::VALID)
+    }
+
+    /// Returns true if the page is writable.
+    pub const fn is_writable(&self) -> bool {
+        self.intersects(PTEFlags::WRITABLE)
+    }
+
+    /// Returns true if the page is readable.
+    pub const fn is_readable(&self) -> bool {
+        self.intersects(PTEFlags::READABLE)
+    }
+
+    /// Returns true if the page is executable.
+    pub const fn is_executable(&self) -> bool {
+        self.intersects(PTEFlags::EXECUTABLE)
+    }
+
+    /// Returns true if the page table entry points to next level of page table.
+    pub const fn is_pointer(&self) -> bool {
+        self.is_valid() & !self.is_executable() & !self.is_writable() & !self.is_readable()
+    }
+}
+
+impl Default for PTEFlags {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
+/// Page table entry in SV39
+///
+/// The designation of bits in each page table entry is as such:
+/// - 63:54 -> Reserved (wired to zero)
 /// - 53:28 -> PPN\[2\]
 /// - 27:19 -> PPN\[1\]
 /// - 18:10 -> PPN\[0\]
-/// - 9:8   -> RSW
+/// - 9:8   -> Reserved for supervisor sofware
 /// - 7:0   -> Flags
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct PTE {
-    pub bits: usize,
+pub struct PageTableEntry(u64);
+
+impl PageTableEntry {
+    pub fn new(frame: Frame, index: usize) -> Self {
+        let pa: usize = frame.start_address().value() + index * size_of::<PageTableEntry>();
+        unsafe { PageTableEntry(*(pa as *const u64)) }
+    }
+
+    /// Returns the flags of this [`PageTableEntry`]
+    pub fn flags(&self) -> PTEFlags {
+        PTEFlags::from_bits_truncate(self.0)
+    }
+
+    /// Returns the physical frame pointed by the `PPN` segment.
+    ///
+    /// If the page table entry is not valid, it returns to `None`.
+    pub fn frame(&self) -> Option<Frame> {
+        if self.flags().is_valid() {
+            Some(Frame::ceil(PhysAddr::new_canonical((self.0 << 2) as usize)))
+        } else {
+            None
+        }
+    }
+
+    /// Set flags of this [`PageTableEntry`]
+    pub fn set_flags(&mut self, flags: PTEFlags) {
+        self.0 = self.0 & PPN_MASK_SV39 as u64 | flags.bits();
+    }
 }
 
-// impl PTE {
-//     /// Generate PTE from physical page number and flags
-//     pub fn new(ppn: PhysPageNum, flags: PTEFlags) -> Self {
-//         PTE {
-//             bits: ppn.0 << 10 | flags.bits as usize,
-//         }
-//     }
-//     /// Get physical page number
-//     pub fn ppn(&self) -> PhysPageNum {
-//         (self.bits >> 10 & ((1usize << 44) - 1)).into()
-//     }
-//     /// Get page table entry flags
-//     pub fn flags(&self) -> PTEFlags {
-//         PTEFlags::from_bits(self.bits as u8).unwrap()
-//     }
-// }
+/// Page table in SV39
+pub struct PageTable {
+    /// Root frame pointed by `satp`
+    root: Frame,
 
+    /// Allocated frames of this [`PageTable`].
+    /// New page table entries will be created by map requests, so available physical frames need
+    /// to be allocated when walking through the 3-level page table in SV39.
+    frames: Vec<AllocatedFrames>,
+}
+
+impl PageTable {
+    
+}
