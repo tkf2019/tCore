@@ -1,5 +1,5 @@
 use _core::mem::size_of;
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use bitflags::*;
 
 use crate::{frame::AllocatedFrames, Frame, PhysAddr, PPN_MASK_SV39};
@@ -116,6 +116,7 @@ impl PageTableEntry {
 }
 
 /// Page table in SV39
+#[derive(Debug)]
 pub struct PageTable {
     /// Root frame pointed by `satp`
     root: Frame,
@@ -127,5 +128,15 @@ pub struct PageTable {
 }
 
 impl PageTable {
-    
+    pub fn new() -> Option<Self> {
+        if let Some(root_frame) = AllocatedFrames::new(1) {
+            Some(Self {
+                // No iteration after a successful allocation, thus do `unwrap()` freely.
+                root: root_frame.start().unwrap(),
+                frames: vec![root_frame],
+            })
+        } else {
+            None
+        }
+    }
 }

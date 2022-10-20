@@ -27,7 +27,7 @@ macro_rules! implement_address {
         $prefix:literal,
         $is_canonical:ident,
         $canonicalize:ident,
-        $chunk:ident,
+        $chunk:literal,
         $page_size:expr
     ) => {
         paste! {

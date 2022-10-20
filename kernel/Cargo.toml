@@ -10,7 +10,7 @@ buddy_system_allocator = "0.8"
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 log = "0.4"
 riscv = "0.9"
-sbi-rt = { git = "https://github.com/rustsbi/sbi-rt", branch = "main" }
+sbi-rt = { version = "0.0.2", features = ["legacy"] }
 spin = "0.9"
 talloc = { path = "../crates/talloc" }
 tmm_rv = { path = "../crates/tmm_rv" }

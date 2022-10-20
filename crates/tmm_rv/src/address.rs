@@ -32,7 +32,7 @@ implement_address!(
     "v",
     is_canonical_va,
     canonicalize_va,
-    page,
+    "page",
     PAGE_SIZE
 );
 implement_address!(
@@ -41,7 +41,7 @@ implement_address!(
     "p",
     is_canonical_pa,
     canonicalize_pa,
-    frame,
+    "frame",
     PAGE_SIZE
 );
 

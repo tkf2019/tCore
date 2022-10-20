@@ -6,9 +6,13 @@ extern crate alloc;
 
 mod address;
 mod config;
-pub mod frame;
-pub mod memory;
-pub mod page_table;
+mod frame;
+mod memory;
+mod page_table;
+
+#[cfg(test)]
+mod test;
 
 pub use address::{Frame, FrameRange, Page, PageRange, PhysAddr, VirtAddr};
 pub use config::*;
+pub use page_table::*;

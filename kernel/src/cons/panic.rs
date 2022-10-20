@@ -14,6 +14,6 @@ fn panic(info: &PanicInfo) -> ! {
     } else {
         error!("Panicked at {}", info.message().unwrap());
     }
-    system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
+    system_reset(Shutdown, SystemFailure);
     unreachable!()
 }
