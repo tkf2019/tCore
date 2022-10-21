@@ -81,7 +81,7 @@ macro_rules! implement_address {
             }
             impl fmt::Debug for $TypeName {
                 fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                    write!(f, concat!($prefix, "{:#X}"), self.0)
+                    write!(f, concat!($prefix, "={:#X}"), self.0)
                 }
             }
             impl fmt::Display for $TypeName {
@@ -138,7 +138,6 @@ macro_rules! implement_page_frame {
     (
         $TypeName:ident,
         $desc:literal,
-        $prefix:literal,
         $address:ident,
         $page_size:expr,
         $max_page_number:expr
@@ -205,7 +204,7 @@ macro_rules! implement_page_frame {
                 fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                     write!(
                         f,
-                        concat!(stringify!($TypeName), "(", $prefix, "={:#X})"),
+                        concat!(stringify!($TypeName), "({:#X})"),
                         self.start_address()
                     )
                 }

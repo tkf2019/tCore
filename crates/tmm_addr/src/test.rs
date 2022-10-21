@@ -21,7 +21,7 @@ implement_address!(
     0x1000
 );
 
-implement_page_frame!(Page, "virtual", "v", VirtAddr, 0x1000, usize::MAX / 0x1000);
+implement_page_frame!(Page, "virtual", VirtAddr, 0x1000, usize::MAX / 0x1000);
 
 implement_page_frame_range!(PageRange, "physical", virt, Page, VirtAddr, 0x1000);
 
