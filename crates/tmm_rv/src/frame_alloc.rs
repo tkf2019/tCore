@@ -3,13 +3,13 @@ use buddy_system_allocator::LockedFrameAllocator;
 use core::{fmt, ops::Deref};
 use spin::Lazy;
 
-use super::address::{Frame, FrameRange, PhysAddr};
+use crate::{Frame, FrameRange, PhysAddr, MappedPages, PageTable};
 
 /// Represents a range of allocated physical memory [`Frame`]s; derefs to [`FrameRange`].
 ///
 /// These frames are not immediately accessible because they're not yet mapped by any virtual
-/// memory pages. You must do that separately in order to create a `MappedPages` type, which
-/// can then be used to access the contents of these frames.
+/// memory pages. You must do that separately in order to create a [`MappedPages`] or 
+/// [`PageTable`] type, which can then be used to access the contents of these frames.
 ///
 /// This object represents ownership of the range of allocated physical frames;
 /// if this object falls out of scope, its allocated frames will be auto-deallocated upon drop.

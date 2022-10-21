@@ -2,7 +2,7 @@ extern crate std;
 
 use std::println;
 
-use crate::frame::FRAME_ALLOCATOR;
+use crate::frame_alloc::FRAME_ALLOCATOR;
 
 use super::*;
 

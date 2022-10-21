@@ -2,7 +2,7 @@ use _core::mem::size_of;
 use alloc::{vec, vec::Vec};
 use bitflags::*;
 
-use crate::{frame::AllocatedFrames, Frame, PhysAddr, PPN_MASK_SV39};
+use crate::{frame_alloc::AllocatedFrames, Frame, PhysAddr, PPN_MASK_SV39};
 
 bitflags! {
     /// Page table entry flag bits in SV39
@@ -128,6 +128,7 @@ pub struct PageTable {
 }
 
 impl PageTable {
+    /// Create a page table with a newly allocated root frame.
     pub fn new() -> Option<Self> {
         if let Some(root_frame) = AllocatedFrames::new(1) {
             Some(Self {

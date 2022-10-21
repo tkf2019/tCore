@@ -17,7 +17,7 @@ implement_address!(
     "v",
     is_canonical_va,
     canonicalize_va,
-    page,
+    "page",
     0x1000
 );
 
