@@ -45,22 +45,20 @@ implement_address!(
     PAGE_SIZE
 );
 
-implement_page_frame!(
-    Page,
-    "virtual",
-    "v",
-    VirtAddr,
-    PAGE_SIZE,
-    MAX_VA / PAGE_SIZE
-);
-implement_page_frame!(
-    Frame,
-    "physical",
-    "v",
-    PhysAddr,
-    PAGE_SIZE,
-    MAX_VA / PAGE_SIZE
-);
+implement_page_frame!(Page, "virtual", VirtAddr, PAGE_SIZE, MAX_VA / PAGE_SIZE);
+implement_page_frame!(Frame, "physical", PhysAddr, PAGE_SIZE, MAX_VA / PAGE_SIZE);
 
 implement_page_frame_range!(PageRange, "virtual", virt, Page, VirtAddr, PAGE_SIZE);
 implement_page_frame_range!(FrameRange, "physical", phys, Frame, PhysAddr, PAGE_SIZE);
+
+impl Page {
+    pub fn split_vpn(&self) -> [usize; 3] {
+        let mut vpn = self.number();
+        let mut indexes = [0usize; 3];
+        for i in (0..3).rev() {
+            indexes[i] = vpn & ((1 << INDEX_BITS_SV39) - 1);
+            vpn >>= INDEX_BITS_SV39;
+        }
+        indexes
+    }
+}

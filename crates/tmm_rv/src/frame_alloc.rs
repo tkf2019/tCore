@@ -3,12 +3,12 @@ use buddy_system_allocator::LockedFrameAllocator;
 use core::{fmt, ops::Deref};
 use spin::Lazy;
 
-use crate::{Frame, FrameRange, PhysAddr, MappedPages, PageTable};
+use crate::{Frame, FrameRange, MappedPages, PageTable, PhysAddr};
 
 /// Represents a range of allocated physical memory [`Frame`]s; derefs to [`FrameRange`].
 ///
 /// These frames are not immediately accessible because they're not yet mapped by any virtual
-/// memory pages. You must do that separately in order to create a [`MappedPages`] or 
+/// memory pages. You must do that separately in order to create a [`MappedPages`] or
 /// [`PageTable`] type, which can then be used to access the contents of these frames.
 ///
 /// This object represents ownership of the range of allocated physical frames;
@@ -27,7 +27,7 @@ impl AllocatedFrames {
             count != 0,
             "Cannot allocate frames with the number of zero!"
         );
-        if let Some(start) = FRAME_ALLOCATOR.lock().alloc(count) {
+        if let Some(start) = frame_alloc(count) {
             Some(Self {
                 frames: FrameRange::from_phys_addr(PhysAddr::new_canonical(start), count),
             })
@@ -41,11 +41,11 @@ impl AllocatedFrames {
     /// Actually, the range cannot be empty, which is guaranteed by the creation
     /// of [`AllocatedFrames`]. But the inclusive range may be exhausted by iteration.
     /// So we still need to check if the range is empty.
-    pub fn start(&self) -> Option<Frame> {
+    pub fn start(&self) -> Option<&Frame> {
         if self.is_empty() {
             None
         } else {
-            Some(self.frames.start().clone())
+            Some(self.frames.start())
         }
     }
 }
@@ -65,7 +65,7 @@ impl fmt::Debug for AllocatedFrames {
 
 impl Drop for AllocatedFrames {
     fn drop(&mut self) {
-        FRAME_ALLOCATOR.lock().dealloc(
+        frame_dealloc(
             self.start()
                 .expect("Nothing to deallocate. The range might have been exhausted!")
                 .number(),
@@ -75,4 +75,23 @@ impl Drop for AllocatedFrames {
 }
 
 /// Defines global frame allocator. This implementation is based on buddy system allocator.
-pub static FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> = Lazy::new(|| LockedFrameAllocator::new());
+static FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> = Lazy::new(|| {
+    let allocator = LockedFrameAllocator::new();
+    allocator.lock().add_frame(0x1000, 0x10000);
+    allocator
+});
+
+/// Global interface for frame allocator.
+pub fn frame_alloc(count: usize) -> Option<usize> {
+    FRAME_ALLOCATOR.lock().alloc(count)
+}
+
+/// Global interface for frame deallocator
+pub fn frame_dealloc(start: usize, count: usize) {
+    FRAME_ALLOCATOR.lock().dealloc(start, count)
+}
+
+/// Initialize global frame allocator
+pub fn init(start: usize, end: usize) {
+    FRAME_ALLOCATOR.lock().add_frame(start, end)
+}

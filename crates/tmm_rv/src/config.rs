@@ -29,11 +29,14 @@ pub const MAX_VA: usize = usize::MAX;
 /// 3-level page table in SV39.
 pub const PAGE_TABLE_LEVELS_SV39: usize = 3;
 
-/// 9-bit vpn for 3-level page table.
+/// 9-bit vpn for 3-level page table in SV39.
 pub const INDEX_BITS_SV39: usize = 9;
 
-/// PPN bits in page table entry.
+/// PPN bits in page table entry in SV39.
 pub const PPN_MASK_SV39: usize = 0x003F_FFFF_FFFF_FC00;
+
+/// PPN offset in page table entry in SV39.
+pub const PPN_OFFSET_SV39: usize = 10;
 
 /// Flag bits in page table entry.
 pub const FLAG_MASK_SV39: usize = 0x0000_0000_0000_00FF;

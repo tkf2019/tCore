@@ -2,13 +2,13 @@ extern crate std;
 
 use std::println;
 
-use crate::frame_alloc::FRAME_ALLOCATOR;
-
-use super::*;
+use crate::*;
 
 #[test]
-fn test_page_table() {
-    FRAME_ALLOCATOR.lock().add_frame(0, 20);
-    let page_table = PageTable::new().unwrap();
-    println!("{:#?}", page_table);
+fn test_frame_alloc() {
+    frame_alloc::init(0, 100);
+    println!("{}", frame_alloc(1).unwrap());
+    println!("{}", frame_alloc(5).unwrap());
+    frame_dealloc(0, 2);
+    println!("{}", frame_alloc(2).unwrap());
 }
