@@ -192,7 +192,7 @@ macro_rules! implement_page_frame {
             }
             impl From<$address> for $TypeName {
                 fn from(addr: $address) -> Self {
-                    $TypeName::ceil(addr)
+                    $TypeName::floor(addr)
                 }
             }
             impl Into<$address> for $TypeName {
@@ -300,10 +300,10 @@ macro_rules! implement_page_frame_range {
                     size_in_bytes: usize
                 ) -> $TypeName {
                     assert!(size_in_bytes > 0);
-                    let start = $chunk::ceil(start_addr);
+                    let start = $chunk::floor(start_addr);
                     // The end bound is inclusive, hence the -1. Parentheses are needed to
                     // avoid overflow.
-                    let end = $chunk::ceil(start_addr + (size_in_bytes - 1));
+                    let end = $chunk::floor(start_addr + (size_in_bytes - 1));
                     $TypeName::new(start, end)
                 }
 

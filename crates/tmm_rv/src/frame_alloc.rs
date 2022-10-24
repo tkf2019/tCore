@@ -3,12 +3,12 @@ use buddy_system_allocator::LockedFrameAllocator;
 use core::{fmt, ops::Deref};
 use spin::Lazy;
 
-use crate::{Frame, FrameRange, MappedPages, PageTable, PhysAddr};
+use crate::{AllocatedPages, Frame, FrameRange, PageTable, PhysAddr};
 
 /// Represents a range of allocated physical memory [`Frame`]s; derefs to [`FrameRange`].
 ///
 /// These frames are not immediately accessible because they're not yet mapped by any virtual
-/// memory pages. You must do that separately in order to create a [`MappedPages`] or
+/// memory pages. You must do that separately in order to create a [`AllocatedPages`] or
 /// [`PageTable`] type, which can then be used to access the contents of these frames.
 ///
 /// This object represents ownership of the range of allocated physical frames;
@@ -22,17 +22,16 @@ impl AllocatedFrames {
     /// Use global [`FRAME_ALLOCATOR`] to track allocated frames.
     ///
     /// Throws error, otherwise allocation with the number of zero is unpredictable.
-    pub fn new(count: usize) -> Option<Self> {
-        assert!(
-            count != 0,
-            "Cannot allocate frames with the number of zero!"
-        );
+    pub fn new(count: usize) -> Result<Self, &'static str> {
+        if count == 0 {
+            return Err("Cannot allocate frames with zero count.");
+        }
         if let Some(start) = frame_alloc(count) {
-            Some(Self {
+            Ok(Self {
                 frames: FrameRange::from_phys_addr(PhysAddr::new_canonical(start), count),
             })
         } else {
-            None
+            Err("Failed to allocate frame.")
         }
     }
 
@@ -75,11 +74,7 @@ impl Drop for AllocatedFrames {
 }
 
 /// Defines global frame allocator. This implementation is based on buddy system allocator.
-static FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> = Lazy::new(|| {
-    let allocator = LockedFrameAllocator::new();
-    allocator.lock().add_frame(0x1000, 0x10000);
-    allocator
-});
+static FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> = Lazy::new(|| LockedFrameAllocator::new());
 
 /// Global interface for frame allocator.
 pub fn frame_alloc(count: usize) -> Option<usize> {

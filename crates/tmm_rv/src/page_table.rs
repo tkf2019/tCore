@@ -2,7 +2,9 @@ use _core::mem::size_of;
 use alloc::{vec, vec::Vec};
 use bitflags::*;
 
-use crate::{frame_alloc, AllocatedFrames, Frame, Page, PhysAddr, PPN_MASK_SV39, PPN_OFFSET_SV39};
+use crate::{
+    frame_alloc, AllocatedFrames, Frame, Page, PhysAddr, VirtAddr, PPN_MASK_SV39, PPN_OFFSET_SV39,
+};
 
 bitflags! {
     /// Page table entry flag bits in SV39
@@ -100,12 +102,8 @@ impl PageTableEntry {
     /// Returns the physical frame pointed by the `PPN` segment.
     ///
     /// If the page table entry is not valid, it returns to `None`.
-    pub fn frame(&self) -> Option<Frame> {
-        if self.flags().is_valid() {
-            Some(Frame::ceil(PhysAddr::new_canonical((self.0 << 2) as usize)))
-        } else {
-            None
-        }
+    pub fn frame(&self) -> Frame {
+        Frame::floor(PhysAddr::new_canonical((self.0 << 2) as usize))
     }
 
     /// Set flags
@@ -155,40 +153,37 @@ pub struct PageTable {
 
 impl PageTable {
     /// Create a page table with a newly allocated root frame.
-    pub fn new() -> Option<Self> {
-        if let Some(root_frame) = AllocatedFrames::new(1) {
-            Some(Self {
-                // No iteration after a successful allocation, thus do `unwrap()` freely.
-                root: root_frame.start().unwrap().clone(),
-                frames: vec![root_frame],
-            })
-        } else {
-            None
-        }
+    pub fn new() -> Result<Self, &'static str> {
+        let root_frame = AllocatedFrames::new(1)?;
+        Ok(Self {
+            // No iteration after a successful allocation, thus do `unwrap()` freely.
+            root: root_frame.start().unwrap().clone(),
+            frames: vec![root_frame],
+        })
     }
 
     /// Walk down this [`PageTable`], The virtual page number is given.
     /// In SV39, `vpn` is splitted into 3 indexes, 9 bits each, which is to locate the
     /// [`PageTableEntry`] among 512 entries in a 4KB page table frame.
-    /// We will allocate a new frame to create new entries and
-    /// set the valid bit if the `CREAT` bit is set in flags.
-    fn walk(&mut self, page: Page, flags: PTWalkerFlags) -> Option<(PhysAddr, PageTableEntry)> {
+    /// We will allocate a new frame to create new entries and set the valid bit if the
+    /// `CREAT` bit is set in flags.
+    ///
+    /// This function cannot be used outside the page table. It checks the `valid` bit of the leaf.
+    fn walk(
+        &mut self,
+        page: Page,
+        flags: PTWalkerFlags,
+    ) -> Result<(PhysAddr, PageTableEntry), &'static str> {
         let indexes = page.split_vpn();
         let mut link = self.root;
         let mut result: Option<(PhysAddr, PageTableEntry)> = None;
         for (j, index) in indexes.iter().enumerate() {
             let pa = PageTableEntry::from_index(&link, *index);
             let mut entry = &mut PageTableEntry::new(pa);
-            // Reach the leaf page table frame.
-            if j == 2 {
-                result = Some((pa, entry.clone()));
-                break;
-            }
             // No existing entry, create a new one.
             if !entry.flags().is_valid() {
-                if (flags.intersects(PTWalkerFlags::CREAT)) {
-                    let new_frame = AllocatedFrames::new(1)
-                        .expect("Failed to allocate inner page table frame.");
+                if flags.intersects(PTWalkerFlags::CREAT) && j < 2 {
+                    let new_frame = AllocatedFrames::new(1)?;
 
                     // Write new valid entry to the target frame.
                     entry.set_flags(PTEFlags::VALID);
@@ -198,29 +193,56 @@ impl PageTable {
                     // Delegate the ownership to this page table
                     self.frames.push(new_frame);
                 } else {
-                    return None;
+                    return Err("Encounter an invalid page table entry.");
                 }
             }
-            link = entry.frame().unwrap();
+            // Reach the leaf page table frame.
+            result = Some((pa, entry.clone()));
+            link = entry.frame();
         }
-        result
+        Ok(result.unwrap())
     }
 
     /// Virtual page will be mapped to physical frame. Caller must guarantee that the frame
     /// has been allocated and will not be used again by the `PageTableWalker`.
-    pub fn map(&mut self, page: Page, frame: Frame, flags: PTEFlags) {
-        if let Some((pa, mut pte)) = self.walk(page, PTWalkerFlags::CREAT) {
-            pte.set_flags(flags);
-            pte.set_ppn(&frame);
-            pte.write(pa);
-        }
+    pub fn map(&mut self, page: Page, frame: Frame, flags: PTEFlags) -> Result<(), &'static str> {
+        let (pa, mut pte) = self.walk(page, PTWalkerFlags::CREAT)?;
+        pte.set_flags(flags);
+        pte.set_ppn(&frame);
+        pte.write(pa);
+        Ok(())
     }
 
     /// Clears the page table entry found by the page.
-    pub fn unmap(&mut self, page: Page) {
-        if let Some((pa, mut pte)) = self.walk(page, PTWalkerFlags::empty()) {
-            pte = PageTableEntry::zero();
-            pte.write(pa);
+    pub fn unmap(&mut self, page: Page) -> Result<(), &'static str> {
+        let (pa, mut pte) = self.walk(page, PTWalkerFlags::empty())?;
+        pte = PageTableEntry::zero();
+        pte.write(pa);
+        Ok(())
+    }
+
+    /// Translate virtual address into physical address.
+    pub fn translate(&mut self, va: VirtAddr) -> Result<PhysAddr, &'static str> {
+        self.walk(Page::floor(va), PTWalkerFlags::empty())
+            .map(|(_, pte)| {
+                let offset = va.page_offset();
+                let pa = pte.frame().start_address();
+                pa + offset
+            })
+    }
+
+    /// Get page table entry from
+    pub fn get(&mut self, va: VirtAddr) -> Result<PageTableEntry, &'static str> {
+        self.walk(Page::floor(va), PTWalkerFlags::empty())
+            .map(|(_, pte)| pte)
+    }
+}
+
+impl Default for PageTable {
+    fn default() -> Self {
+        Self {
+            root: Frame::ceil(PhysAddr::zero()),
+            frames: Vec::new(),
         }
     }
 }
