@@ -7,8 +7,10 @@
 mod config;
 mod cons;
 mod heap;
+mod mm;
 mod task;
 mod trap;
+mod error;
 
 extern crate alloc;
 

@@ -4,6 +4,8 @@ mod trapframe;
 use log::debug;
 use riscv::register::{scause::*, *};
 
+pub use trampoline::trampoline;
+
 #[no_mangle]
 fn user_trap_handler() -> ! {
     // set kernel trap entry

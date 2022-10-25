@@ -12,6 +12,8 @@ log = "0.4"
 riscv = "0.9"
 sbi-rt = { version = "0.0.2", features = ["legacy"] }
 spin = "0.9"
+xmas-elf = "0.8"
+
 talloc = { path = "../crates/talloc" }
 tmm_rv = { path = "../crates/tmm_rv" }
 # tsync = { path = "../crates/tsync" }

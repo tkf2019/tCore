@@ -8,7 +8,7 @@
 #[no_mangle]
 #[allow(named_asm_labels)]
 #[link_section = ".text.trampoline"]
-unsafe extern "C" fn trampoline() {
+pub unsafe extern "C" fn trampoline() {
     core::arch::asm!(
         // Jump to stvec (user trap entry)
         "
