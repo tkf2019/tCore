@@ -9,20 +9,14 @@ use spin::Mutex;
 /// A single address space may have many [`AllocatedPages`]s to represent different memory
 /// sections such as `.bss`, `.data` and etc.
 pub struct AllocatedPages {
-    /// This object does not have the ownership of the page table. So the lifetime of
-    /// [`PageTable`] depends on all mapped pages tied to it. Frames allocated in a page
-    /// table will be dropped if the address space is destroyed to release the resources.
-    page_table: Arc<Mutex<PageTable>>,
-
     /// Total continuous range of virtual pages.
-    pages: PageRange,
+    pub pages: PageRange,
 }
 
 impl AllocatedPages {
     /// Create mapped pages from an existing page table.
-    pub fn new(page_table: Arc<Mutex<PageTable>>, start: Page, end: Page) -> Self {
+    pub fn new(start: Page, end: Page) -> Self {
         Self {
-            page_table: page_table.clone(),
             pages: PageRange::new(start, end),
         }
     }
@@ -36,11 +30,8 @@ impl AllocatedPages {
     /// - If `at_page == self.start`, the left returned `AllocatedPages` object will be empty.
     /// - If `at_page == self.end + 1`, the right returned `AllocatedPages` object will be empty.
     ///
-    /// /// Returns an `Err` containing this `AllocatedPages` if `at_page` is otherwise out of bounds.
-    pub fn split_at(
-        self,
-        at_page: Page,
-    ) -> Result<(AllocatedPages, AllocatedPages), AllocatedPages> {
+    /// Returns an `Err` containing this `AllocatedPages` if `at_page` is otherwise out of bounds.
+    pub fn split_at(self, at_page: Page) -> Result<(Self, Self), Self> {
         let (left, right) = if at_page == *self.pages.start() {
             (
                 PageRange::empty(),
@@ -59,15 +50,6 @@ impl AllocatedPages {
         } else {
             return Err(self);
         };
-        Ok((
-            AllocatedPages {
-                page_table: self.page_table.clone(),
-                pages: left,
-            },
-            AllocatedPages {
-                page_table: self.page_table.clone(),
-                pages: right,
-            },
-        ))
+        Ok((Self { pages: left }, Self { pages: right }))
     }
 }

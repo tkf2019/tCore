@@ -15,6 +15,3 @@ fn test_frame_alloc() {
     println!("{}", frame_alloc(2).unwrap());
 }
 
-#[test]
-fn test_btree() {
-}

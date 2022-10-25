@@ -14,7 +14,7 @@ use crate::{AllocatedPages, Frame, FrameRange, PageTable, PhysAddr};
 /// This object represents ownership of the range of allocated physical frames;
 /// if this object falls out of scope, its allocated frames will be auto-deallocated upon drop.
 pub struct AllocatedFrames {
-    frames: FrameRange,
+    pub frames: FrameRange,
 }
 
 impl AllocatedFrames {

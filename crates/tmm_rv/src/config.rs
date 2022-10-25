@@ -23,8 +23,11 @@ pub const VA_MASK_SV39: usize = 0x0000_007F_FFFF_FFFF;
 /// Bits [63:39] must be set the same as bit 38.
 pub const VA_38_SV39: usize = 0x0000_0040_0000_0000;
 
-/// The highest possible virtual address allowed by SV39.
+/// The highest possible virtual address.
 pub const MAX_VA: usize = usize::MAX;
+
+/// The highest virtual address of the low 256 GB in SV39.
+pub const LOW_MAX_VA: usize = 0x0000_001F_FFFF_FFFF;
 
 /// 3-level page table in SV39.
 pub const PAGE_TABLE_LEVELS_SV39: usize = 3;
