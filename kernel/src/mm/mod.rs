@@ -7,8 +7,10 @@ use vma::VMArea;
 
 use crate::{config::TRAMPOLINE_VA, trap::trampoline};
 
-use self::vma::VMFlags;
+use pmd::PMArea;
+use vma::VMFlags;
 
+mod pma;
 mod vma;
 
 type VMA = Arc<Mutex<VMArea>>;
@@ -26,6 +28,9 @@ pub struct MM {
 
     /// List of [`VMArea`]s.
     pub vma_list: LinkedList<VMA>,
+
+    /// Find an unmapped [`VMArea`] with the target length quickly
+    pub vma_map: BTreeMap<VirtAddr, VMA>,
 
     /// Last accessed [`VMArea`] cached for faster search with the prediction
     /// of memory locality.
@@ -51,6 +56,7 @@ impl MM {
         let mm = Self {
             page_table: Arc::new(Mutex::new(PageTable::new()?)),
             vma_list: LinkedList::new(),
+            vma_map: BTreeMap::new(),
             vma_cache: None,
             entry: VirtAddr::zero(),
             start_brk: VirtAddr::zero(),
