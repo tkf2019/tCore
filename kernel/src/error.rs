@@ -3,6 +3,8 @@ pub enum KernelError {
     /* Page Table Errors */
     /// Encounters an invalid page table entry.
     PageTableInvalid,
+    /// Page has not been mapped to an frame yet.
+    PageUnmapped,
     /* Frame Allocator Errors */
     FrameAllocFailed,
 }

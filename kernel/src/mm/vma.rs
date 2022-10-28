@@ -1,3 +1,5 @@
+use core::error::Error;
+
 use alloc::sync::{Weak, Arc};
 use bitflags::bitflags;
 use log::{warn, debug};
@@ -6,8 +8,7 @@ use tmm_rv::{AllocatedPages, VirtAddr, PageTable, PageRange, frame_alloc, Alloca
 
 use crate::error::{KernelResult, KernelError, self};
 
-/// Represents an area in virtual address space with the range of
-/// [start_va, end_va)
+/// Represents an area in virtual address space with the range of [start_va, end_va).
 pub struct VMArea {
     /// The name for this area.
     name: &'static str,
@@ -23,6 +24,8 @@ pub struct VMArea {
 
     /// This area has the ownership of [`AllocatedPages`].
     pages: AllocatedPages,
+
+    /// The frames may not be allocated until  reads or writes
 
     /// Points to the previous [`VMArea`] in the data structure that maintains the order
     /// of these [`VMArea`]s in the same virtual adress space. In Linux, `mm_struct` uses
@@ -43,7 +46,8 @@ impl VMArea {
         }
     }
 
-    pub fn map_this(self, page_table: Arc<Mutex<PageTable>>) -> KernelResult<VMArea> {
+    /// Maps the whole virtual memory area, throwing errors.
+    pub fn map_this(&self, page_table: Arc<Mutex<PageTable>>) -> KernelResult {
         match AllocatedFrames::new(self.pages.pages.size_in_pages()) {
             Ok(frames) => {
                 let pt = page_table.lock();
@@ -53,7 +57,7 @@ impl VMArea {
                         return Err(KernelError::PageTableInvalid);
                     }
                 }
-                Ok(self)
+                Ok(())
             },
             Err(err) => {
                 warn!("{}", err);
@@ -62,5 +66,12 @@ impl VMArea {
         }
     }
 
-    // pub fn unmap()
+    /// Unmaps the whole virtual memory area, escaping errors caused by page table walk.
+    pub fn unmap_this(&self, page_table: Arc<Mutex<PageTable>>) -> KernelResult {
+        let pt = page_table.lock();
+        for page in self.pages.pages.into_iter() {
+            pt.unmap(page);
+        }
+        Ok(())
+    }
 }
