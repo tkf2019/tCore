@@ -302,7 +302,6 @@ macro_rules! implement_page_frame_range {
                     start_addr: $address,
                     size_in_bytes: usize
                 ) -> $TypeName {
-                    assert!(size_in_bytes > 0);
                     let start = $chunk::floor(start_addr);
                     let end = $chunk::ceil(start_addr + size_in_bytes);
                     $TypeName::new(start, end)
@@ -318,6 +317,11 @@ macro_rules! implement_page_frame_range {
                 #[inline]
                 pub const fn end(&self) -> $chunk {
                     self.end
+                }
+
+                #[doc = "Returns the range of this `" $TypeName "`."]
+                pub fn range(&self) -> Range<$chunk> {
+                    self.start..self.end
                 }
 
                 #[doc = "Returns true if this `" $TypeName "` is empty."]

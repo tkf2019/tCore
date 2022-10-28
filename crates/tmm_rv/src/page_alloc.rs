@@ -1,5 +1,6 @@
 use crate::{AllocatedFrames, Frame, PTEFlags, Page, PageRange, PageTable, VirtAddr};
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
+use core::ops::{Deref, DerefMut};
 use spin::Mutex;
 
 /// Represents a range of mapped virtual memory [`Page`]s.
@@ -51,5 +52,12 @@ impl AllocatedPages {
             return Err(self);
         };
         Ok((Self { pages: left }, Self { pages: right }))
+    }
+}
+
+impl Deref for AllocatedPages {
+    type Target = PageRange;
+    fn deref(&self) -> &Self::Target {
+        &self.pages
     }
 }

@@ -1,6 +1,9 @@
 use alloc::format;
 use buddy_system_allocator::LockedFrameAllocator;
-use core::{fmt, ops::Deref};
+use core::{
+    fmt,
+    ops::{Deref, DerefMut},
+};
 use spin::Lazy;
 
 use crate::{AllocatedPages, Frame, FrameRange, PageTable, PhysAddr};
@@ -53,19 +56,6 @@ impl AllocatedFrames {
             Err("Failed to allocate frame.")
         }
     }
-
-    /// Returns the start [`Frame`] if the range is not empty.
-    ///
-    /// Actually, the range cannot be empty, which is guaranteed by the creation
-    /// of [`AllocatedFrames`]. But the inclusive range may be exhausted by iteration.
-    /// So we still need to check if the range is empty.
-    pub fn start(&self) -> Option<Frame> {
-        if self.is_empty() {
-            None
-        } else {
-            Some(self.frames.start())
-        }
-    }
 }
 
 impl Deref for AllocatedFrames {
@@ -83,11 +73,6 @@ impl fmt::Debug for AllocatedFrames {
 
 impl Drop for AllocatedFrames {
     fn drop(&mut self) {
-        frame_dealloc(
-            self.start()
-                .expect("Nothing to deallocate. The range might have been exhausted!")
-                .number(),
-            self.size_in_frames(),
-        );
+        frame_dealloc(self.start().number(), self.size_in_frames());
     }
 }

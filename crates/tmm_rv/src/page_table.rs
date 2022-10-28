@@ -157,7 +157,7 @@ impl PageTable {
         let root_frame = AllocatedFrames::new(1)?;
         Ok(Self {
             // No iteration after a successful allocation, thus do `unwrap()` freely.
-            root: root_frame.start().unwrap().clone(),
+            root: root_frame.start(),
             frames: vec![root_frame],
         })
     }
@@ -187,7 +187,7 @@ impl PageTable {
 
                     // Write new valid entry to the target frame.
                     entry.set_flags(PTEFlags::VALID);
-                    entry.set_ppn(&new_frame.start().unwrap());
+                    entry.set_ppn(&new_frame.start());
                     entry.write(pa);
 
                     // Delegate the ownership to this page table
