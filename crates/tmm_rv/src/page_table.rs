@@ -187,7 +187,7 @@ impl PageTable {
 
                     // Write new valid entry to the target frame.
                     entry.set_flags(PTEFlags::VALID);
-                    entry.set_ppn(new_frame.start().unwrap());
+                    entry.set_ppn(&new_frame.start().unwrap());
                     entry.write(pa);
 
                     // Delegate the ownership to this page table
@@ -229,12 +229,6 @@ impl PageTable {
                 let pa = pte.frame().start_address();
                 pa + offset
             })
-    }
-
-    /// Get page table entry from
-    pub fn get(&mut self, va: VirtAddr) -> Result<PageTableEntry, &'static str> {
-        self.walk(Page::floor(va), PTWalkerFlags::empty())
-            .map(|(_, pte)| pte)
     }
 }
 

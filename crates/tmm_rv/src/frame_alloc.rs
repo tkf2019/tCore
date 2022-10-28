@@ -5,6 +5,25 @@ use spin::Lazy;
 
 use crate::{AllocatedPages, Frame, FrameRange, PageTable, PhysAddr};
 
+/// Defines global frame allocator. This implementation is based on buddy system allocator.
+static GLOBAL_FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> =
+    Lazy::new(|| LockedFrameAllocator::new());
+
+/// Global interface for frame allocator.
+pub fn frame_alloc(count: usize) -> Option<usize> {
+    GLOBAL_FRAME_ALLOCATOR.lock().alloc(count)
+}
+
+/// Global interface for frame deallocator
+pub fn frame_dealloc(start: usize, count: usize) {
+    GLOBAL_FRAME_ALLOCATOR.lock().dealloc(start, count)
+}
+
+/// Initialize global frame allocator
+pub fn init(start: usize, end: usize) {
+    GLOBAL_FRAME_ALLOCATOR.lock().add_frame(start, end)
+}
+
 /// Represents a range of allocated physical memory [`Frame`]s; derefs to [`FrameRange`].
 ///
 /// These frames are not immediately accessible because they're not yet mapped by any virtual
@@ -19,7 +38,7 @@ pub struct AllocatedFrames {
 
 impl AllocatedFrames {
     /// Allocates frames from start to end.
-    /// Use global [`FRAME_ALLOCATOR`] to track allocated frames.
+    /// Use global [`GLOBAL_FRAME_ALLOCATOR`] to track allocated frames.
     ///
     /// Throws error, otherwise allocation with the number of zero is unpredictable.
     pub fn new(count: usize) -> Result<Self, &'static str> {
@@ -40,7 +59,7 @@ impl AllocatedFrames {
     /// Actually, the range cannot be empty, which is guaranteed by the creation
     /// of [`AllocatedFrames`]. But the inclusive range may be exhausted by iteration.
     /// So we still need to check if the range is empty.
-    pub fn start(&self) -> Option<&Frame> {
+    pub fn start(&self) -> Option<Frame> {
         if self.is_empty() {
             None
         } else {
@@ -71,22 +90,4 @@ impl Drop for AllocatedFrames {
             self.size_in_frames(),
         );
     }
-}
-
-/// Defines global frame allocator. This implementation is based on buddy system allocator.
-static FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> = Lazy::new(|| LockedFrameAllocator::new());
-
-/// Global interface for frame allocator.
-pub fn frame_alloc(count: usize) -> Option<usize> {
-    FRAME_ALLOCATOR.lock().alloc(count)
-}
-
-/// Global interface for frame deallocator
-pub fn frame_dealloc(start: usize, count: usize) {
-    FRAME_ALLOCATOR.lock().dealloc(start, count)
-}
-
-/// Initialize global frame allocator
-pub fn init(start: usize, end: usize) {
-    FRAME_ALLOCATOR.lock().add_frame(start, end)
 }

@@ -39,6 +39,7 @@ fn it_works() {
 
     let pr = PageRange::from_virt_addr(0x1002.into(), 0x3124);
     println!("Page range: {:#?}", &pr);
+
     let mut iter = pr.into_iter().map(|p| p.number());
     assert!(iter.next() == Some(1));
     assert!(iter.next() == Some(2));
