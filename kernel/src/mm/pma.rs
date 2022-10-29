@@ -6,9 +6,15 @@ use core::{
 use log::warn;
 use tmm_rv::{AllocatedFrames, Frame, PhysAddr};
 
-use crate::error::KernelResult;
+use crate::error::{KernelError::FrameOutOfRange, KernelResult};
 
-pub trait PMArea: Debug + Send + Sync {}
+pub trait PMArea: Debug + Send + Sync {
+    /// Gets target frame by index.
+    ///
+    /// Returns [`FrameOutOfRange`] if the `index` is out of the range of
+    /// allocated frames.
+    fn get_frame(&self, index: usize) -> KernelResult<Frame>;
+}
 
 /// Represents a fixed physical memory area allocated with real frames when
 /// created by mapping requests from the initialization of address spaces.
@@ -35,5 +41,14 @@ impl Deref for FixedPMA {
     type Target = AllocatedFrames;
     fn deref(&self) -> &Self::Target {
         &self.frames
+    }
+}
+
+impl PMArea for FixedPMA {
+    fn get_frame(&self, index: usize) -> KernelResult<Frame> {
+        if index >= self.size_in_frames() {
+            return Err(FrameOutOfRange);
+        }
+        Ok(Frame::from(self.start() + index))
     }
 }

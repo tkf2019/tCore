@@ -341,7 +341,7 @@ macro_rules! implement_page_frame_range {
                     unlike normal iterators."]
                 pub const fn [<size_in_ $chunk:lower s>](&self) -> usize {
                     // add 1 because it's an inclusive range
-                    (self.end().number() + 1).saturating_sub(self.start().number())
+                    self.end().number().saturating_sub(self.start().number())
                 }
 
                 /// Returns the size of this range in number of bytes.

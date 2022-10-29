@@ -1,12 +1,16 @@
 pub enum KernelError {
     Ok = 0,
-    /* Page Table Errors */
-    /// Encounters an invalid page table entry.
+    /// An invalid page table entry.
     PageTableInvalid,
     /// Page has not been mapped to an frame yet.
     PageUnmapped,
-    /* Frame Allocator Errors */
+    /// Failed to allocate a new frame: Internal Error
     FrameAllocFailed,
+    /// Get frame out of the physical memory area
+    FrameOutOfRange,
+    /// Failed to resolve ELF
+    /// - Wrong magic number: 
+    ELFInvalid,
 }
 
 pub type KernelResult<T = ()> = Result<T, KernelError>;

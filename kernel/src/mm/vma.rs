@@ -6,7 +6,7 @@ use tmm_rv::{AllocatedPages, VirtAddr, PageTable, PageRange, frame_alloc, Alloca
 
 use crate::error::{KernelResult, KernelError};
 
-use super::pma::FixedPMA;
+use super::pma::{FixedPMA, PMArea};
 
 /// Represents an area in virtual address space with the range of [start_va, end_va).
 pub struct VMArea {
@@ -26,7 +26,7 @@ pub struct VMArea {
     pages: AllocatedPages,
 
     /// Mapped to a physical memory area, with behaviors depending on the usage of this area.
-    pma: Arc<Mutex<FixedPMA>>,
+    pma: Arc<Mutex<dyn PMArea>>,
 
     /// Points to the previous [`VMArea`] in the data structure that maintains the order
     /// of these [`VMArea`]s in the same virtual adress space. In Linux, `mm_struct` uses
@@ -37,7 +37,7 @@ pub struct VMArea {
 }
 
 impl VMArea {
-    pub fn new(name: &'static str, start_va: VirtAddr, end_va: VirtAddr, flgas: PTEFlags,pma: Arc<Mutex<FixedPMA>>) -> Self {
+    pub fn new(name: &'static str, start_va: VirtAddr, end_va: VirtAddr, flgas: PTEFlags,pma: Arc<Mutex<dyn PMArea>>) -> Self {
         Self {
             name,
             flags,
