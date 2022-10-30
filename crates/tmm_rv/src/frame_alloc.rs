@@ -4,12 +4,13 @@ use core::{
     fmt,
     ops::{Deref, DerefMut},
 };
+use log::info;
 use spin::Lazy;
 
 use crate::{AllocatedPages, Frame, FrameRange, PageTable, PhysAddr};
 
 /// Defines global frame allocator. This implementation is based on buddy system allocator.
-static GLOBAL_FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> =
+pub static GLOBAL_FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> =
     Lazy::new(|| LockedFrameAllocator::new());
 
 /// Global interface for frame allocator.
@@ -23,7 +24,8 @@ pub fn frame_dealloc(start: usize, count: usize) {
 }
 
 /// Initialize global frame allocator
-pub fn init(start: usize, end: usize) {
+pub fn frame_init(start: usize, end: usize) {
+    info!("Global Frame Allocator [{:#x}, {:#x})", start, end);
     GLOBAL_FRAME_ALLOCATOR.lock().add_frame(start, end)
 }
 
@@ -50,7 +52,7 @@ impl AllocatedFrames {
         }
         if let Some(start) = frame_alloc(count) {
             Ok(Self {
-                frames: FrameRange::from_phys_addr(PhysAddr::new_canonical(start), count),
+                frames: FrameRange::new(Frame::from(start), Frame::from(start + count)),
             })
         } else {
             Err("Failed to allocate frame.")
@@ -67,12 +69,12 @@ impl Deref for AllocatedFrames {
 
 impl fmt::Debug for AllocatedFrames {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Allocated frames: {:?}", self.frames)
+        write!(f, "{:?}", self.frames)
     }
 }
 
 impl Drop for AllocatedFrames {
     fn drop(&mut self) {
-        frame_dealloc(self.start().number(), self.size_in_frames());
+        frame_dealloc(self.start.number(), self.size_in_frames());
     }
 }

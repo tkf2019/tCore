@@ -1,16 +1,19 @@
-use alloc::collections::LinkedList;
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
-use log::warn;
-use rust_lapper::Interval;
+use core::slice;
+use lazy_static::lazy_static;
+use log::{debug, info, warn};
 use spin::Mutex;
-use tmm_rv::{AllocatedFrames, Frame, PTEFlags, Page, PageTable, PhysAddr, VirtAddr};
+use tmm_rv::{frame_init, Frame, PTEFlags, Page, PageTable, PhysAddr, VirtAddr};
 use vma::VMArea;
 
-use crate::error::{KernelError, KernelResult};
-use crate::{config::TRAMPOLINE_VA, trap::trampoline};
+use crate::{
+    config::{PAGE_SIZE, PHYSICAL_MEMORY_END, TRAMPOLINE_VA},
+    error::{KernelError, KernelResult},
+    println,
+    trap::trampoline,
+};
 
-use pmd::PMArea;
-use vma::VMFlags;
+use self::pma::{IdenticalPMA, PMArea};
 
 mod pma;
 mod vma;
@@ -26,10 +29,10 @@ pub struct MM {
     ///
     /// Frames allocated in a page table will be dropped if the address space is
     /// destroyed to release the resources. See [`AllocatedFrames`].
-    pub page_table: Arc<Mutex<PageTable>>,
+    pub page_table: PageTable,
 
     /// List of [`VMArea`]s.
-    pub vma_list: LinkedList<VMA>,
+    pub vma_list: Vec<VMA>,
 
     /// Find an unmapped [`VMArea`] with the target length quickly
     pub vma_map: BTreeMap<VirtAddr, VMA>,
@@ -58,9 +61,9 @@ impl MM {
     pub fn new() -> KernelResult<Self> {
         match PageTable::new() {
             Ok(page_table) => {
-                let mm = Self {
-                    page_table: Arc::new(Mutex::new(page_table)),
-                    vma_list: LinkedList::new(),
+                let mut mm = Self {
+                    page_table,
+                    vma_list: Vec::new(),
                     vma_map: BTreeMap::new(),
                     vma_cache: None,
                     entry: VirtAddr::zero(),
@@ -68,76 +71,190 @@ impl MM {
                     brk: VirtAddr::zero(),
                 };
                 mm.page_table
-                    .lock()
                     .map(
                         VirtAddr::from(TRAMPOLINE_VA).into(),
                         PhysAddr::from(trampoline as usize).into(),
                         PTEFlags::READABLE | PTEFlags::EXECUTABLE,
                     )
-                    .map_err(|_| KernelError::PageTableInvalid)
+                    .map_err(|err| {
+                        warn!("{}", err);
+                        KernelError::PageTableInvalid
+                    })
                     .and(Ok(mm))
             }
             Err(_) => Err(KernelError::FrameAllocFailed),
         }
     }
 
-    pub fn alloc(&mut self, vma: VMA, data: &[u8]) -> Result<(), &'static str> {
-        self.vma_list.push_back(vma);
+    /// Write to `[start_va, end_va)` using the page table of this address space.
+    /// The length of `data` may be larger or smaller than the virtual memory range.
+    ///
+    /// Returns [`KernelError::PageTableInvalid`] if it attempts to writing to an unmapped area.
+    pub fn write(&mut self, data: &[u8], start_va: VirtAddr, end_va: VirtAddr) -> KernelResult {
+        debug!("Write to virtual range: {:?} -> {:?}", start_va, end_va);
+
+        let end_ptr = data.len();
+        let mut data_ptr: usize = 0;
+        let mut curr_va = start_va;
+        let mut curr_page = Page::from(start_va);
+        let end_page = Page::from(end_va); // inclusive
+        loop {
+            let page_len: usize = if curr_page == end_page {
+                (end_va - curr_va).into()
+            } else {
+                PAGE_SIZE - curr_va.page_offset()
+            };
+
+            // Copy data to allocated frames.
+            let src = &data[data_ptr..end_ptr.min(data_ptr + page_len)];
+            let dst = self.page_table.translate(curr_va).and_then(|pa| unsafe {
+                Ok(slice::from_raw_parts_mut(pa.value() as *mut u8, page_len))
+            });
+            if dst.is_err() {
+                return Err(KernelError::PageTableInvalid);
+            }
+            dst.unwrap().copy_from_slice(src);
+
+            // Step to the next page.
+            data_ptr += page_len;
+            curr_va += page_len;
+            curr_page += 1;
+
+            if curr_va >= end_va || data_ptr >= end_ptr {
+                break;
+            }
+        }
         Ok(())
     }
 
-    // Create user address space from ELF data.
-    pub fn from_elf(elf_data: &[u8]) -> KernelResult<()> {
-        let mut mm = Self::new()?;
-        match xmas_elf::ElfFile::new(elf_data) {
-            Ok(elf) => {
-                let elf_header = elf.header;
-                if elf_header.pt1.magic != [0x7f, 0x45, 0x4c, 0x46] {
-                    return Err(KernelError::ELFInvalid);
-                }
-                let ph_count = elf_header.pt2.ph_count();
-                let mut last_page: Page = VirtAddr::zero().into();
-                for i in 0..ph_count {
-                    let ph = elf.program_header(i).unwrap();
-                    if ph.get_type().unwrap() == xmas_elf::program::Type::Load {
-                        let start_va: VirtAddr = (ph.virtual_addr() as usize).into();
-                        let end_va: VirtAddr =
-                            ((ph.virtual_addr() + ph.mem_size()) as usize).into();
-                        let vm_flags: PTEFlags = PTEFlags::empty();
-                        let ph_flags = ph.flags();
-                        if ph_flags.is_read() {
-                            vm_flags |= PTEFlags::READABLE;
-                        }
-                        if ph_flags.is_write() {
-                            vm_flags |= PTEFlags::WRITABLE;
-                        }
-                        if ph_flags.is_execute() {
-                            vm_flags |= PTEFlags::EXECUTABLE;
-                        }
-                        // mm.vma_list.push_back(Arc::new(Mutex::new(VMArea::new(
-                        //     start_va,
-                        //     end_va,
-                        //     vm_flags,
-                        //     mm.page_table,
-                        // ))));
-
-                        last_page = end_va.into();
-                    }
-                }
-                Ok(())
-                // let max_end_va: VirtAddr = max_end_vpn.into();
-                // let mut user_stack_base: usize = max_end_va.into();
-                // user_stack_base += PAGE_SIZE;
-                // (
-                //     memory_set,
-                //     user_stack_base,
-                //     elf.header.pt2.entry_point() as usize,
-                // )
-            }
-            Err(err) => {
-                warn!("{}", err);
-                KernelError::ELFInvalid
-            }
+    /// Allocate a new [`VMArea`] and write the data to the mapped physical areas.
+    pub fn alloc_write(
+        &mut self,
+        data: Option<&[u8]>,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        flags: PTEFlags,
+        pma: Arc<Mutex<dyn PMArea>>,
+    ) -> KernelResult {
+        let vma = Arc::new(Mutex::new(VMArea::new(start_va, end_va, flags, pma)));
+        vma.lock().map_this(&mut self.page_table)?;
+        // Create new references
+        self.vma_list.push(vma.clone());
+        self.vma_map.insert(start_va, vma.clone());
+        self.vma_cache = Some(vma.clone());
+        if let Some(data) = data {
+            self.write(data, start_va, end_va)?;
         }
+        Ok(())
     }
+}
+
+lazy_static! {
+    pub static ref KERNEL_MM: Mutex<MM> = Mutex::new(new_kernel().unwrap());
+}
+
+fn new_kernel() -> KernelResult<MM> {
+    // Physical memory layout.
+    extern "C" {
+        fn stext();
+        fn etext();
+        fn srodata();
+        fn erodata();
+        fn sdata();
+        fn edata();
+        fn sbss_with_stack();
+        fn ebss();
+        fn ekernel();
+    }
+
+    let mut mm = MM::new()?;
+
+    // Map kernel .text section
+    mm.alloc_write(
+        None,
+        (stext as usize).into(),
+        (etext as usize).into(),
+        PTEFlags::READABLE | PTEFlags::EXECUTABLE,
+        Arc::new(Mutex::new(IdenticalPMA)),
+    )?;
+    info!(
+        "{:>10} [{:#x}, {:#x})",
+        ".text", stext as usize, etext as usize
+    );
+
+    // Map kernel .rodata section
+    mm.alloc_write(
+        None,
+        (srodata as usize).into(),
+        (erodata as usize).into(),
+        PTEFlags::READABLE,
+        Arc::new(Mutex::new(IdenticalPMA)),
+    )?;
+    info!(
+        "{:>10} [{:#x}, {:#x})",
+        ".rodata", srodata as usize, erodata as usize
+    );
+
+    // Map kernel .data section
+    mm.alloc_write(
+        None,
+        (sdata as usize).into(),
+        (edata as usize).into(),
+        PTEFlags::READABLE | PTEFlags::WRITABLE,
+        Arc::new(Mutex::new(IdenticalPMA)),
+    )?;
+    info!(
+        "{:>10} [{:#x}, {:#x})",
+        ".data", sdata as usize, edata as usize
+    );
+
+    // Map kernel .bss section
+    mm.alloc_write(
+        None,
+        (sbss_with_stack as usize).into(),
+        (ebss as usize).into(),
+        PTEFlags::READABLE | PTEFlags::WRITABLE,
+        Arc::new(Mutex::new(IdenticalPMA)),
+    )?;
+    info!(
+        "{:>10} [{:#x}, {:#x})",
+        ".bss", sbss_with_stack as usize, ebss as usize
+    );
+
+    // Physical memory area
+    mm.alloc_write(
+        None,
+        (ekernel as usize).into(),
+        PHYSICAL_MEMORY_END.into(),
+        PTEFlags::READABLE | PTEFlags::WRITABLE,
+        Arc::new(Mutex::new(IdenticalPMA)),
+    )?;
+    info!(
+        "{:>10} [{:#x}, {:#x})",
+        "mem", ekernel as usize, PHYSICAL_MEMORY_END
+    );
+
+    Ok(mm)
+}
+
+/// Initialize global frame allocator.
+/// Activate virtual address translation and protectiong using kernel page table.
+pub fn init() {
+    info!("Initializing kernel address space...");
+
+    extern "C" {
+        fn ekernel();
+    }
+    frame_init(
+        Frame::ceil(PhysAddr::from(ekernel as usize)).into(),
+        Frame::floor(PhysAddr::from(PHYSICAL_MEMORY_END)).into(),
+    );
+
+    let satp = KERNEL_MM.lock().page_table.satp();
+    unsafe {
+        riscv::register::satp::write(satp);
+        core::arch::asm!("sfence.vma");
+    }
+
+    info!("Kernel address space initialized successfully.");
 }

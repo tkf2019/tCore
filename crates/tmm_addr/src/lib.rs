@@ -173,7 +173,7 @@ macro_rules! implement_page_frame {
                     "`."]
                 pub const fn ceil(addr: $address) -> $TypeName {
                     $TypeName {
-                        number: (addr.value() -1 + $page_size) / $page_size,
+                        number: (addr.value() - 1 + $page_size) / $page_size,
                     }
                 }
             }
@@ -278,8 +278,8 @@ macro_rules! implement_page_frame_range {
             #[doc = "An exclusive range of [`" $chunk "`]s that are contiguous in " $desc " memory."]
             #[derive(Clone, PartialEq, Eq)]
             pub struct $TypeName {
-                start: $chunk,
-                end: $chunk,
+                pub start: $chunk,
+                pub end: $chunk,
             }
 
             impl $TypeName {
@@ -307,18 +307,6 @@ macro_rules! implement_page_frame_range {
                     $TypeName::new(start, end)
                 }
 
-                #[doc = "Returns the starting [`" $chunk "`] in this `" $TypeName "`."]
-                #[inline]
-                pub const fn start(&self) -> $chunk {
-                    self.start
-                }
-
-                #[doc = "Returns the ending [`" $chunk "`] in this `" $TypeName "`."]
-                #[inline]
-                pub const fn end(&self) -> $chunk {
-                    self.end
-                }
-
                 #[doc = "Returns the range of this `" $TypeName "`."]
                 pub fn range(&self) -> Range<$chunk> {
                     self.start..self.end
@@ -332,7 +320,7 @@ macro_rules! implement_page_frame_range {
                 #[doc = "Returns the [`" $address "`] of the starting [`" $chunk "`] in this \
                     `" $TypeName "`."]
                 pub const fn start_address(&self) -> $address {
-                    self.start().start_address()
+                    self.start.start_address()
                 }
 
                 #[doc = "Returns the number of [`" $chunk "`]s covered by this iterator.\n\n \
@@ -341,7 +329,7 @@ macro_rules! implement_page_frame_range {
                     unlike normal iterators."]
                 pub const fn [<size_in_ $chunk:lower s>](&self) -> usize {
                     // add 1 because it's an inclusive range
-                    self.end().number().saturating_sub(self.start().number())
+                    self.end.number().saturating_sub(self.start.number())
                 }
 
                 /// Returns the size of this range in number of bytes.
@@ -353,7 +341,7 @@ macro_rules! implement_page_frame_range {
                     [`" $address "`]."]
                 pub fn contains_address(&self, addr: $address) -> bool {
                     let item = $chunk::floor(addr);
-                    self.start() <= item && self.end() > item
+                    self.start <= item && self.end > item
                 }
 
                 #[doc = "Returns the offset of the given [`" $address "`] within this \
@@ -397,8 +385,8 @@ macro_rules! implement_page_frame_range {
                     if self.is_empty() {
                         return $TypeName::new(to_include.clone(), to_include);
                     }
-                    let start = min(self.start(), to_include);
-                    let end = max(self.end(), to_include);
+                    let start = min(self.start, to_include);
+                    let end = max(self.end, to_include);
                     $TypeName::new(start.clone(), end.clone())
                 }
 
@@ -407,8 +395,8 @@ macro_rules! implement_page_frame_range {
                     `" $TypeName "`.\n\n \
                     If there is no overlap between the two ranges, `None` is returned."]
                 pub fn overlap(&self, other: &$TypeName) -> Option<$TypeName> {
-                    let starts = max(self.start(), other.start());
-                    let ends   = min(self.end(),   other.end());
+                    let starts = max(self.start, other.start);
+                    let ends   = min(self.end,   other.end);
                     if starts <= ends {
                         Some($TypeName::new(starts, ends))
                     } else {
@@ -418,14 +406,14 @@ macro_rules! implement_page_frame_range {
             }
             impl fmt::Debug for $TypeName {
                 fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                    write!(f, "{:?} -> {:?}", self.start(), self.end())
+                    write!(f, "{:?} -> {:?}", self.start, self.end)
                 }
             }
             impl IntoIterator for $TypeName {
                 type Item = $chunk;
                 type IntoIter = Range<$chunk>;
                 fn into_iter(self) -> Self::IntoIter {
-                    Range { start: self.start(), end: self.end() }
+                    Range { start: self.start, end: self.end }
                 }
             }
         }

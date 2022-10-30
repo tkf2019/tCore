@@ -43,3 +43,6 @@ pub const PPN_OFFSET_SV39: usize = 10;
 
 /// Flag bits in page table entry.
 pub const FLAG_MASK_SV39: usize = 0x0000_0000_0000_00FF;
+
+/// `satp` mode
+pub const SATP_MODE_SV39: usize = 0x8000_0000_0000_0000;

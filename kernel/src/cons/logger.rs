@@ -21,9 +21,11 @@ impl Log for Logger {
             Level::Trace => 90, // BrightBlack
         };
         println!(
-            "\u{1B}[{}m[{:>5}] {}\u{1B}[0m",
+            "\u{1B}[{}m[{:>5}] ({}:{}) {} \u{1B}[0m",
             color_code,
             record.level(),
+            record.file().unwrap(),
+            record.line().unwrap(),
             record.args(),
         );
     }
@@ -42,5 +44,5 @@ pub fn init() {
         Some("trace") => LevelFilter::Trace,
         _ => LevelFilter::Off,
     });
-    info!("Initialize console logger successfully.")
+    info!("Console logger successfully initialized.")
 }

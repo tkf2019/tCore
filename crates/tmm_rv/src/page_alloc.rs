@@ -33,20 +33,14 @@ impl AllocatedPages {
     ///
     /// Returns an `Err` containing this `AllocatedPages` if `at_page` is otherwise out of bounds.
     pub fn split_at(self, at_page: Page) -> Result<(Self, Self), Self> {
-        let (left, right) = if at_page == self.pages.start() {
+        let (left, right) = if at_page == self.start {
+            (PageRange::empty(), PageRange::new(at_page, self.start))
+        } else if at_page == self.end + 1 {
+            (PageRange::new(self.start, at_page - 1), PageRange::empty())
+        } else if at_page > self.start && at_page <= self.end {
             (
-                PageRange::empty(),
-                PageRange::new(at_page, self.pages.start()),
-            )
-        } else if at_page == self.pages.end() + 1 {
-            (
-                PageRange::new(self.pages.start(), at_page - 1),
-                PageRange::empty(),
-            )
-        } else if at_page > self.pages.start() && at_page <= self.pages.end() {
-            (
-                PageRange::new(self.pages.start(), at_page - 1),
-                PageRange::new(at_page, self.pages.end()),
+                PageRange::new(self.start, at_page - 1),
+                PageRange::new(at_page, self.end),
             )
         } else {
             return Err(self);

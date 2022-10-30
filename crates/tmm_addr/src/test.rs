@@ -36,6 +36,8 @@ fn it_works() {
     let v: VirtAddr = p.into();
     assert!(p.number() == 1);
     assert!(Page::ceil(v) == Page::from(1));
+    assert!(p + 1 == Page::from(VirtAddr::from(0x2001)));
+    println!("{:#?}", p);
 
     let pr = PageRange::from_virt_addr(0x1002.into(), 0x3124);
     println!("Page range: {:#?}", &pr);

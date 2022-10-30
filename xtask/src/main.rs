@@ -173,6 +173,7 @@ impl QemuArgs {
             self.build.arch.as_ref().unwrap().as_str()
         ))
         .args(&["-machine", "virt"])
+        .args(&["-m", "2G"])
         .arg("-nographic")
         .arg("-bios")
         .arg(&bootloader)

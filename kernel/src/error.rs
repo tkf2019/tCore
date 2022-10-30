@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum KernelError {
     Ok = 0,
     /// An invalid page table entry.
@@ -9,7 +10,7 @@ pub enum KernelError {
     /// Get frame out of the physical memory area
     FrameOutOfRange,
     /// Failed to resolve ELF
-    /// - Wrong magic number: 
+    /// - Wrong magic number:
     ELFInvalid,
 }
 

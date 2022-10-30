@@ -1,9 +1,11 @@
 use _core::mem::size_of;
 use alloc::{vec, vec::Vec};
 use bitflags::*;
+use log::{debug, warn};
 
 use crate::{
     frame_alloc, AllocatedFrames, Frame, Page, PhysAddr, VirtAddr, PPN_MASK_SV39, PPN_OFFSET_SV39,
+    SATP_MODE_SV39,
 };
 
 bitflags! {
@@ -157,10 +159,12 @@ impl PageTable {
         let root_frame = AllocatedFrames::new(1)?;
         Ok(Self {
             // No iteration after a successful allocation, thus do `unwrap()` freely.
-            root: root_frame.start(),
+            root: root_frame.start,
             frames: vec![root_frame],
         })
     }
+
+    ///
 
     /// Walk down this [`PageTable`], The virtual page number is given.
     /// In SV39, `vpn` is splitted into 3 indexes, 9 bits each, which is to locate the
@@ -177,6 +181,7 @@ impl PageTable {
         let indexes = page.split_vpn();
         let mut link = self.root;
         let mut result: Option<(PhysAddr, PageTableEntry)> = None;
+
         for (j, index) in indexes.iter().enumerate() {
             let pa = PageTableEntry::from_index(&link, *index);
             let mut entry = &mut PageTableEntry::new(pa);
@@ -184,15 +189,14 @@ impl PageTable {
             if !entry.flags().is_valid() {
                 if flags.intersects(PTWalkerFlags::CREAT) && j < 2 {
                     let new_frame = AllocatedFrames::new(1)?;
-
                     // Write new valid entry to the target frame.
                     entry.set_flags(PTEFlags::VALID);
-                    entry.set_ppn(&new_frame.start());
+                    entry.set_ppn(&new_frame.start);
                     entry.write(pa);
 
                     // Delegate the ownership to this page table
                     self.frames.push(new_frame);
-                } else {
+                } else if !flags.intersects(PTWalkerFlags::CREAT) {
                     return Err("Encounter an invalid page table entry.");
                 }
             }
@@ -200,6 +204,7 @@ impl PageTable {
             result = Some((pa, entry.clone()));
             link = entry.frame();
         }
+
         Ok(result.unwrap())
     }
 
@@ -229,6 +234,13 @@ impl PageTable {
                 let pa = pte.frame().start_address();
                 pa + offset
             })
+    }
+
+    /// `satp` controls supervisor-mode address translation and protection.
+    /// This register holds the physical page number of the root page table,
+    /// an address identifier and the MODE field.
+    pub fn satp(&self) -> usize {
+        SATP_MODE_SV39 | self.root.number()
     }
 }
 

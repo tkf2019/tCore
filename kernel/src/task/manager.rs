@@ -1,31 +1,33 @@
-use alloc::{collections::BTreeMap, sync::Arc, vec, vec::Vec};
-use core::cell::RefCell;
+use alloc::collections::BTreeMap;
 use lazy_static::lazy_static;
 use spin::mutex::Mutex;
 use talloc::RecycleAllocator;
 
 use crate::println;
 
-use super::schedule::{QueueScheduler, Scheduler};
-use super::task::Task;
+use super::{schedule::QueueScheduler, task::TASK};
 
 /// Handlers packed for global task managers
 pub struct TaskManager {
     /// PID allocator
-    pub pid_allocator: RefCell<RecycleAllocator>,
+    pub pid_allocator: RecycleAllocator,
 
-    /// Task scheduler
-    pub sched: QueueScheduler,
+    /// Kernel stack allocator
+    pub kid_allocator: RecycleAllocator,
 
     /// PID is mapped to Task in this table.
     /// Speed up locating the task by PID to fetch or modify the task data.
-    pub task_table: BTreeMap<usize, Arc<Mutex<Task>>>,
+    pub task_table: BTreeMap<usize, TASK>,
+
+    /// Task scheduler
+    pub sched: QueueScheduler,
 }
 
 impl TaskManager {
     pub fn new() -> Self {
         Self {
-            pid_allocator: RefCell::new(RecycleAllocator::new()),
+            pid_allocator: RecycleAllocator::new(),
+            kid_allocator: RecycleAllocator::new(),
             sched: QueueScheduler::new(),
             task_table: BTreeMap::new(),
         }

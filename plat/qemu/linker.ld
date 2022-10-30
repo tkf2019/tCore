@@ -5,7 +5,9 @@ ENTRY(_start)
 SECTIONS
 {
     . = 0x80200000;
-    
+    skernel = .;
+    stext = .;
+
     .text : {
         *(.text.entry)
         . = ALIGN(0x1000);
@@ -17,6 +19,8 @@ SECTIONS
     }
 
     . = ALIGN(0x1000);
+    etext = .;
+    srodata = .;
     
     .rodata : {
         *(.rodata .rodata.*)
@@ -24,6 +28,8 @@ SECTIONS
     }
 
     . = ALIGN(0x1000);
+    erodata = .;
+    sdata = .;
     
     .data : {
         *(.data .data.*)
@@ -31,16 +37,20 @@ SECTIONS
     }
 
     . = ALIGN(0x1000);
+    edata = .;
+    sbss_with_stack = .;
     
     .bss : {
         *(.bss.stack)
+        
+        sbss = .;
         *(.bss .bss.*)
         *(.sbss .sbss.*)
     }
 
     . = ALIGN(4K);
-
-    PROVIDE(end = .);
+    ebss = .;
+    ekernel = .;
 
     /DISCARD/ : {
         *(.eh_frame)

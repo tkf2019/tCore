@@ -1,18 +1,14 @@
-use alloc::sync::{Weak, Arc};
-use bitflags::bitflags;
-use log::{warn, debug};
+use alloc::sync::Arc;
+use log::{info, warn};
 use spin::Mutex;
-use tmm_rv::{AllocatedPages, VirtAddr, PageTable, PageRange, frame_alloc, AllocatedFrames, PTEFlags};
+use tmm_rv::{AllocatedPages, Frame, FrameRange, PTEFlags, Page, PageTable, VirtAddr};
 
-use crate::error::{KernelResult, KernelError};
+use crate::error::{KernelError, KernelResult};
 
-use super::pma::{FixedPMA, PMArea};
+use super::pma::PMArea;
 
 /// Represents an area in virtual address space with the range of [start_va, end_va).
 pub struct VMArea {
-    /// The name for this area.
-    name: &'static str,
-
     /// Access flags of this area.
     pub flags: PTEFlags,
 
@@ -27,32 +23,39 @@ pub struct VMArea {
 
     /// Mapped to a physical memory area, with behaviors depending on the usage of this area.
     pma: Arc<Mutex<dyn PMArea>>,
-
-    /// Points to the previous [`VMArea`] in the data structure that maintains the order
-    /// of these [`VMArea`]s in the same virtual adress space. In Linux, `mm_struct` uses
-    /// a rb-tree to do interval search quickly. We can get the gap between `start_va` of
-    /// this area and `end_va` of the previous one to improve the efficiency of searching
-    /// unmapped areas.
-    // prev: Weak<VMArea>,
 }
 
 impl VMArea {
-    pub fn new(name: &'static str, start_va: VirtAddr, end_va: VirtAddr, flgas: PTEFlags,pma: Arc<Mutex<dyn PMArea>>) -> Self {
+    pub fn new(
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        flags: PTEFlags,
+        pma: Arc<Mutex<dyn PMArea>>,
+    ) -> Self {
         Self {
-            name,
             flags,
             start_va,
             end_va,
-            pages: AllocatedPages::new(start_va.into(), (end_va - 1).into()),
+            pages: AllocatedPages::new(Page::from(start_va), Page::from(end_va - 1) + 1),
             pma,
         }
     }
 
     /// Maps the whole virtual memory area, throwing errors.
-    pub fn map_this(&self, page_table: Arc<Mutex<PageTable>>) -> KernelResult {
-        let pt = page_table.lock();
-        for (page, frame) in self.pages.range().zip(self.pma.lock().range()) {
-            if pt.map(page, frame, flags).is_err() {
+    pub fn map_this(&self, page_table: &mut PageTable) -> KernelResult {
+        let pma = self.pma.lock();
+        let frames = if pma.is_mapped() {
+            self.pma.lock().get_frames()
+        } else {
+            FrameRange::new(
+                Frame::from(self.pages.start.number()),
+                Frame::from(self.pages.end.number()),
+            )
+            .range()
+            .collect()
+        };
+        for (page, frame) in self.pages.range().zip(frames) {
+            if page_table.map(page, frame, self.flags | PTEFlags::VALID).is_err() {
                 warn!("Failed to create mapping: {:#x?} -> {:#x?}", page, frame);
                 return Err(KernelError::PageTableInvalid);
             }
@@ -61,10 +64,11 @@ impl VMArea {
     }
 
     /// Unmaps the whole virtual memory area, escaping errors caused by page table walk.
-    pub fn unmap_this(&self, page_table: Arc<Mutex<PageTable>>) -> KernelResult {
-        let pt = page_table.lock();
+    pub fn unmap_this(&self, page_table: &mut PageTable) -> KernelResult {
         for page in self.pages.range() {
-            pt.unmap(page);
+            if page_table.unmap(page).is_err() {
+                warn!("Map not exi");
+            }
         }
         Ok(())
     }

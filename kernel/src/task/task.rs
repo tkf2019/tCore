@@ -1,5 +1,8 @@
-use alloc::{rc::Weak, sync::Arc, vec::Vec};
+use alloc::{sync::Arc, vec::Vec};
 use spin::mutex::Mutex;
+use talloc::RecycleAllocator;
+
+use crate::mm::MM;
 
 use super::context::TaskContext;
 
@@ -22,6 +25,8 @@ pub enum TaskState {
     Zombie,
 }
 
+pub type TASK = Arc<Mutex<Task>>;
+
 /// In conventional opinion, process is the minimum unit of resource allocation, while task (or
 /// thread) is the minimum unit of scheduling. Process is always created with a main task. On
 /// the one hand, a process may have several tasks; on the other hand, these tasks shared the
@@ -36,11 +41,17 @@ pub struct Task {
     /// Task identification
     pub tid: usize,
 
+    /// TID allocator
+    pub tid_allocator: RecycleAllocator,
+
     /// Task context
     pub context: TaskContext,
 
     /// Task state, using five-state model.
     pub state: TaskState,
+
+    /// Memory
+    pub mm: MM,
 
     /// Task exit code, known as the number returned to a parent process by an executable.
     pub exit_code: i32,
@@ -55,3 +66,5 @@ pub struct Task {
     /// counter becomes 0.
     pub children: Vec<Arc<Mutex<Task>>>,
 }
+
+impl Task {}

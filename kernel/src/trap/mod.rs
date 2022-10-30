@@ -17,9 +17,7 @@ fn user_trap_handler() -> ! {
     assert!(status.spp() != sstatus::SPP::User);
     // Handle user trap with detailed cause
     match cause {
-        Trap::Exception(Exception::UserEnvCall) => {
-            
-        }
+        Trap::Exception(Exception::UserEnvCall) => {}
         Trap::Exception(Exception::StoreFault)
         | Trap::Exception(Exception::StorePageFault)
         | Trap::Exception(Exception::InstructionFault)

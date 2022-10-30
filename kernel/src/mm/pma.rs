@@ -1,19 +1,45 @@
-use alloc::{collections::BTreeMap, rc::Rc, vec::Vec};
-use core::{
-    fmt::Debug,
-    ops::{Deref, DerefMut},
-};
+use alloc::vec::Vec;
+use core::{fmt, ops::Deref};
 use log::warn;
-use tmm_rv::{AllocatedFrames, Frame, PhysAddr};
+use tmm_rv::{AllocatedFrames, Frame};
 
-use crate::error::{KernelError::FrameOutOfRange, KernelResult};
+use crate::error::{KernelError, KernelResult};
 
-pub trait PMArea: Debug + Send + Sync {
+pub trait PMArea: fmt::Debug + Send + Sync {
+    /// Returns true if this area is mapped.
+    fn is_mapped(&self) -> bool;
+
     /// Gets target frame by index.
     ///
     /// Returns [`FrameOutOfRange`] if the `index` is out of the range of
     /// allocated frames.
     fn get_frame(&self, index: usize) -> KernelResult<Frame>;
+
+    /// Get serialized frames in order.
+    fn get_frames(&self) -> Vec<Frame>;
+}
+
+/// Represents an virtual memory area identically mapped, usually kernel
+/// address space sections.
+pub struct IdenticalPMA;
+
+impl fmt::Debug for IdenticalPMA {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Indentically mapped physical memory area")
+    }
+}
+
+impl PMArea for IdenticalPMA {
+    fn is_mapped(&self) -> bool {
+        false
+    }
+
+    fn get_frame(&self, _: usize) -> KernelResult<Frame> {
+        unimplemented!("Indentical physical memory area cannot be referenced as frames.")
+    }
+    fn get_frames(&self) -> Vec<Frame> {
+        unimplemented!("Indentical physical memory area cannot be referenced as frames.")
+    }
 }
 
 /// Represents a fixed physical memory area allocated with real frames when
@@ -26,7 +52,7 @@ pub struct FixedPMA {
 }
 
 impl FixedPMA {
-    fn new(count: usize) -> KernelResult<Self> {
+    pub fn new(count: usize) -> KernelResult<Self> {
         match AllocatedFrames::new(count) {
             Ok(frames) => Ok(Self { frames }),
             Err(err) => {
@@ -44,11 +70,25 @@ impl Deref for FixedPMA {
     }
 }
 
+impl fmt::Debug for FixedPMA {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Fixed [{:?}]", self.frames)
+    }
+}
+
 impl PMArea for FixedPMA {
+    fn is_mapped(&self) -> bool {
+        true
+    }
+
     fn get_frame(&self, index: usize) -> KernelResult<Frame> {
         if index >= self.size_in_frames() {
-            return Err(FrameOutOfRange);
+            return Err(KernelError::FrameOutOfRange);
         }
-        Ok(Frame::from(self.start() + index))
+        Ok(Frame::from(self.start + index))
+    }
+
+    fn get_frames(&self) -> Vec<Frame> {
+        self.range().collect()
     }
 }
