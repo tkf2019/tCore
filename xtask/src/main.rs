@@ -1,3 +1,5 @@
+mod pack;
+
 use std::{
     fs::OpenOptions,
     io::Write,
@@ -72,6 +74,16 @@ struct BuildArgs {
 
 impl BuildArgs {
     fn make(&self) -> PathBuf {
+        // Prepare cargo utils
+        Command::new("cargo")
+            .args(&["install", "cargo-binutils"])
+            .status()
+            .expect("Failed to install cargo-binutils");
+        Command::new("rustup")
+            .args(&["component", "add", "rust-src", "llvm-tools-preview"])
+            .status()
+            .expect("Failed to add components");
+
         // Debug mode, Release mode and Test mode
         let opt_level = if self.debug {
             "--profile=dev"
