@@ -1,0 +1,3 @@
+[submodule "test"]
+	path = test
+	url = git@github.com:tkf2019/tCore-test.git
