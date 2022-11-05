@@ -1,5 +1,5 @@
 use alloc::sync::Arc;
-use log::{info, warn};
+use log::warn;
 use spin::Mutex;
 use tmm_rv::{AllocatedPages, Frame, FrameRange, PTEFlags, Page, PageTable, VirtAddr};
 
@@ -55,7 +55,10 @@ impl VMArea {
             .collect()
         };
         for (page, frame) in self.pages.range().zip(frames) {
-            if page_table.map(page, frame, self.flags | PTEFlags::VALID).is_err() {
+            if page_table
+                .map(page, frame, self.flags | PTEFlags::VALID)
+                .is_err()
+            {
                 warn!("Failed to create mapping: {:#x?} -> {:#x?}", page, frame);
                 return Err(KernelError::PageTableInvalid);
             }

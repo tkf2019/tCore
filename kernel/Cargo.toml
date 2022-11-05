@@ -15,7 +15,8 @@ xmas-elf = "0.8"
 
 talloc = { path = "../crates/talloc" }
 tmm_rv = { path = "../crates/tmm_rv" }
-# tsync = { path = "../crates/tsync" }
+tsyscall_no = { path = "../crates/tsyscall_no" }
+tsyscall_rv = { path = "../crates/tsyscall_rv" }
 
 [features]
 default = []
