@@ -1,8 +1,7 @@
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use core::slice;
-use lazy_static::lazy_static;
 use log::{debug, info, warn};
-use spin::Mutex;
+use spin::{Lazy, Mutex};
 use tmm_rv::{frame_init, Frame, PTEFlags, Page, PageTable, PhysAddr, VirtAddr};
 use vma::VMArea;
 
@@ -149,9 +148,7 @@ impl MM {
     }
 }
 
-lazy_static! {
-    pub static ref KERNEL_MM: Mutex<MM> = Mutex::new(new_kernel().unwrap());
-}
+pub static KERNEL_MM: Lazy<MM> = Lazy::new(||new_kernel().unwrap());
 
 fn new_kernel() -> KernelResult<MM> {
     // Physical memory layout.
@@ -250,7 +247,7 @@ pub fn init() {
         Frame::floor(PhysAddr::from(PHYSICAL_MEMORY_END)).into(),
     );
 
-    let satp = KERNEL_MM.lock().page_table.satp();
+    let satp = KERNEL_MM.page_table.satp();
     unsafe {
         riscv::register::satp::write(satp);
         core::arch::asm!("sfence.vma");

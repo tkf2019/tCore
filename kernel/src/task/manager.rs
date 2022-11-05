@@ -1,6 +1,5 @@
 use alloc::collections::BTreeMap;
-use lazy_static::lazy_static;
-use spin::mutex::Mutex;
+use spin::{mutex::Mutex, Lazy};
 use talloc::RecycleAllocator;
 
 use crate::println;
@@ -34,14 +33,11 @@ impl TaskManager {
     }
 }
 
-lazy_static! {
-    pub static ref TASK_MANAGER: Mutex<TaskManager> = {
-        #[cfg(feature = "global_test")]
-        println!("GLOBAL_TEST");
+pub static TASK_MANAGER: Lazy<TaskManager> = Lazy::new(|| {
+    #[cfg(feature = "global_test")]
+    println!("GLOBAL_TEST");
 
-        #[cfg(feature = "local_test")]
-        println!("LOCAL_TEST");
-
-        Mutex::new(TaskManager::new())
-    };
-}
+    #[cfg(feature = "local_test")]
+    println!("LOCAL_TEST");
+    TaskManager::new()
+});

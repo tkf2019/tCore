@@ -15,7 +15,7 @@ pub trait PMArea: fmt::Debug + Send + Sync {
     /// allocated frames.
     fn get_frame(&self, index: usize) -> KernelResult<Frame>;
 
-    /// Get serialized frames in order.
+    /// Get serialized frames in the order of allocation.
     fn get_frames(&self) -> Vec<Frame>;
 }
 
