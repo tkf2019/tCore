@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 #[derive(Debug)]
 pub enum KernelError {
     Ok = 0,

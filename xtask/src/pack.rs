@@ -25,13 +25,13 @@ impl BlockDevice for BlockFile {
     }
 }
 
-pub fn easy_fs_pack(cases: &Vec<String>, target: &str) -> std::io::Result<()> {
+pub fn easy_fs_pack(cases: &Vec<&str>, target: &str, img: &str) -> std::io::Result<()> {
     let block_file = Arc::new(BlockFile(Mutex::new({
         let f = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(format!("{}/{}", target, "fs.img"))?;
+            .open(img)?;
         f.set_len(64 * 2048 * 512).unwrap();
         f
     })));
@@ -44,7 +44,7 @@ pub fn easy_fs_pack(cases: &Vec<String>, target: &str) -> std::io::Result<()> {
         let mut all_data: Vec<u8> = Vec::new();
         host_file.read_to_end(&mut all_data).unwrap();
         // create a file in easy-fs
-        let inode = root_inode.create(case.as_str()).unwrap();
+        let inode = root_inode.create(case).unwrap();
         // write data to easy-fs
         inode.write_at(0, all_data.as_slice());
         // println!("{}", all_data.len());

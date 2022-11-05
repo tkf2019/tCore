@@ -16,8 +16,6 @@ extern crate alloc;
 
 use config::BOOT_STACK_SIZE;
 
-use crate::config::PHYSICAL_MEMORY_END;
-
 /// Entry for kernel.
 #[naked]
 #[no_mangle]

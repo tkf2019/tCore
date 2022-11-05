@@ -8,7 +8,6 @@ use vma::VMArea;
 use crate::{
     config::{PAGE_SIZE, PHYSICAL_MEMORY_END, TRAMPOLINE_VA},
     error::{KernelError, KernelResult},
-    println,
     trap::trampoline,
 };
 

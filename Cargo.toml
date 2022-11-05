@@ -1,7 +1,8 @@
 [workspace]
 members = [
-    "kernel",
     "xtask",
+    "kernel",
+    "user",
     "crates/*",
 ]
 default-members = ["xtask"]

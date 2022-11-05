@@ -2,6 +2,7 @@
 - PAGE_SIZE is the minimum unit of user address space areas, so user
 heap and stack have better be integral multiple of PAGE_SIZE.
 */
+#![allow(unused)]
 
 pub use tmm_rv::{LOW_MAX_VA, MAX_VA, PAGE_SIZE};
 

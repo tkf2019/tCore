@@ -1,5 +1,5 @@
 use alloc::collections::BTreeMap;
-use spin::{mutex::Mutex, Lazy};
+use spin::Lazy;
 use talloc::RecycleAllocator;
 
 use crate::println;

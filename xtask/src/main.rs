@@ -9,6 +9,7 @@ use std::{
 
 use clap::{Args, Parser, Subcommand};
 use once_cell::sync::Lazy;
+use pack::easy_fs_pack;
 
 const DEFAULT_KERNEL: &str = "tcore-kernel";
 const DEFAULT_ARCH: &str = "riscv64";
@@ -17,6 +18,9 @@ const DEFAULT_TARGET: &str = "riscv64gc-unknown-none-elf";
 static PROJECT: Lazy<&'static Path> =
     Lazy::new(|| Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap());
 static TARGET: Lazy<PathBuf> = Lazy::new(|| PROJECT.join("target").join(DEFAULT_TARGET));
+
+const LOCAL_TESTCASES: &'static [&'static str] = &["hello_world"];
+static EASY_FS_IMG: Lazy<PathBuf> = Lazy::new(|| PROJECT.join("easy-fs.img"));
 
 #[derive(Parser)]
 #[clap(name = "tCore")]
@@ -85,6 +89,7 @@ impl BuildArgs {
             .expect("Failed to add components");
 
         // Debug mode, Release mode and Test mode
+        let target = self.target.as_ref().unwrap().as_str();
         let opt_level = if self.debug {
             "--profile=dev"
         } else {
@@ -98,6 +103,41 @@ impl BuildArgs {
         let features = if self.global {
             "global_test"
         } else {
+            let user = PROJECT.join("user");
+            let user_root = user.to_str().unwrap();
+            let user_src = format!("{}/src", &user_root);
+            let user_target = format!("{}/target", &user_root);
+
+            // Build all user testcases
+            Command::new("cargo")
+                .arg("build")
+                .arg("--quiet")
+                .args(&["--package", "user_lib"])
+                .args(&["--target", target])
+                .arg("--release")
+                .env("CARGO_TARGET_DIR", &user_target)
+                .env(
+                    "RUSTFLAGS",
+                    format!("-Clink-arg=-T{}", format!("{}/linker.ld", user_src)),
+                )
+                .status()
+                .expect("Failed to run cargo");
+
+            // Build easy_fs image form local testcase list
+            let mut cases: Vec<&str> = Vec::new();
+            cases.extend(LOCAL_TESTCASES.into_iter());
+            easy_fs_pack(
+                &cases,
+                format!(
+                    "{}/{}/{}",
+                    &user_target,
+                    target,
+                    if self.debug { "debug" } else { "release" }
+                )
+                .as_str(),
+                EASY_FS_IMG.as_os_str().to_str().unwrap(),
+            )
+            .expect("Faild to pack user tests");
             "local_test"
         };
 
@@ -111,7 +151,7 @@ impl BuildArgs {
         Command::new("cargo")
             .arg(subcmd)
             .args(&["--package", self.kernel.as_ref().unwrap().as_str()])
-            .args(&["--target", self.target.as_ref().unwrap().as_str()])
+            .args(&["--target", target])
             .args(&["--features", features])
             .arg(options)
             .env("LOG", self.log.as_ref().unwrap().as_str())
