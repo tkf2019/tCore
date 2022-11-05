@@ -232,6 +232,24 @@ impl QemuArgs {
         .arg("-kernel")
         .arg(&kernel_bin)
         .args(&["-serial", "mon:stdio"])
+        .args(&[
+            "-drive",
+            format!(
+                "file={},if=none,format=raw,id=x0",
+                if self.build.global {
+                    String::new()
+                } else {
+                    PROJECT
+                        .join("easy-fs.img")
+                        .into_os_string()
+                        .into_string()
+                        .unwrap()
+                }
+            )
+            .as_str(),
+            "-device",
+            "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
+        ])
         .status()
         .expect("Failed to run qemu");
     }

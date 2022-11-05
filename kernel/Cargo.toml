@@ -11,8 +11,10 @@ log = "0.4"
 riscv = "0.9"
 sbi-rt = { version = "0.0.2", features = ["legacy"] }
 spin = "0.9"
+virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers", rev = "4ee80e5" }
 xmas-elf = "0.8"
 
+easy-fs = { path = "../crates/easy-fs" }
 talloc = { path = "../crates/talloc" }
 tmm_rv = { path = "../crates/tmm_rv" }
 tsyscall_no = { path = "../crates/tsyscall_no" }

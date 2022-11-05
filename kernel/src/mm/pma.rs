@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use core::{fmt, ops::Deref};
-use log::warn;
+use log::{debug, info, warn};
 use tmm_rv::{AllocatedFrames, Frame};
 
 use crate::error::{KernelError, KernelResult};

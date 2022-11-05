@@ -45,7 +45,7 @@ impl VMArea {
     pub fn map_this(&self, page_table: &mut PageTable) -> KernelResult {
         let pma = self.pma.lock();
         let frames = if pma.is_mapped() {
-            self.pma.lock().get_frames()
+            pma.get_frames()
         } else {
             FrameRange::new(
                 Frame::from(self.pages.start.number()),

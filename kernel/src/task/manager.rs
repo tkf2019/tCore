@@ -1,8 +1,13 @@
 use alloc::collections::BTreeMap;
+use easy_fs::{FSManager, OpenFlags};
 use spin::Lazy;
 use talloc::RecycleAllocator;
 
-use crate::println;
+use crate::{
+    fs::{read_all, FS},
+    mm::from_elf,
+    println,
+};
 
 use super::{schedule::QueueScheduler, task::TASK};
 
@@ -41,3 +46,8 @@ pub static TASK_MANAGER: Lazy<TaskManager> = Lazy::new(|| {
     println!("LOCAL_TEST");
     TaskManager::new()
 });
+
+pub fn init() {
+    let initproc = read_all(FS.open("hello_world", OpenFlags::RDONLY).unwrap());
+    let mm = from_elf(&initproc.as_slice());
+}

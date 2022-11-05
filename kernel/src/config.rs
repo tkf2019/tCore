@@ -31,6 +31,11 @@ pub const KERNEL_HEAP_ORDER: usize = 32;
 /// 256MB physical memory
 pub const PHYSICAL_MEMORY_END: usize = 0x9000_0000;
 
+/// MMIO
+pub const MMIO: &[(usize, usize)] = &[
+    (0x1000_1000, 0x00_1000), // Virtio Block in virt machine
+];
+
 /* User configurations */
 
 /// 4 MB user heap size
@@ -40,7 +45,7 @@ pub const USER_HEAP_SIZE: usize = 0x40_0000;
 pub const USER_STACK_SIZE: usize = 0x2000;
 
 /// Task stacks starts at the next page of `Trampoline`
-pub const USER_STACK_BASE: usize = TRAMPOLINE_VA;
+pub const USER_STACK_BASE: usize = LOW_MAX_VA;
 
 /// End virtual address of `mmap` area
-pub const USER_MMAP_END: usize = LOW_MAX_VA;
+pub const USER_MMAP_END: usize = LOW_MAX_VA - USER_STACK_SIZE;

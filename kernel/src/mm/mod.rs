@@ -6,8 +6,9 @@ use tmm_rv::{frame_init, Frame, PTEFlags, Page, PageTable, PhysAddr, VirtAddr};
 use vma::VMArea;
 
 use crate::{
-    config::{PAGE_SIZE, PHYSICAL_MEMORY_END, TRAMPOLINE_VA},
+    config::{MMIO, PAGE_SIZE, PHYSICAL_MEMORY_END, TRAMPOLINE_VA},
     error::{KernelError, KernelResult},
+    mm::pma::FixedPMA,
     trap::trampoline,
 };
 
@@ -106,7 +107,10 @@ impl MM {
             // Copy data to allocated frames.
             let src = &data[data_ptr..end_ptr.min(data_ptr + page_len)];
             let dst = self.page_table.translate(curr_va).and_then(|pa| unsafe {
-                Ok(slice::from_raw_parts_mut(pa.value() as *mut u8, page_len))
+                Ok(slice::from_raw_parts_mut(
+                    pa.value() as *mut u8,
+                    page_len.min(end_ptr - data_ptr),
+                ))
             });
             if dst.is_err() {
                 return Err(KernelError::PageTableInvalid);
@@ -139,7 +143,6 @@ impl MM {
         // Create new references
         self.vma_list.push(vma.clone());
         self.vma_map.insert(start_va, vma.clone());
-        self.vma_cache = Some(vma.clone());
         if let Some(data) = data {
             self.write(data, start_va, end_va)?;
         }
@@ -147,7 +150,7 @@ impl MM {
     }
 }
 
-pub static KERNEL_MM: Lazy<MM> = Lazy::new(||new_kernel().unwrap());
+pub static KERNEL_MM: Lazy<Mutex<MM>> = Lazy::new(|| Mutex::new(new_kernel().unwrap()));
 
 fn new_kernel() -> KernelResult<MM> {
     // Physical memory layout.
@@ -230,6 +233,65 @@ fn new_kernel() -> KernelResult<MM> {
         "mem", ekernel as usize, PHYSICAL_MEMORY_END
     );
 
+    // MMIO
+    for (base, len) in MMIO {
+        mm.alloc_write(
+            None,
+            (*base).into(),
+            (*base + *len).into(),
+            PTEFlags::READABLE | PTEFlags::WRITABLE,
+            Arc::new(Mutex::new(IdenticalPMA)),
+        )?;
+        info!("{:>10} [{:#x}, {:#x})", "mmio", base, base + len);
+    }
+
+    Ok(mm)
+}
+
+pub fn from_elf(elf_data: &[u8]) -> KernelResult<MM> {
+    let mut mm = MM::new()?;
+    // Map program headers of elf, with U flag
+    let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
+    let elf_header = elf.header;
+    if elf_header.pt1.magic != [0x7f, 0x45, 0x4c, 0x46] {
+        return Err(KernelError::ELFInvalid);
+    }
+    let ph_count = elf_header.pt2.ph_count();
+    let mut max_page = Page::from(0);
+    for i in 0..ph_count {
+        let ph = elf.program_header(i).unwrap();
+        if ph.get_type().unwrap() == xmas_elf::program::Type::Load {
+            let start_va: VirtAddr = (ph.virtual_addr() as usize).into();
+            let end_va: VirtAddr = ((ph.virtual_addr() + ph.mem_size()) as usize).into();
+            max_page = Page::floor(end_va - 1) + 1;
+
+            // Map flags
+            let mut map_flags: PTEFlags = PTEFlags::USER_ACCESSIBLE;
+            let ph_flags = ph.flags();
+            if ph_flags.is_read() {
+                map_flags |= PTEFlags::READABLE;
+            }
+            if ph_flags.is_write() {
+                map_flags |= PTEFlags::WRITABLE;
+            }
+            if ph_flags.is_execute() {
+                map_flags |= PTEFlags::EXECUTABLE;
+            }
+
+            // Allocate a new virtual memory area
+            let count = max_page - Page::floor(start_va).into();
+            mm.alloc_write(
+                Some(&elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize]),
+                start_va,
+                end_va,
+                map_flags,
+                Arc::new(Mutex::new(FixedPMA::new(count.number())?)),
+            )?;
+        }
+    }
+    // brk location
+    mm.start_brk = max_page.into();
+    mm.brk = mm.start_brk;
     Ok(mm)
 }
 
@@ -246,7 +308,7 @@ pub fn init() {
         Frame::floor(PhysAddr::from(PHYSICAL_MEMORY_END)).into(),
     );
 
-    let satp = KERNEL_MM.page_table.satp();
+    let satp = KERNEL_MM.lock().page_table.satp();
     unsafe {
         riscv::register::satp::write(satp);
         core::arch::asm!("sfence.vma");

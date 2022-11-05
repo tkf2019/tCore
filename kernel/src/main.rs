@@ -6,7 +6,9 @@
 
 mod config;
 mod cons;
+mod driver;
 mod error;
+mod fs;
 mod heap;
 mod mm;
 mod task;
@@ -55,5 +57,6 @@ extern "C" fn rust_main() -> ! {
     cons::init();
     heap::init();
     mm::init();
+    task::init();
     panic!("Panic")
 }
