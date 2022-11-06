@@ -195,6 +195,10 @@ struct QemuArgs {
     /// Use Build Arguments
     #[clap(flatten)]
     build: BuildArgs,
+
+    /// Using gdb
+    #[clap(long)]
+    gdb: bool,
 }
 
 impl QemuArgs {
@@ -220,38 +224,42 @@ impl QemuArgs {
         let bootloader = PROJECT.join("plat/qemu/rustsbi.bin");
 
         // Run Qemu
-        Command::new(format!(
+        let mut cmd = Command::new(format!(
             "qemu-system-{}",
             self.build.arch.as_ref().unwrap().as_str()
-        ))
-        .args(&["-machine", "virt"])
-        .args(&["-m", "2G"])
-        .arg("-nographic")
-        .arg("-bios")
-        .arg(&bootloader)
-        .arg("-kernel")
-        .arg(&kernel_bin)
-        .args(&["-serial", "mon:stdio"])
-        .args(&[
-            "-drive",
-            format!(
-                "file={},if=none,format=raw,id=x0",
-                if self.build.global {
-                    String::new()
-                } else {
-                    PROJECT
-                        .join("easy-fs.img")
-                        .into_os_string()
-                        .into_string()
-                        .unwrap()
-                }
-            )
-            .as_str(),
-            "-device",
-            "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
-        ])
-        .status()
-        .expect("Failed to run qemu");
+        ));
+        cmd.args(&["-machine", "virt"])
+            .args(&["-m", "2G"])
+            .arg("-nographic")
+            .arg("-bios")
+            .arg(&bootloader)
+            .arg("-kernel")
+            .arg(&kernel_bin)
+            .args(&["-serial", "mon:stdio"]);
+        if !self.build.global {
+            cmd.args(&[
+                "-drive",
+                format!(
+                    "file={},if=none,format=raw,id=x0",
+                    if self.build.global {
+                        String::new()
+                    } else {
+                        PROJECT
+                            .join("easy-fs.img")
+                            .into_os_string()
+                            .into_string()
+                            .unwrap()
+                    }
+                )
+                .as_str(),
+                "-device",
+                "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
+            ]);
+        }
+        if self.gdb {
+            cmd.args(&["-s", "-S"]);
+        }
+        cmd.status().expect("Failed to run qemu");
     }
 }
 

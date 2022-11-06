@@ -143,6 +143,7 @@ impl MM {
         // Create new references
         self.vma_list.push(vma.clone());
         self.vma_map.insert(start_va, vma.clone());
+        self.vma_cache = Some(vma.clone());
         if let Some(data) = data {
             self.write(data, start_va, end_va)?;
         }
@@ -293,6 +294,7 @@ pub fn from_elf(elf_data: &[u8]) -> KernelResult<MM> {
     // brk location
     mm.start_brk = max_page.into();
     mm.brk = mm.start_brk;
+    mm.entry = (elf_header.pt2.entry_point() as usize).into();
     Ok(mm)
 }
 

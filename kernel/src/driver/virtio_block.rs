@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use easy_fs::BlockDevice;
 use spin::{Lazy, Mutex};
-use tmm_rv::{frame_alloc, frame_dealloc, Frame, PhysAddr, VirtAddr, PAGE_SIZE_BITS};
+use tmm_rv::{frame_alloc, frame_dealloc, Frame, PhysAddr, PAGE_SIZE_BITS};
 use virtio_drivers::{Hal, VirtIOBlk, VirtIOHeader};
 
 use crate::mm::KERNEL_MM;

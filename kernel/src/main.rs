@@ -3,6 +3,7 @@
 #![feature(naked_functions, asm_const)]
 #![feature(panic_info_message)]
 #![feature(alloc_error_handler)]
+#![feature(core_intrinsics)]
 
 mod config;
 mod cons;
@@ -57,6 +58,6 @@ extern "C" fn rust_main() -> ! {
     cons::init();
     heap::init();
     mm::init();
-    task::manager::run_init_task();
+    task::init();
     panic!("Panic")
 }

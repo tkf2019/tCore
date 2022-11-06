@@ -4,8 +4,12 @@ heap and stack have better be integral multiple of PAGE_SIZE.
 */
 #![allow(unused)]
 
+use core::intrinsics::size_of;
+
 use tmm_rv::PAGE_SIZE_BITS;
 pub use tmm_rv::{LOW_MAX_VA, MAX_VA, PAGE_SIZE};
+
+pub const ADDR_ALIGN: usize = size_of::<usize>();
 
 /* Global configurations */
 
@@ -58,7 +62,7 @@ pub const USER_STACK_SIZE: usize = 0x2000;
 pub const USER_STACK_PAGES: usize = USER_STACK_SIZE >> PAGE_SIZE_BITS;
 
 /// Task stacks starts at the next page of `Trampoline`
-pub const USER_STACK_BASE: usize = LOW_MAX_VA;
+pub const USER_STACK_BASE: usize = LOW_MAX_VA + 1;
 
 /// End virtual address of `mmap` area
 pub const USER_MMAP_END: usize = LOW_MAX_VA - USER_STACK_SIZE;

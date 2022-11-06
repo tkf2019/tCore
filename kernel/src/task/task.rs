@@ -1,13 +1,15 @@
 use alloc::{sync::Arc, vec::Vec};
+use log::{debug, warn};
+use riscv::register::sstatus::{self, set_spp, SPP};
 use spin::mutex::Mutex;
 use talloc::{IDAllocator, RecycleAllocator};
-use tmm_rv::{PTEFlags, LOW_MAX_VA, PAGE_SIZE};
+use tmm_rv::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE};
 
 use crate::{
-    config::{TRAMPOLINE_VA, USER_STACK_BASE, USER_STACK_PAGES, USER_STACK_SIZE},
-    error::KernelResult,
-    mm::{from_elf, pma::FixedPMA, MM},
-    trap::user_trap_return,
+    config::{ADDR_ALIGN, TRAMPOLINE_VA, USER_STACK_BASE, USER_STACK_PAGES, USER_STACK_SIZE},
+    error::{KernelError, KernelResult},
+    mm::{from_elf, pma::FixedPMA, KERNEL_MM, MM},
+    trap::{user_trap_handler, user_trap_return, TrapFrame},
 };
 
 use super::{context::TaskContext, manager::kstack_alloc};
@@ -53,6 +55,9 @@ pub struct Task {
     /// Task context
     pub ctx: TaskContext,
 
+    /// Trapframe physical address
+    pub trapframe_pa: PhysAddr,
+
     /// Task state, using five-state model.
     pub state: TaskState,
 
@@ -64,13 +69,13 @@ pub struct Task {
 
     /// Hierarchy pointers in task management.
     /// INIT task has no parent task.
-    pub parent: Option<Arc<Mutex<Task>>>,
+    pub parent: Option<TASK>,
 
     /// Pointers to child tasks.
     /// When a parent task exits before its children, they will become orphans.
     /// These tasks will be adopted by INIT task to avoid being dropped when the reference
     /// counter becomes 0.
-    pub children: Vec<Arc<Mutex<Task>>>,
+    pub children: Vec<TASK>,
 }
 
 impl Task {
@@ -78,40 +83,64 @@ impl Task {
     pub fn new(pid: usize, kstack: usize, elf_data: &[u8]) -> KernelResult<Self> {
         let mut tid_allocator = RecycleAllocator::new();
         let tid = tid_allocator.alloc();
-        Ok(Self {
+        let kstack_base = kstack_alloc(kstack)?;
+        let mut task = Self {
             pid,
             tid,
             tid_allocator,
-            ctx: TaskContext::new(user_trap_return as usize, kstack_alloc(kstack)?),
+            ctx: TaskContext::new(user_trap_return as usize, kstack_base),
+            trapframe_pa: PhysAddr::zero(),
             state: TaskState::Runnable,
             mm: from_elf(elf_data)?,
             exit_code: 0,
             parent: None,
             children: Vec::new(),
-        })
-    }
-
-    /// Allocate a user stack in the same address space.
-    /// User stack grows from high address to low address.
-    ///
-    /// Returns user stack base.
-    pub fn ustack_alloc(&mut self, tid: usize) -> KernelResult<usize> {
+        };
+        // Init user stack
         let ustack_base = ustack_base(tid);
         let ustack_top = ustack_base - USER_STACK_SIZE;
-        self.mm.alloc_write(
+        task.mm.alloc_write(
             None,
             ustack_top.into(),
             ustack_base.into(),
-            PTEFlags::READABLE | PTEFlags::WRITABLE,
+            PTEFlags::READABLE | PTEFlags::WRITABLE | PTEFlags::USER_ACCESSIBLE,
             Arc::new(Mutex::new(FixedPMA::new(USER_STACK_PAGES)?)),
         )?;
-        Ok(ustack_base)
+        // Init trapframe
+        let trapframe_base: VirtAddr = trapframe_base(tid).into();
+        task.mm.alloc_write(
+            None,
+            trapframe_base,
+            trapframe_base + PAGE_SIZE,
+            PTEFlags::READABLE | PTEFlags::EXECUTABLE,
+            Arc::new(Mutex::new(FixedPMA::new(1)?)),
+        )?;
+        task.trapframe_pa = task.mm.page_table.translate(trapframe_base).map_err(|e| {
+            warn!("{}", e);
+            KernelError::PageTableInvalid
+        })?;
+        let trapframe = unsafe {
+            (task.trapframe_pa.value() as *mut TrapFrame)
+                .as_mut()
+                .unwrap()
+        };
+        // Init sstatus
+        unsafe { set_spp(SPP::User) };
+        *trapframe = TrapFrame::new(
+            KERNEL_MM.lock().page_table.satp(),
+            kstack_base - ADDR_ALIGN,
+            user_trap_handler as usize,
+            task.mm.entry.value(),
+            sstatus::read(),
+            ustack_base - ADDR_ALIGN,
+        );
+        debug!("{:#x?}", trapframe);
+        Ok(task)
     }
 }
 
-
 /// Returns trapframe base of the task in the address space by task identification.
-/// 
+///
 /// Trapframes are located right below the Trampoline in each address space.
 pub fn trapframe_base(tid: usize) -> usize {
     TRAMPOLINE_VA - PAGE_SIZE - tid * PAGE_SIZE

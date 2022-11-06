@@ -2,10 +2,11 @@ mod trampoline;
 mod trapframe;
 
 use core::arch::asm;
-use log::debug;
+use log::{debug, info};
 use riscv::register::{scause::*, utvec::TrapMode, *};
 
 pub use trampoline::trampoline;
+pub use trapframe::TrapFrame;
 
 use crate::{
     config::TRAMPOLINE_VA,
@@ -14,6 +15,7 @@ use crate::{
 
 #[no_mangle]
 pub fn user_trap_handler() -> ! {
+    info!("trap!");
     // set kernel trap entry
     let cause = scause::read().cause();
     let status = sstatus::read();
@@ -56,7 +58,8 @@ pub fn user_trap_return() -> ! {
     unsafe {
         sstatus::clear_sie();
         stvec::write(TRAMPOLINE_VA, TrapMode::Direct);
-        let current = current_task().lock();
+        let current = current_task();
+        let current = current.lock();
         let satp = current.mm.page_table.satp();
         let trapframe_base = trapframe_base(current.tid);
         let userret_entry = userret as usize - uservec as usize + TRAMPOLINE_VA;

@@ -1,5 +1,3 @@
-use core::cell::RefCell;
-
 use alloc::{collections::BTreeMap, sync::Arc};
 use easy_fs::{FSManager, OpenFlags};
 use spin::{Lazy, Mutex};
@@ -15,7 +13,7 @@ use crate::{
 
 use super::{
     context::{switch, TaskContext},
-    schedule::{QueueScheduler, Scheduler},
+    schedule::QueueScheduler,
     task::{Task, TASK},
 };
 
@@ -83,27 +81,30 @@ pub fn kstack_alloc(kstack: usize) -> KernelResult<usize> {
 
 /// Get current task running on this cpu.
 pub fn current_task() -> TASK {
-    TASK_MANAGER.lock().current.unwrap().clone()
+    TASK_MANAGER.lock().current.clone().unwrap()
 }
 
-/// Switch from idle task to init task.
-pub fn run_init_task() {
+/// Add the init task into scheduler.
+pub fn init() {
     let init_task = read_all(FS.open("hello_world", OpenFlags::RDONLY).unwrap());
     let mut task_manager = TASK_MANAGER.lock();
+
     // New process identification
     let pid = task_manager.pid_allocator.alloc();
+
     // New kernel stack for user task
     let kstack = task_manager.kstack_allocator.alloc();
+
     // Init task
     let init_task = Arc::new(Mutex::new(
         Task::new(pid, kstack, init_task.as_slice()).expect("Failed to create init task"),
     ));
     task_manager.current = Some(init_task.clone());
     task_manager.task_table.insert(pid, init_task.clone());
+
+    let idle_ctx = &mut task_manager.idle_ctx as *mut TaskContext;
+    let init_ctx = &mut init_task.lock().ctx as *mut TaskContext;
     unsafe {
-        switch(
-            &mut task_manager.idle_ctx as *mut TaskContext,
-            &mut init_task.lock().ctx as *mut TaskContext,
-        );
+        switch(idle_ctx, init_ctx);
     }
 }

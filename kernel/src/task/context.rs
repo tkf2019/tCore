@@ -1,3 +1,5 @@
+use crate::config::ADDR_ALIGN;
+
 /// Saved registers for kernel context switch
 #[repr(C)]
 pub struct TaskContext {
@@ -14,10 +16,10 @@ pub struct TaskContext {
 impl TaskContext {
     /// Create a new [`TaskContext`] with the entry of the trap exit and kernel stack
     /// allocated for this task.
-    pub fn new(trap_return: usize, kstack: usize) -> Self {
+    pub fn new(trap_return: usize, kstack_base: usize) -> Self {
         Self {
             ra: trap_return,
-            sp: kstack,
+            sp: kstack_base - ADDR_ALIGN,
             s: [0; 12],
         }
     }
