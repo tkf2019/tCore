@@ -2,7 +2,6 @@
 
 #[derive(Debug)]
 pub enum KernelError {
-    Ok = 0,
     /// An invalid page table entry.
     PageTableInvalid,
     /// Page has not been mapped to an frame yet.

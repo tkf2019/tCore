@@ -26,6 +26,7 @@ pub struct VMArea {
 }
 
 impl VMArea {
+    /// Create new virtual memory area [start_va, end_va) with protection flags.
     pub fn new(
         start_va: VirtAddr,
         end_va: VirtAddr,

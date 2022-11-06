@@ -57,7 +57,7 @@ impl TaskManager {
 
 pub static TASK_MANAGER: Lazy<Mutex<TaskManager>> = Lazy::new(|| Mutex::new(TaskManager::new()));
 
-/// Returns kernel stack layout (top, base).
+/// Returns kernel stack layout [top, base) by kernel stack identification.
 ///
 /// Stack grows from high address to low address.
 pub fn kstack_layout(kstack: usize) -> (usize, usize) {
@@ -66,7 +66,7 @@ pub fn kstack_layout(kstack: usize) -> (usize, usize) {
     (top, base)
 }
 
-/// Allocate a kernel stack for the task.
+/// Allocate a kernel stack for the task by kernel stack identification.
 ///
 /// Returns the kernel stack base.
 pub fn kstack_alloc(kstack: usize) -> KernelResult<usize> {
@@ -81,6 +81,12 @@ pub fn kstack_alloc(kstack: usize) -> KernelResult<usize> {
     Ok(kstack_base)
 }
 
+/// Get current task running on this cpu.
+pub fn current_task() -> TASK {
+    TASK_MANAGER.lock().current.unwrap().clone()
+}
+
+/// Switch from idle task to init task.
 pub fn run_init_task() {
     let init_task = read_all(FS.open("hello_world", OpenFlags::RDONLY).unwrap());
     let mut task_manager = TASK_MANAGER.lock();

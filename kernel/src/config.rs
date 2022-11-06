@@ -45,11 +45,17 @@ pub const MMIO: &[(usize, usize)] = &[
 
 /* User configurations */
 
-/// 4 MB user heap size
+/// User heap size
 pub const USER_HEAP_SIZE: usize = 0x40_0000;
 
-/// 8 KB user stack size
+/// User heap pages
+pub const USER_HEAP_PAGES: usize = USER_HEAP_SIZE >> PAGE_SIZE_BITS;
+
+/// User stack size
 pub const USER_STACK_SIZE: usize = 0x2000;
+
+/// User stack pages
+pub const USER_STACK_PAGES: usize = USER_STACK_SIZE >> PAGE_SIZE_BITS;
 
 /// Task stacks starts at the next page of `Trampoline`
 pub const USER_STACK_BASE: usize = LOW_MAX_VA;

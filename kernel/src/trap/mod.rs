@@ -1,10 +1,16 @@
 mod trampoline;
 mod trapframe;
 
+use core::arch::asm;
 use log::debug;
-use riscv::register::{scause::*, *};
+use riscv::register::{scause::*, utvec::TrapMode, *};
 
 pub use trampoline::trampoline;
+
+use crate::{
+    config::TRAMPOLINE_VA,
+    task::{manager::current_task, trapframe_base},
+};
 
 #[no_mangle]
 pub fn user_trap_handler() -> ! {
@@ -43,5 +49,25 @@ pub fn user_trap_handler() -> ! {
 
 #[no_mangle]
 pub fn user_trap_return() -> ! {
-    unimplemented!("trap return todo")
+    extern "C" {
+        fn uservec();
+        fn userret();
+    }
+    unsafe {
+        sstatus::clear_sie();
+        stvec::write(TRAMPOLINE_VA, TrapMode::Direct);
+        let current = current_task().lock();
+        let satp = current.mm.page_table.satp();
+        let trapframe_base = trapframe_base(current.tid);
+        let userret_entry = userret as usize - uservec as usize + TRAMPOLINE_VA;
+        drop(current);
+        asm!(
+            "fence.i",
+            "jr {userret_entry}",
+            userret_entry = in(reg) userret_entry,
+            in("a0") trapframe_base,
+            in("a1") satp,
+            options(noreturn)
+        );
+    }
 }

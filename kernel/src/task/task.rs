@@ -1,10 +1,12 @@
 use alloc::{sync::Arc, vec::Vec};
 use spin::mutex::Mutex;
 use talloc::{IDAllocator, RecycleAllocator};
+use tmm_rv::{PTEFlags, LOW_MAX_VA, PAGE_SIZE};
 
 use crate::{
+    config::{TRAMPOLINE_VA, USER_STACK_BASE, USER_STACK_PAGES, USER_STACK_SIZE},
     error::KernelResult,
-    mm::{from_elf, MM},
+    mm::{from_elf, pma::FixedPMA, MM},
     trap::user_trap_return,
 };
 
@@ -75,9 +77,10 @@ impl Task {
     /// Create a new task with pid and kernel stack allocated by global manager.
     pub fn new(pid: usize, kstack: usize, elf_data: &[u8]) -> KernelResult<Self> {
         let mut tid_allocator = RecycleAllocator::new();
+        let tid = tid_allocator.alloc();
         Ok(Self {
             pid,
-            tid: tid_allocator.alloc(),
+            tid,
             tid_allocator,
             ctx: TaskContext::new(user_trap_return as usize, kstack_alloc(kstack)?),
             state: TaskState::Runnable,
@@ -87,4 +90,34 @@ impl Task {
             children: Vec::new(),
         })
     }
+
+    /// Allocate a user stack in the same address space.
+    /// User stack grows from high address to low address.
+    ///
+    /// Returns user stack base.
+    pub fn ustack_alloc(&mut self, tid: usize) -> KernelResult<usize> {
+        let ustack_base = ustack_base(tid);
+        let ustack_top = ustack_base - USER_STACK_SIZE;
+        self.mm.alloc_write(
+            None,
+            ustack_top.into(),
+            ustack_base.into(),
+            PTEFlags::READABLE | PTEFlags::WRITABLE,
+            Arc::new(Mutex::new(FixedPMA::new(USER_STACK_PAGES)?)),
+        )?;
+        Ok(ustack_base)
+    }
+}
+
+
+/// Returns trapframe base of the task in the address space by task identification.
+/// 
+/// Trapframes are located right below the Trampoline in each address space.
+pub fn trapframe_base(tid: usize) -> usize {
+    TRAMPOLINE_VA - PAGE_SIZE - tid * PAGE_SIZE
+}
+
+/// Returns user stack base of the task in the address space by task identification.
+pub fn ustack_base(tid: usize) -> usize {
+    USER_STACK_BASE - tid * (USER_STACK_SIZE + PAGE_SIZE)
 }
