@@ -1,10 +1,14 @@
 use alloc::{sync::Arc, vec::Vec};
 use spin::mutex::Mutex;
-use talloc::RecycleAllocator;
+use talloc::{IDAllocator, RecycleAllocator};
 
-use crate::mm::MM;
+use crate::{
+    error::KernelResult,
+    mm::{from_elf, MM},
+    trap::user_trap_return,
+};
 
-use super::context::TaskContext;
+use super::{context::TaskContext, manager::kstack_alloc};
 
 /// Five-state model:
 ///
@@ -45,7 +49,7 @@ pub struct Task {
     pub tid_allocator: RecycleAllocator,
 
     /// Task context
-    pub context: TaskContext,
+    pub ctx: TaskContext,
 
     /// Task state, using five-state model.
     pub state: TaskState,
@@ -67,4 +71,20 @@ pub struct Task {
     pub children: Vec<Arc<Mutex<Task>>>,
 }
 
-impl Task {}
+impl Task {
+    /// Create a new task with pid and kernel stack allocated by global manager.
+    pub fn new(pid: usize, kstack: usize, elf_data: &[u8]) -> KernelResult<Self> {
+        let mut tid_allocator = RecycleAllocator::new();
+        Ok(Self {
+            pid,
+            tid: tid_allocator.alloc(),
+            tid_allocator,
+            ctx: TaskContext::new(user_trap_return as usize, kstack_alloc(kstack)?),
+            state: TaskState::Runnable,
+            mm: from_elf(elf_data)?,
+            exit_code: 0,
+            parent: None,
+            children: Vec::new(),
+        })
+    }
+}

@@ -7,7 +7,7 @@ use riscv::register::{scause::*, *};
 pub use trampoline::trampoline;
 
 #[no_mangle]
-fn user_trap_handler() -> ! {
+pub fn user_trap_handler() -> ! {
     // set kernel trap entry
     let cause = scause::read().cause();
     let status = sstatus::read();
@@ -39,4 +39,9 @@ fn user_trap_handler() -> ! {
         }
     }
     unreachable!()
+}
+
+#[no_mangle]
+pub fn user_trap_return() -> ! {
+    unimplemented!("trap return todo")
 }

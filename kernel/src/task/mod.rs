@@ -3,4 +3,4 @@ mod manager;
 mod schedule;
 mod task;
 
-pub use manager::{init, TASK_MANAGER};
+pub use manager::{run_init_task, TASK_MANAGER};

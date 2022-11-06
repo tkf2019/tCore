@@ -57,6 +57,6 @@ extern "C" fn rust_main() -> ! {
     cons::init();
     heap::init();
     mm::init();
-    task::init();
+    task::run_init_task();
     panic!("Panic")
 }

@@ -4,6 +4,7 @@ heap and stack have better be integral multiple of PAGE_SIZE.
 */
 #![allow(unused)]
 
+use tmm_rv::PAGE_SIZE_BITS;
 pub use tmm_rv::{LOW_MAX_VA, MAX_VA, PAGE_SIZE};
 
 /* Global configurations */
@@ -19,11 +20,17 @@ pub const TRAMPOLINE_VA: usize = MAX_VA - PAGE_SIZE + 1;
 /// Boot kernel size allocated in `_start` for single CPU.
 pub const BOOT_STACK_SIZE: usize = 0x1_0000;
 
-/// 512 KB Kernel stack size: 0x80 pages
-pub const KERNEL_STACK_SIZE: usize = 0x0000;
+/// Kernel stack size
+pub const KERNEL_STACK_SIZE: usize = 0x1_0000;
 
-/// 8 MB kernel heap size: 0x2_0000 pages
+/// Kernel stack pages
+pub const KERNEL_STACK_PAGES: usize = KERNEL_STACK_SIZE >> PAGE_SIZE_BITS;
+
+/// Kernel heap size
 pub const KERNEL_HEAP_SIZE: usize = 0x80_0000;
+
+/// Kernel heap pages
+pub const KERNEL_HEAP_PAGES: usize = KERNEL_HEAP_SIZE >> PAGE_SIZE_BITS;
 
 /// Used for kernel buddy system allocator
 pub const KERNEL_HEAP_ORDER: usize = 32;

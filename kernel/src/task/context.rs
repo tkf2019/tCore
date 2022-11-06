@@ -11,6 +11,27 @@ pub struct TaskContext {
     s: [usize; 12],
 }
 
+impl TaskContext {
+    /// Create a new [`TaskContext`] with the entry of the trap exit and kernel stack
+    /// allocated for this task.
+    pub fn new(trap_return: usize, kstack: usize) -> Self {
+        Self {
+            ra: trap_return,
+            sp: kstack,
+            s: [0; 12],
+        }
+    }
+
+    /// A zero task context
+    pub fn zero() -> Self {
+        Self {
+            ra: 0,
+            sp: 0,
+            s: [0; 12],
+        }
+    }
+}
+
 /// Switch task context
 #[naked]
 #[no_mangle]

@@ -14,10 +14,10 @@ use crate::{
 
 use self::pma::{IdenticalPMA, PMArea};
 
-mod pma;
-mod vma;
+pub mod pma;
+pub mod vma;
 
-type VMA = Arc<Mutex<VMArea>>;
+pub type VMA = Arc<Mutex<VMArea>>;
 
 pub struct MM {
     /// Holds the pointer to [`PageTable`].
@@ -152,6 +152,7 @@ impl MM {
 
 pub static KERNEL_MM: Lazy<Mutex<MM>> = Lazy::new(|| Mutex::new(new_kernel().unwrap()));
 
+/// Create new kernel address space
 fn new_kernel() -> KernelResult<MM> {
     // Physical memory layout.
     extern "C" {
