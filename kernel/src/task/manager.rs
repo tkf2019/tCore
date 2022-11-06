@@ -86,24 +86,29 @@ pub fn current_task() -> TASK {
 
 /// Add the init task into scheduler.
 pub fn init() {
-    let init_task = read_all(FS.open("hello_world", OpenFlags::RDONLY).unwrap());
-    let mut task_manager = TASK_MANAGER.lock();
+    let (idle_ctx, init_ctx) = {
+        let init_task = read_all(FS.open("hello_world", OpenFlags::RDONLY).unwrap());
+        let mut task_manager = TASK_MANAGER.lock();
 
-    // New process identification
-    let pid = task_manager.pid_allocator.alloc();
+        // New process identification
+        let pid = task_manager.pid_allocator.alloc();
 
-    // New kernel stack for user task
-    let kstack = task_manager.kstack_allocator.alloc();
+        // New kernel stack for user task
+        let kstack = task_manager.kstack_allocator.alloc();
 
-    // Init task
-    let init_task = Arc::new(Mutex::new(
-        Task::new(pid, kstack, init_task.as_slice()).expect("Failed to create init task"),
-    ));
-    task_manager.current = Some(init_task.clone());
-    task_manager.task_table.insert(pid, init_task.clone());
+        // Init task
+        let init_task = Arc::new(Mutex::new(
+            Task::new(pid, kstack, init_task.as_slice()).expect("Failed to create init task"),
+        ));
+        task_manager.current = Some(init_task.clone());
+        task_manager.task_table.insert(pid, init_task.clone());
 
-    let idle_ctx = &mut task_manager.idle_ctx as *mut TaskContext;
-    let init_ctx = &mut init_task.lock().ctx as *mut TaskContext;
+        let mut init_task = init_task.lock();
+        (
+            &mut task_manager.idle_ctx as *mut TaskContext,
+            &mut init_task.ctx as *mut TaskContext,
+        )
+    };
     unsafe {
         switch(idle_ctx, init_ctx);
     }

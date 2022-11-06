@@ -29,7 +29,7 @@ pub const VA_38_SV39: usize = 0x0000_0040_0000_0000;
 pub const MAX_VA: usize = usize::MAX;
 
 /// The highest virtual address of the low 256 GB in SV39.
-pub const LOW_MAX_VA: usize = 0x0000_001F_FFFF_FFFF;
+pub const LOW_MAX_VA: usize = 0x0000_003F_FFFF_FFFF;
 
 /// 3-level page table in SV39.
 pub const PAGE_TABLE_LEVELS_SV39: usize = 3;

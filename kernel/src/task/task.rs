@@ -1,5 +1,5 @@
 use alloc::{sync::Arc, vec::Vec};
-use log::{debug, warn};
+use log::warn;
 use riscv::register::sstatus::{self, set_spp, SPP};
 use spin::mutex::Mutex;
 use talloc::{IDAllocator, RecycleAllocator};
@@ -49,7 +49,7 @@ pub struct Task {
     /// Task identification
     pub tid: usize,
 
-    /// TID allocator
+    /// TID allocator: TODO
     pub tid_allocator: RecycleAllocator,
 
     /// Task context
@@ -112,7 +112,7 @@ impl Task {
             None,
             trapframe_base,
             trapframe_base + PAGE_SIZE,
-            PTEFlags::READABLE | PTEFlags::EXECUTABLE,
+            PTEFlags::READABLE | PTEFlags::WRITABLE,
             Arc::new(Mutex::new(FixedPMA::new(1)?)),
         )?;
         task.trapframe_pa = task.mm.page_table.translate(trapframe_base).map_err(|e| {
@@ -134,7 +134,6 @@ impl Task {
             sstatus::read(),
             ustack_base - ADDR_ALIGN,
         );
-        debug!("{:#x?}", trapframe);
         Ok(task)
     }
 }

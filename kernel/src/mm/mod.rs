@@ -1,6 +1,6 @@
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use core::slice;
-use log::{debug, info, warn};
+use log::{info, warn};
 use spin::{Lazy, Mutex};
 use tmm_rv::{frame_init, Frame, PTEFlags, Page, PageTable, PhysAddr, VirtAddr};
 use vma::VMArea;
@@ -73,7 +73,7 @@ impl MM {
                     .map(
                         VirtAddr::from(TRAMPOLINE_VA).into(),
                         PhysAddr::from(trampoline as usize).into(),
-                        PTEFlags::READABLE | PTEFlags::EXECUTABLE,
+                        PTEFlags::READABLE | PTEFlags::EXECUTABLE | PTEFlags::VALID,
                     )
                     .map_err(|err| {
                         warn!("{}", err);
@@ -90,8 +90,6 @@ impl MM {
     ///
     /// Returns [`KernelError::PageTableInvalid`] if it attempts to writing to an unmapped area.
     pub fn write(&mut self, data: &[u8], start_va: VirtAddr, end_va: VirtAddr) -> KernelResult {
-        debug!("Write to virtual range: {:?} -> {:?}", start_va, end_va);
-
         let end_ptr = data.len();
         let mut data_ptr: usize = 0;
         let mut curr_va = start_va;

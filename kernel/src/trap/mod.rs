@@ -57,13 +57,16 @@ pub fn user_trap_return() -> ! {
     }
     unsafe {
         sstatus::clear_sie();
-        stvec::write(TRAMPOLINE_VA, TrapMode::Direct);
-        let current = current_task();
-        let current = current.lock();
-        let satp = current.mm.page_table.satp();
-        let trapframe_base = trapframe_base(current.tid);
-        let userret_entry = userret as usize - uservec as usize + TRAMPOLINE_VA;
-        drop(current);
+        stvec::write(TRAMPOLINE_VA  as usize, TrapMode::Direct);
+        let (satp, trapframe_base, userret_entry) = {
+            let current = current_task();
+            let current = current.lock();
+            (
+                current.mm.page_table.satp(),
+                trapframe_base(current.tid),
+                userret as usize - uservec as usize + TRAMPOLINE_VA,
+            )
+        };
         asm!(
             "fence.i",
             "jr {userret_entry}",
