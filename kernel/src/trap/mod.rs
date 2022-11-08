@@ -15,17 +15,23 @@ use crate::{
 
 #[no_mangle]
 pub fn user_trap_handler() -> ! {
-    info!("trap!");
+    info!("User trap!");
     // set kernel trap entry
     let cause = scause::read().cause();
     let status = sstatus::read();
     let tval = stval::read();
     let epc = sepc::read();
     // Only handle user trap
-    assert!(status.spp() != sstatus::SPP::User);
+    assert!(status.spp() == sstatus::SPP::User);
     // Handle user trap with detailed cause
+    debug!("{:X?}, {:X?}, {:#X}, {:#X}", cause, status, tval, epc);
     match cause {
-        Trap::Exception(Exception::UserEnvCall) => {}
+        Trap::Exception(Exception::UserEnvCall) => {
+            let current = current_task();
+            let current = current.lock();
+            let trapframe = current.trapframe();
+            trapframe.next_epc();
+        }
         Trap::Exception(Exception::StoreFault)
         | Trap::Exception(Exception::StorePageFault)
         | Trap::Exception(Exception::InstructionFault)
@@ -46,6 +52,7 @@ pub fn user_trap_handler() -> ! {
             panic!("Unsupported trap {:?}!", cause);
         }
     }
+    user_trap_return();
     unreachable!()
 }
 
@@ -57,7 +64,7 @@ pub fn user_trap_return() -> ! {
     }
     unsafe {
         sstatus::clear_sie();
-        stvec::write(TRAMPOLINE_VA  as usize, TrapMode::Direct);
+        stvec::write(TRAMPOLINE_VA as usize, TrapMode::Direct);
         let (satp, trapframe_base, userret_entry) = {
             let current = current_task();
             let current = current.lock();

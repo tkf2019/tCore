@@ -84,7 +84,8 @@ pub fn current_task() -> TASK {
     TASK_MANAGER.lock().current.clone().unwrap()
 }
 
-/// Add the init task into scheduler.
+/// Add the init task into scheduler. Make use of rust `closure` to automatically
+/// drop the mutex lock.
 pub fn init() {
     let (idle_ctx, init_ctx) = {
         let init_task = read_all(FS.open("hello_world", OpenFlags::RDONLY).unwrap());

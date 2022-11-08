@@ -13,6 +13,8 @@ pub enum KernelError {
     /// Failed to resolve ELF
     /// - Wrong magic number:
     ELFInvalid,
+    /// Unsupported syscall
+    SyscallUnsupported(usize),
 }
 
 pub type KernelResult<T = ()> = Result<T, KernelError>;

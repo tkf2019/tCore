@@ -12,6 +12,7 @@ mod error;
 mod fs;
 mod heap;
 mod mm;
+mod syscall;
 mod task;
 mod trap;
 

@@ -119,11 +119,7 @@ impl Task {
             warn!("{}", e);
             KernelError::PageTableInvalid
         })?;
-        let trapframe = unsafe {
-            (task.trapframe_pa.value() as *mut TrapFrame)
-                .as_mut()
-                .unwrap()
-        };
+        let trapframe = task.trapframe();
         // Init sstatus
         unsafe { set_spp(SPP::User) };
         *trapframe = TrapFrame::new(
@@ -135,6 +131,14 @@ impl Task {
             ustack_base - ADDR_ALIGN,
         );
         Ok(task)
+    }
+
+    pub fn trapframe(&self) -> &mut TrapFrame {
+        unsafe {
+            (self.trapframe_pa.value() as *mut TrapFrame)
+                .as_mut()
+                .unwrap()
+        }
     }
 }
 

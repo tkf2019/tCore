@@ -14,10 +14,18 @@ spin = "0.9"
 virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers", rev = "4ee80e5" }
 xmas-elf = "0.8"
 
+# Third party crates (modified)
 easy-fs = { path = "../crates/easy-fs" }
+fatfs = { path = "../crates/rust-fatfs", version = "0.4", default-features = false, features = [
+    "alloc",
+    "lfn",
+] }
+fscommon = { path = "../crates/fscommon", version = "0.1.1" }
+
+# tCore crates (private)
 talloc = { path = "../crates/talloc" }
 tmm_rv = { path = "../crates/tmm_rv" }
-tsyscall_no = { path = "../crates/tsyscall_no" }
+tsyscall = { path = "../crates/tsyscall" }
 
 [features]
 default = []
