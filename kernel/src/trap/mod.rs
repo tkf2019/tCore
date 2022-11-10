@@ -53,7 +53,6 @@ pub fn user_trap_handler() -> ! {
         }
     }
     user_trap_return();
-    unreachable!()
 }
 
 #[no_mangle]

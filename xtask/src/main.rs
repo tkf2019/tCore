@@ -1,3 +1,4 @@
+mod libc;
 mod pack;
 
 use std::{
@@ -8,6 +9,7 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand};
+use libc::LibcArgs;
 use once_cell::sync::Lazy;
 use pack::easy_fs_pack;
 
@@ -20,6 +22,7 @@ static PROJECT: Lazy<&'static Path> =
 static TARGET: Lazy<PathBuf> = Lazy::new(|| PROJECT.join("target").join(DEFAULT_TARGET));
 
 const LOCAL_TESTCASES: &'static [&'static str] = &["hello_world"];
+const LIBC_TESTCASES: &'static [&'static str] = &["hello"];
 static EASY_FS_IMG: Lazy<PathBuf> = Lazy::new(|| PROJECT.join("easy-fs.img"));
 
 #[derive(Parser)]
@@ -74,6 +77,10 @@ struct BuildArgs {
     /// Use global or local user tests
     #[clap(long)]
     global: bool,
+
+    /// Build libc tests
+    #[clap(flatten)]
+    libc: LibcArgs,
 }
 
 impl BuildArgs {
@@ -101,6 +108,20 @@ impl BuildArgs {
             ("build", opt_level)
         };
         let features = if self.global {
+            let libc = PROJECT.join("libc");
+            let libc_root = libc.to_str().unwrap();
+            let libc_build = format!("{}/build", &libc_root);
+            // Make libc static tests
+            self.libc.build(&libc_root);
+            // Build easy_fs image form libc testcase list
+            let mut cases: Vec<&str> = Vec::new();
+            cases.extend(LIBC_TESTCASES.into_iter());
+            easy_fs_pack(
+                &cases,
+                libc_build.as_str(),
+                EASY_FS_IMG.as_os_str().to_str().unwrap(),
+            )
+            .expect("Faild to pack libc tests");
             "global_test"
         } else {
             let user = PROJECT.join("user");
@@ -235,27 +256,21 @@ impl QemuArgs {
             .arg(&bootloader)
             .arg("-kernel")
             .arg(&kernel_bin)
-            .args(&["-serial", "mon:stdio"]);
-        if !self.build.global {
-            cmd.args(&[
+            .args(&["-serial", "mon:stdio"])
+            .args(&[
                 "-drive",
                 format!(
                     "file={},if=none,format=raw,id=x0",
-                    if self.build.global {
-                        String::new()
-                    } else {
-                        PROJECT
-                            .join("easy-fs.img")
-                            .into_os_string()
-                            .into_string()
-                            .unwrap()
-                    }
+                    PROJECT
+                        .join("easy-fs.img")
+                        .into_os_string()
+                        .into_string()
+                        .unwrap()
                 )
                 .as_str(),
                 "-device",
                 "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
             ]);
-        }
         if self.gdb {
             cmd.args(&["-s", "-S"]);
         }

@@ -8,7 +8,6 @@ use vma::VMArea;
 use crate::{
     config::{MMIO, PAGE_SIZE, PHYSICAL_MEMORY_END, TRAMPOLINE_VA},
     error::{KernelError, KernelResult},
-    mm::pma::FixedPMA,
     trap::trampoline,
 };
 
@@ -16,6 +15,9 @@ use self::pma::{IdenticalPMA, PMArea};
 
 pub mod pma;
 pub mod vma;
+mod loader;
+
+pub use loader::from_elf;
 
 pub type VMA = Arc<Mutex<VMArea>>;
 
@@ -245,54 +247,6 @@ fn new_kernel() -> KernelResult<MM> {
         info!("{:>10} [{:#x}, {:#x})", "mmio", base, base + len);
     }
 
-    Ok(mm)
-}
-
-pub fn from_elf(elf_data: &[u8]) -> KernelResult<MM> {
-    let mut mm = MM::new()?;
-    // Map program headers of elf, with U flag
-    let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
-    let elf_header = elf.header;
-    if elf_header.pt1.magic != [0x7f, 0x45, 0x4c, 0x46] {
-        return Err(KernelError::ELFInvalid);
-    }
-    let ph_count = elf_header.pt2.ph_count();
-    let mut max_page = Page::from(0);
-    for i in 0..ph_count {
-        let ph = elf.program_header(i).unwrap();
-        if ph.get_type().unwrap() == xmas_elf::program::Type::Load {
-            let start_va: VirtAddr = (ph.virtual_addr() as usize).into();
-            let end_va: VirtAddr = ((ph.virtual_addr() + ph.mem_size()) as usize).into();
-            max_page = Page::floor(end_va - 1) + 1;
-
-            // Map flags
-            let mut map_flags: PTEFlags = PTEFlags::USER_ACCESSIBLE;
-            let ph_flags = ph.flags();
-            if ph_flags.is_read() {
-                map_flags |= PTEFlags::READABLE;
-            }
-            if ph_flags.is_write() {
-                map_flags |= PTEFlags::WRITABLE;
-            }
-            if ph_flags.is_execute() {
-                map_flags |= PTEFlags::EXECUTABLE;
-            }
-
-            // Allocate a new virtual memory area
-            let count = max_page - Page::floor(start_va).into();
-            mm.alloc_write(
-                Some(&elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize]),
-                start_va,
-                end_va,
-                map_flags,
-                Arc::new(Mutex::new(FixedPMA::new(count.number())?)),
-            )?;
-        }
-    }
-    // brk location
-    mm.start_brk = max_page.into();
-    mm.brk = mm.start_brk;
-    mm.entry = (elf_header.pt2.entry_point() as usize).into();
     Ok(mm)
 }
 

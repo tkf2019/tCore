@@ -16,11 +16,6 @@ xmas-elf = "0.8"
 
 # Third party crates (modified)
 easy-fs = { path = "../crates/easy-fs" }
-fatfs = { path = "../crates/rust-fatfs", version = "0.4", default-features = false, features = [
-    "alloc",
-    "lfn",
-] }
-fscommon = { path = "../crates/fscommon", version = "0.1.1" }
 
 # tCore crates (private)
 talloc = { path = "../crates/talloc" }

@@ -47,7 +47,6 @@ pub fn easy_fs_pack(cases: &Vec<&str>, target: &str, img: &str) -> std::io::Resu
         let inode = root_inode.create(case).unwrap();
         // write data to easy-fs
         inode.write_at(0, all_data.as_slice());
-        // println!("{}", all_data.len());
     }
     println!("List Testcases in EFS: ");
     // list app

@@ -88,7 +88,7 @@ pub fn current_task() -> TASK {
 /// drop the mutex lock.
 pub fn init() {
     let (idle_ctx, init_ctx) = {
-        let init_task = read_all(FS.open("hello_world", OpenFlags::RDONLY).unwrap());
+        let init_task = read_all(FS.open("hello", OpenFlags::RDONLY).unwrap());
         let mut task_manager = TASK_MANAGER.lock();
 
         // New process identification

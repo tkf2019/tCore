@@ -81,64 +81,65 @@ pub struct Task {
 impl Task {
     /// Create a new task with pid and kernel stack allocated by global manager.
     pub fn new(pid: usize, kstack: usize, elf_data: &[u8]) -> KernelResult<Self> {
+        let mut mm = MM::new()?;
         let mut tid_allocator = RecycleAllocator::new();
         let tid = tid_allocator.alloc();
         let kstack_base = kstack_alloc(kstack)?;
-        let mut task = Self {
-            pid,
-            tid,
-            tid_allocator,
-            ctx: TaskContext::new(user_trap_return as usize, kstack_base),
-            trapframe_pa: PhysAddr::zero(),
-            state: TaskState::Runnable,
-            mm: from_elf(elf_data)?,
-            exit_code: 0,
-            parent: None,
-            children: Vec::new(),
-        };
+        // Init address space
+        from_elf(elf_data, &mut mm)?;
         // Init user stack
         let ustack_base = ustack_base(tid);
         let ustack_top = ustack_base - USER_STACK_SIZE;
-        task.mm.alloc_write(
+        mm.alloc_write(
             None,
             ustack_top.into(),
             ustack_base.into(),
             PTEFlags::READABLE | PTEFlags::WRITABLE | PTEFlags::USER_ACCESSIBLE,
             Arc::new(Mutex::new(FixedPMA::new(USER_STACK_PAGES)?)),
         )?;
+
         // Init trapframe
         let trapframe_base: VirtAddr = trapframe_base(tid).into();
-        task.mm.alloc_write(
+        mm.alloc_write(
             None,
             trapframe_base,
             trapframe_base + PAGE_SIZE,
             PTEFlags::READABLE | PTEFlags::WRITABLE,
             Arc::new(Mutex::new(FixedPMA::new(1)?)),
         )?;
-        task.trapframe_pa = task.mm.page_table.translate(trapframe_base).map_err(|e| {
+        let trapframe_pa = mm.page_table.translate(trapframe_base).map_err(|e| {
             warn!("{}", e);
             KernelError::PageTableInvalid
         })?;
-        let trapframe = task.trapframe();
-        // Init sstatus
+        let trapframe = TrapFrame::from(trapframe_pa);
         unsafe { set_spp(SPP::User) };
         *trapframe = TrapFrame::new(
             KERNEL_MM.lock().page_table.satp(),
             kstack_base - ADDR_ALIGN,
             user_trap_handler as usize,
-            task.mm.entry.value(),
+            mm.entry.value(),
             sstatus::read(),
             ustack_base - ADDR_ALIGN,
         );
+
+        let mut task = Self {
+            pid,
+            tid,
+            tid_allocator,
+            ctx: TaskContext::new(user_trap_return as usize, kstack_base),
+            trapframe_pa,
+            state: TaskState::Runnable,
+            mm,
+            exit_code: 0,
+            parent: None,
+            children: Vec::new(),
+        };
         Ok(task)
     }
 
+    /// Trapframe of this task
     pub fn trapframe(&self) -> &mut TrapFrame {
-        unsafe {
-            (self.trapframe_pa.value() as *mut TrapFrame)
-                .as_mut()
-                .unwrap()
-        }
+        TrapFrame::from(self.trapframe_pa)
     }
 }
 

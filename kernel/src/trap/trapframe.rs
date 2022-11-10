@@ -1,5 +1,5 @@
-use log::warn;
 use riscv::register::sstatus::Sstatus;
+use tmm_rv::PhysAddr;
 use tsyscall::SyscallNO;
 
 use crate::{
@@ -52,7 +52,7 @@ impl TrapFrame {
     ///
     /// Returns error if syscall number not supported.
     pub fn syscall_args(&self) -> KernelResult<SyscallArgs> {
-        Ok((
+        Ok(SyscallArgs(
             SyscallNO::try_from(self.user_regs[16])
                 .map_err(|no| KernelError::SyscallUnsupported(no))?,
             [
@@ -69,5 +69,10 @@ impl TrapFrame {
     /// Step to next instruction after the trap instruction.
     pub fn next_epc(&mut self) {
         self.user_epc += 4;
+    }
+
+    /// Returns mutable reference of a trapframe
+    pub fn from(pa: PhysAddr) -> &'static mut TrapFrame {
+        unsafe { (pa.value() as *mut TrapFrame).as_mut().unwrap() }
     }
 }

@@ -1,10 +1,10 @@
-use crate::{
-    error::{KernelError, KernelResult},
-    task::manager::current_task,
-};
+// use crate::{
+//     error::{KernelError, KernelResult},
+//     task::manager::current_task,
+// };
 
-pub fn getpid() -> KernelResult<Errno> {
-    let current = current_task();
-    let current = current.lock();
-    Ok(current.pid)
-}
+// pub fn getpid() -> Sysc {
+//     let current = current_task();
+//     let current = current.lock();
+//     Ok(current.pid)
+// }
