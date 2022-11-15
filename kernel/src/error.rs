@@ -7,7 +7,7 @@ pub enum KernelError {
 
     /// Page has not been mapped to an frame yet.
     PageUnmapped,
-    
+
     /// Failed to allocate a new frame: Internal Error
     FrameAllocFailed,
 
@@ -23,7 +23,7 @@ pub enum KernelError {
     SyscallUnsupported(usize),
 
     /// Syscall returns
-    SyscallError()
+    SyscallError(),
 }
 
 pub type KernelResult<T = ()> = Result<T, KernelError>;

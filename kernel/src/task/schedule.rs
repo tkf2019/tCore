@@ -1,18 +1,18 @@
-use alloc::collections::VecDeque;
+use alloc::{collections::VecDeque, sync::Arc};
 
-use super::task::TASK;
+use super::Task;
 
 /// Possible interfaces for task schedulers.
 pub trait Scheduler {
     /// Add a task to be scheduled sooner or later.
-    fn add(&mut self, task: TASK);
+    fn add(&mut self, task: Arc<Task>);
 
     /// Get a task to run on the target processor.
-    fn fetch(&mut self) -> Option<TASK>;
+    fn fetch(&mut self) -> Option<Arc<Task>>;
 }
 
 pub struct QueueScheduler {
-    queue: VecDeque<TASK>,
+    queue: VecDeque<Arc<Task>>,
 }
 
 impl QueueScheduler {
@@ -24,11 +24,11 @@ impl QueueScheduler {
 }
 
 impl Scheduler for QueueScheduler {
-    fn add(&mut self, task: TASK) {
+    fn add(&mut self, task: Arc<Task>) {
         self.queue.push_back(task);
     }
 
-    fn fetch(&mut self) -> Option<TASK> {
+    fn fetch(&mut self) -> Option<Arc<Task>> {
         self.queue.pop_front()
     }
 }

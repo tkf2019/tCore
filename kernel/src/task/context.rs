@@ -38,7 +38,7 @@ impl TaskContext {
 /// Switch task context
 #[naked]
 #[no_mangle]
-pub unsafe extern "C" fn switch(curr: *mut TaskContext, next: *const TaskContext) {
+pub unsafe extern "C" fn switch(curr: *const TaskContext, next: *const TaskContext) {
     core::arch::asm!(
         // Save return address of current flow
         "sd ra, 0(a0)",

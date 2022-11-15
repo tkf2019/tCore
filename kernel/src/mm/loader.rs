@@ -17,7 +17,7 @@ pub fn from_elf(elf_data: &[u8], mm: &mut MM) -> KernelResult<ELFInfo> {
     let elf = ElfFile::new(elf_data).unwrap();
     let elf_header = elf.header;
 
-    println!("{:#?}", elf.header);
+    // println!("{:#?}", elf.header);
 
     // Check elf type
     if (elf_header.pt2.type_().as_type() != header::Type::Executable

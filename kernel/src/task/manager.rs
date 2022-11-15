@@ -1,59 +1,56 @@
-use alloc::{collections::BTreeMap, sync::Arc};
+use alloc::{collections::BTreeMap, format, sync::Arc, vec::Vec};
 use easy_fs::{FSManager, OpenFlags};
+use log::trace;
+use riscv::register::mhartid;
 use spin::{Lazy, Mutex};
 use talloc::{IDAllocator, RecycleAllocator};
 use tmm_rv::{PTEFlags, PAGE_SIZE};
 
 use crate::{
-    config::{KERNEL_STACK_PAGES, KERNEL_STACK_SIZE, TRAMPOLINE_VA},
+    config::{KERNEL_STACK_PAGES, KERNEL_STACK_SIZE, MAIN_HART, MAIN_TASK, TRAMPOLINE_VA},
     error::KernelResult,
     fs::{read_all, FS},
-    mm::{pma::FixedPMA, KERNEL_MM},
+    mm::{pma::FixedPMA, KERNEL_MM, MM},
+    trap::TrapFrame,
 };
 
 use super::{
     context::{switch, TaskContext},
-    schedule::QueueScheduler,
-    task::{Task, TASK},
+    schedule::{QueueScheduler, Scheduler},
+    task::Task,
+    TaskState,
 };
 
-/// Handlers packed for global task managers
-pub struct TaskManager {
-    /// PID allocator
-    pub pid_allocator: RecycleAllocator,
+/// Global process identification allocator.
+static PID_ALLOCATOR: Lazy<Mutex<RecycleAllocator>> =
+    Lazy::new(|| Mutex::new(RecycleAllocator::new(0)));
 
-    /// Kernel stack allocator
-    pub kstack_allocator: RecycleAllocator,
-
-    /// PID is mapped to Task in this table.
-    /// Speed up locating the task by PID to fetch or modify the task data.
-    pub task_table: BTreeMap<usize, TASK>,
-
-    /// Task scheduler
-    pub sched: QueueScheduler,
-
-    /// Current task
-    pub current: Option<TASK>,
-
-    /// Idle task context
-    pub idle_ctx: TaskContext,
+/// Only provides [`pid_alloc()`] interface.
+pub fn pid_alloc() -> usize {
+    PID_ALLOCATOR.lock().alloc()
 }
 
-impl TaskManager {
-    /// Create a new task manager.
-    pub fn new() -> Self {
-        Self {
-            pid_allocator: RecycleAllocator::new(),
-            kstack_allocator: RecycleAllocator::new(),
-            sched: QueueScheduler::new(),
-            task_table: BTreeMap::new(),
-            current: None,
-            idle_ctx: TaskContext::zero(),
-        }
+pub struct PID(pub usize);
+
+impl Drop for PID {
+    fn drop(&mut self) {
+        PID_ALLOCATOR.lock().dealloc(self.0)
     }
 }
 
-pub static TASK_MANAGER: Lazy<Mutex<TaskManager>> = Lazy::new(|| Mutex::new(TaskManager::new()));
+/// Global kernal stack allocator.
+static KSTACK_ALLOCATOR: Lazy<Mutex<RecycleAllocator>> =
+    Lazy::new(|| Mutex::new(RecycleAllocator::new(0)));
+
+/// Allocate new kernel stack identification.
+pub fn kstack_alloc() -> usize {
+    KSTACK_ALLOCATOR.lock().alloc()
+}
+
+/// Deallocate kernel stack by identification.
+pub fn kstack_dealloc(kstack: usize) {
+    KSTACK_ALLOCATOR.lock().dealloc(kstack)
+}
 
 /// Returns kernel stack layout [top, base) by kernel stack identification.
 ///
@@ -67,7 +64,7 @@ pub fn kstack_layout(kstack: usize) -> (usize, usize) {
 /// Allocate a kernel stack for the task by kernel stack identification.
 ///
 /// Returns the kernel stack base.
-pub fn kstack_alloc(kstack: usize) -> KernelResult<usize> {
+pub fn kstack_vm_alloc(kstack: usize) -> KernelResult<usize> {
     let (kstack_top, kstack_base) = kstack_layout(kstack);
     KERNEL_MM.lock().alloc_write(
         None,
@@ -75,42 +72,117 @@ pub fn kstack_alloc(kstack: usize) -> KernelResult<usize> {
         kstack_base.into(),
         PTEFlags::READABLE | PTEFlags::WRITABLE,
         Arc::new(Mutex::new(FixedPMA::new(KERNEL_STACK_PAGES)?)),
-    );
+    )?;
     Ok(kstack_base)
 }
 
-/// Get current task running on this cpu.
-pub fn current_task() -> TASK {
-    TASK_MANAGER.lock().current.clone().unwrap()
+/// Reserved for future SMP usage.
+pub struct CPUContext {
+    /// Current task.
+    pub current: Option<Arc<Task>>,
+
+    /// Idle task context.
+    pub idle_ctx: TaskContext,
 }
 
-/// Add the init task into scheduler. Make use of rust `closure` to automatically
-/// drop the mutex lock.
+impl CPUContext {
+    /// A hart joins to run tasks
+    pub fn new() -> Self {
+        Self {
+            current: None,
+            idle_ctx: TaskContext::zero(),
+        }
+    }
+}
+
+/// Schedules the task running on each CPU.
+pub struct TaskManager {
+    /// Task scheduler
+    pub sched: QueueScheduler,
+
+    /// CPU contexts mapped by hartid.
+    pub cpus: CPUContext,
+}
+
+impl TaskManager {
+    /// Create a new task manager.
+    pub fn new() -> Self {
+        Self {
+            sched: QueueScheduler::new(),
+            // cpus: BTreeMap::new(),
+            cpus: CPUContext::new(),
+        }
+    }
+}
+
+pub static TASK_MANAGER: Lazy<Mutex<TaskManager>> = Lazy::new(|| {
+    let task_manager = TaskManager::new();
+    Mutex::new(task_manager)
+});
+
+/// Get current task running on this cpu.
+pub fn current_task() -> Option<Arc<Task>> {
+    let task_manager = TASK_MANAGER.lock();
+    let cpu_context = &task_manager.cpus;
+    cpu_context.current.as_ref().map(Arc::clone)
+}
+
+pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
+    // New process identification
+    let pid = pid_alloc();
+
+    // New kernel stack for user task
+    let kstack = kstack_alloc();
+
+    // Init task
+    let init_task = read_all(FS.open("hello", OpenFlags::RDONLY).unwrap());
+    let init_task = Arc::new(Task::new(pid, kstack, init_task.as_slice()).unwrap());
+
+    // Update task manager
+    let mut task_manager = TASK_MANAGER.lock();
+    task_manager.cpus.current = Some(init_task.clone());
+    task_manager.sched.add(init_task.clone());
+
+    init_task
+});
+
+/// Initialize  [`INIT_TASK`] manually.
 pub fn init() {
-    let (idle_ctx, init_ctx) = {
-        let init_task = read_all(FS.open("hello", OpenFlags::RDONLY).unwrap());
-        let mut task_manager = TASK_MANAGER.lock();
+    INIT_TASK.clone();
+}
 
-        // New process identification
-        let pid = task_manager.pid_allocator.alloc();
+/// IDLE task:
+/// 1.  Each cpu tries to acquire the lock.
+/// 2.  Each cpu runs the task fetched from schedule queue
+pub fn idle() -> ! {
+    loop {
+        if let Some(mut task_manager) = TASK_MANAGER.try_lock() {
+            if let Some(mut task) = task_manager.sched.fetch() {
+                let idle_ctx = &task_manager.cpus.idle_ctx as *const TaskContext;
+                let next_ctx = {
+                    let mut task_inner = task.inner_lock();
+                    task_inner.state = TaskState::Running;
+                    &task_inner.ctx as *const TaskContext
+                };
+                task_manager.cpus.current = Some(task);
+                drop(task_manager);
+                unsafe {
+                    switch(idle_ctx, next_ctx);
+                }
+            }
+        }
+    }
+}
 
-        // New kernel stack for user task
-        let kstack = task_manager.kstack_allocator.alloc();
+/// Exit current task and run next task.
+pub fn do_exit(exit_code: i32) {
+    let current = current_task().unwrap();
+    let mut current_inner = current.inner_lock();
 
-        // Init task
-        let init_task = Arc::new(Mutex::new(
-            Task::new(pid, kstack, init_task.as_slice()).expect("Failed to create init task"),
-        ));
-        task_manager.current = Some(init_task.clone());
-        task_manager.task_table.insert(pid, init_task.clone());
+    current_inner.exit_code = exit_code;
+    current_inner.state = TaskState::Zombie;
 
-        let mut init_task = init_task.lock();
-        (
-            &mut task_manager.idle_ctx as *mut TaskContext,
-            &mut init_task.ctx as *mut TaskContext,
-        )
-    };
-    unsafe {
-        switch(idle_ctx, init_ctx);
+    loop {
+        // let init_task = INIT_TASK.
     }
 }

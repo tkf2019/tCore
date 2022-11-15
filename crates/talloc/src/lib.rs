@@ -17,9 +17,9 @@ pub struct RecycleAllocator {
 }
 
 impl RecycleAllocator {
-    pub fn new() -> Self {
+    pub fn new(current: usize) -> Self {
         Self {
-            current: 0,
+            current,
             recycled: Vec::new(),
         }
     }
@@ -31,6 +31,7 @@ impl IDAllocator for RecycleAllocator {
             id
         } else {
             self.current += 1;
+            assert_ne!(self.current, usize::MAX);
             self.current - 1
         }
     }
@@ -46,7 +47,7 @@ mod tests {
 
     #[test]
     fn test_id_alloc() {
-        let mut r = RecycleAllocator::new();
+        let mut r = RecycleAllocator::new(0);
         assert_eq!(r.alloc(), 0);
         assert_eq!(r.alloc(), 1);
         assert_eq!(r.alloc(), 2);

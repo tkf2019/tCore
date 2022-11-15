@@ -13,9 +13,9 @@ use crate::{
 
 use self::pma::{IdenticalPMA, PMArea};
 
+mod loader;
 pub mod pma;
 pub mod vma;
-mod loader;
 
 pub use loader::from_elf;
 

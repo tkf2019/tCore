@@ -1,18 +1,23 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{rc::Weak, sync::Arc, vec::Vec};
 use log::warn;
 use riscv::register::sstatus::{self, set_spp, SPP};
-use spin::mutex::Mutex;
+use spin::{mutex::Mutex, MutexGuard};
 use talloc::{IDAllocator, RecycleAllocator};
 use tmm_rv::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE};
 
 use crate::{
-    config::{ADDR_ALIGN, TRAMPOLINE_VA, USER_STACK_BASE, USER_STACK_PAGES, USER_STACK_SIZE},
+    config::{
+        ADDR_ALIGN, MAIN_TASK, TRAMPOLINE_VA, USER_STACK_BASE, USER_STACK_PAGES, USER_STACK_SIZE,
+    },
     error::{KernelError, KernelResult},
     mm::{from_elf, pma::FixedPMA, KERNEL_MM, MM},
     trap::{user_trap_handler, user_trap_return, TrapFrame},
 };
 
-use super::{context::TaskContext, manager::kstack_alloc};
+use super::{
+    context::TaskContext,
+    manager::{kstack_dealloc, kstack_vm_alloc, PID},
+};
 
 /// Five-state model:
 ///
@@ -33,7 +38,29 @@ pub enum TaskState {
     Zombie,
 }
 
-pub type TASK = Arc<Mutex<Task>>;
+/// Mutable data owned by the task.
+pub struct TaskInner {
+    /// Task exit code, known as the number returned to a parent process by an executable.
+    pub exit_code: i32,
+
+    /// Task context
+    pub ctx: TaskContext,
+
+    /// Task state, using five-state model.
+    pub state: TaskState,
+
+    /// Hierarchy pointers in task management.
+    /// INIT task has no parent task.
+    pub parent: Option<Weak<Task>>,
+
+    /// Pointers to child tasks.
+    /// When a parent task exits before its children, they will become orphans.
+    /// These tasks will be adopted by INIT task to avoid being dropped when the reference
+    /// counter becomes 0.
+    pub children: Vec<Arc<Task>>,
+}
+
+unsafe impl Send for TaskInner {}
 
 /// In conventional opinion, process is the minimum unit of resource allocation, while task (or
 /// thread) is the minimum unit of scheduling. Process is always created with a main task. On
@@ -41,50 +68,49 @@ pub type TASK = Arc<Mutex<Task>>;
 /// same information belonging to the process, such as virtual memory handler, process
 /// identification (called pid) and etc.
 ///
-/// We thus only use a shared region to hold the duplicated information of the tasks.
+/// We use four types of regions to maintain the task metadata:
+/// - Shared and immutable: uses [`Arc<T>`]
+/// - Shared and mutable: uses [`Arc<Mutex<T>>`]
+/// - Local and immutable: data initialized once when task created
+/// - Local and mutable: uses [`Mutex<TaskInner>`] to wrap the data together
 pub struct Task {
-    /// Process identification
-    pub pid: usize,
+    /* Local and immutable */
+    /// Kernel stack identification.
+    pub kstack: usize,
 
-    /// Task identification
+    /// Task identification.
     pub tid: usize,
 
-    /// TID allocator: TODO
-    pub tid_allocator: RecycleAllocator,
-
-    /// Task context
-    pub ctx: TaskContext,
-
-    /// Trapframe physical address
+    /// Trapframe physical address.
     pub trapframe_pa: PhysAddr,
 
-    /// Task state, using five-state model.
-    pub state: TaskState,
+    /* Local and mutable */
+    /// Inner data wrapped by [`Mutex`].
+    inner: Mutex<TaskInner>,
 
-    /// Memory
-    pub mm: MM,
+    /* Shared and immutable */
+    /// Process identification.
+    /// 
+    /// Use `Arc` to track the ownership of pid. If all tasks holding
+    /// this pid exit and parent process release the resources through `wait()`,
+    /// the pid will be released.
+    pub pid: Arc<PID>,
 
-    /// Task exit code, known as the number returned to a parent process by an executable.
-    pub exit_code: i32,
+    /* Shared and mutable */
+    /// Task identification allocator.
+    pub tid_allocator: Arc<Mutex<RecycleAllocator>>,
 
-    /// Hierarchy pointers in task management.
-    /// INIT task has no parent task.
-    pub parent: Option<TASK>,
-
-    /// Pointers to child tasks.
-    /// When a parent task exits before its children, they will become orphans.
-    /// These tasks will be adopted by INIT task to avoid being dropped when the reference
-    /// counter becomes 0.
-    pub children: Vec<TASK>,
+    /// Address space metadata.
+    pub mm: Arc<Mutex<MM>>,
 }
 
 impl Task {
     /// Create a new task with pid and kernel stack allocated by global manager.
     pub fn new(pid: usize, kstack: usize, elf_data: &[u8]) -> KernelResult<Self> {
         let mut mm = MM::new()?;
-        let mut tid_allocator = RecycleAllocator::new();
+        let kstack_base = kstack_vm_alloc(kstack)?;
+        let mut tid_allocator = RecycleAllocator::new(MAIN_TASK);
         let tid = tid_allocator.alloc();
-        let kstack_base = kstack_alloc(kstack)?;
         // Init address space
         from_elf(elf_data, &mut mm)?;
         // Init user stack
@@ -122,24 +148,43 @@ impl Task {
             ustack_base - ADDR_ALIGN,
         );
 
-        let mut task = Self {
-            pid,
+        let task = Self {
+            kstack,
             tid,
-            tid_allocator,
-            ctx: TaskContext::new(user_trap_return as usize, kstack_base),
             trapframe_pa,
-            state: TaskState::Runnable,
-            mm,
-            exit_code: 0,
-            parent: None,
-            children: Vec::new(),
+            inner: Mutex::new(TaskInner {
+                exit_code: 0,
+                ctx: TaskContext::new(user_trap_return as usize, kstack_base),
+                state: TaskState::Runnable,
+                parent: None,
+                children: Vec::new(),
+            }),
+            pid: Arc::new(PID(pid)),
+            tid_allocator: Arc::new(Mutex::new(tid_allocator)),
+            mm: Arc::new(Mutex::new(mm)),
         };
         Ok(task)
     }
 
     /// Trapframe of this task
-    pub fn trapframe(&self) -> &mut TrapFrame {
+    pub fn trapframe(&self) -> &'static mut TrapFrame {
         TrapFrame::from(self.trapframe_pa)
+    }
+
+    /// Acquire inner lock to modify the metadata in [`TaskInner`].
+    pub fn inner_lock(&self) -> MutexGuard<TaskInner> {
+        self.inner.lock()
+    }
+}
+
+impl Drop for Task {
+    fn drop(&mut self) {
+        kstack_dealloc(self.kstack);
+        // We don't release the memory resource occupied by the kernel stack.
+        // This memory area might be used agian when a new task calls for a
+        // new kernel stack.
+
+        self.tid_allocator.lock().dealloc(self.tid);
     }
 }
 

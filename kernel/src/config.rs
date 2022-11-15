@@ -47,6 +47,12 @@ pub const MMIO: &[(usize, usize)] = &[
     (0x1000_1000, 0x00_1000), // Virtio Block in virt machine
 ];
 
+/// Main task in the same address space
+pub const MAIN_TASK: usize = 0;
+
+/// Use cpu0 as main hart
+pub const MAIN_HART: usize = 0;
+
 /* User configurations */
 
 /// User heap size

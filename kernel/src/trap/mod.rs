@@ -2,7 +2,7 @@ mod trampoline;
 mod trapframe;
 
 use core::arch::asm;
-use log::{debug, info};
+use log::{debug, info, trace, warn};
 use riscv::register::{scause::*, utvec::TrapMode, *};
 
 pub use trampoline::trampoline;
@@ -10,12 +10,12 @@ pub use trapframe::TrapFrame;
 
 use crate::{
     config::TRAMPOLINE_VA,
+    syscall::syscall,
     task::{manager::current_task, trapframe_base},
 };
 
 #[no_mangle]
 pub fn user_trap_handler() -> ! {
-    info!("User trap!");
     // set kernel trap entry
     let cause = scause::read().cause();
     let status = sstatus::read();
@@ -24,13 +24,24 @@ pub fn user_trap_handler() -> ! {
     // Only handle user trap
     assert!(status.spp() == sstatus::SPP::User);
     // Handle user trap with detailed cause
-    debug!("{:X?}, {:X?}, {:#X}, {:#X}", cause, status, tval, epc);
+    trace!(
+        "USER TRAP {:X?}, {:X?}, {:#X}, {:#X}",
+        cause,
+        status,
+        tval,
+        epc
+    );
     match cause {
         Trap::Exception(Exception::UserEnvCall) => {
             let current = current_task();
-            let current = current.lock();
-            let trapframe = current.trapframe();
+            let trapframe = current.unwrap().trapframe();
+
             trapframe.next_epc();
+
+            match syscall(trapframe.syscall_args().unwrap()) {
+                Ok(ret) => trapframe.set_ra(ret),
+                Err(errno) => trapframe.set_ra(errno.try_into().unwrap()),
+            };
         }
         Trap::Exception(Exception::StoreFault)
         | Trap::Exception(Exception::StorePageFault)
@@ -38,12 +49,7 @@ pub fn user_trap_handler() -> ! {
         | Trap::Exception(Exception::InstructionPageFault)
         | Trap::Exception(Exception::LoadFault)
         | Trap::Exception(Exception::LoadPageFault) => {
-            debug!("
-                [kernel] Killed user task due to {:?}: bad address = {:#x}, bad instruction = {:#x}",
-                cause,
-                tval,
-                epc,
-            );
+            unimplemented!()
         }
         Trap::Exception(Exception::IllegalInstruction) => {}
         Trap::Interrupt(Interrupt::SupervisorTimer) => {}
@@ -65,10 +71,10 @@ pub fn user_trap_return() -> ! {
         sstatus::clear_sie();
         stvec::write(TRAMPOLINE_VA as usize, TrapMode::Direct);
         let (satp, trapframe_base, userret_entry) = {
-            let current = current_task();
-            let current = current.lock();
+            let current = current_task().unwrap();
+            let current_mm = current.mm.lock();
             (
-                current.mm.page_table.satp(),
+                current_mm.page_table.satp(),
                 trapframe_base(current.tid),
                 userret as usize - uservec as usize + TRAMPOLINE_VA,
             )

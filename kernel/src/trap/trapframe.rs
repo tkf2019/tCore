@@ -75,4 +75,9 @@ impl TrapFrame {
     pub fn from(pa: PhysAddr) -> &'static mut TrapFrame {
         unsafe { (pa.value() as *mut TrapFrame).as_mut().unwrap() }
     }
+
+    /// Set return errno or value after an syscall.
+    pub fn set_ra(&mut self, ra: usize) {
+        self.user_regs[0] = ra;
+    }
 }

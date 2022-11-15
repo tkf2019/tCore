@@ -18,6 +18,8 @@ mod trap;
 
 extern crate alloc;
 
+use core::intrinsics::unreachable;
+
 use config::BOOT_STACK_SIZE;
 
 /// Entry for kernel.
@@ -54,11 +56,16 @@ fn clear_bss() {
 }
 
 extern "C" fn rust_main() -> ! {
-    // clear .bss
+    // Clear .bss
     clear_bss();
+    // Initialization
     cons::init();
     heap::init();
     mm::init();
     task::init();
-    panic!("Panic")
+
+    // IDLE loop
+    task::idle();
+
+    unreachable!()
 }
