@@ -77,7 +77,7 @@ impl TrapFrame {
     }
 
     /// Set return errno or value after an syscall.
-    pub fn set_ra(&mut self, ra: usize) {
-        self.user_regs[0] = ra;
+    pub fn set_a0(&mut self, a0: usize) {
+        self.user_regs[9] = a0;
     }
 }

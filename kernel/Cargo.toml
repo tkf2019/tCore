@@ -16,11 +16,13 @@ xmas-elf = "0.8"
 
 # Third party crates (modified)
 easy-fs = { path = "../crates/easy-fs" }
+fatfs = { path = "../crates/rust-fatfs", version = "0.4", default-features = false, features = ["alloc", "lfn"] }
 
 # tCore crates (private)
 talloc = { path = "../crates/talloc" }
 tmm_rv = { path = "../crates/tmm_rv" }
 tsyscall = { path = "../crates/tsyscall" }
+tvfs = { path = "../crates/tvfs" }
 
 [features]
 default = []

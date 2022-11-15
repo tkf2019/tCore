@@ -39,8 +39,8 @@ pub fn user_trap_handler() -> ! {
             trapframe.next_epc();
 
             match syscall(trapframe.syscall_args().unwrap()) {
-                Ok(ret) => trapframe.set_ra(ret),
-                Err(errno) => trapframe.set_ra(errno.try_into().unwrap()),
+                Ok(ret) => trapframe.set_a0(ret),
+                Err(errno) => trapframe.set_a0(errno.try_into().unwrap()),
             };
         }
         Trap::Exception(Exception::StoreFault)
@@ -49,6 +49,10 @@ pub fn user_trap_handler() -> ! {
         | Trap::Exception(Exception::InstructionPageFault)
         | Trap::Exception(Exception::LoadFault)
         | Trap::Exception(Exception::LoadPageFault) => {
+            let current = current_task();
+            let trapframe = current.unwrap().trapframe();
+
+            trace!("{:#X?}", trapframe);
             unimplemented!()
         }
         Trap::Exception(Exception::IllegalInstruction) => {}

@@ -1,5 +1,5 @@
 use alloc::{rc::Weak, sync::Arc, vec::Vec};
-use log::warn;
+use log::{trace, warn};
 use riscv::register::sstatus::{self, set_spp, SPP};
 use spin::{mutex::Mutex, MutexGuard};
 use talloc::{IDAllocator, RecycleAllocator};
@@ -10,6 +10,7 @@ use crate::{
         ADDR_ALIGN, MAIN_TASK, TRAMPOLINE_VA, USER_STACK_BASE, USER_STACK_PAGES, USER_STACK_SIZE,
     },
     error::{KernelError, KernelResult},
+    fs::FDManager,
     mm::{from_elf, pma::FixedPMA, KERNEL_MM, MM},
     trap::{user_trap_handler, user_trap_return, TrapFrame},
 };
@@ -90,7 +91,7 @@ pub struct Task {
 
     /* Shared and immutable */
     /// Process identification.
-    /// 
+    ///
     /// Use `Arc` to track the ownership of pid. If all tasks holding
     /// this pid exit and parent process release the resources through `wait()`,
     /// the pid will be released.
@@ -102,20 +103,24 @@ pub struct Task {
 
     /// Address space metadata.
     pub mm: Arc<Mutex<MM>>,
+
+    /// File descriptor table.
+    pub fd_manager: Arc<Mutex<FDManager>>,
 }
 
 impl Task {
     /// Create a new task with pid and kernel stack allocated by global manager.
-    pub fn new(pid: usize, kstack: usize, elf_data: &[u8]) -> KernelResult<Self> {
+    pub fn new(pid: usize, kstack: usize, args: Vec<&str>) -> KernelResult<Self> {
+        // Init address space
         let mut mm = MM::new()?;
-        let kstack_base = kstack_vm_alloc(kstack)?;
+
+        // from_elf(elf_data, &mut mm)?;
+
+        // Init user stack
         let mut tid_allocator = RecycleAllocator::new(MAIN_TASK);
         let tid = tid_allocator.alloc();
-        // Init address space
-        from_elf(elf_data, &mut mm)?;
-        // Init user stack
-        let ustack_base = ustack_base(tid);
-        let ustack_top = ustack_base - USER_STACK_SIZE;
+        let (ustack_top, ustack_base) = ustack_layout(tid);
+        trace!("USTACK {:#X}, {:#X}", ustack_base, ustack_top);
         mm.alloc_write(
             None,
             ustack_top.into(),
@@ -123,6 +128,9 @@ impl Task {
             PTEFlags::READABLE | PTEFlags::WRITABLE | PTEFlags::USER_ACCESSIBLE,
             Arc::new(Mutex::new(FixedPMA::new(USER_STACK_PAGES)?)),
         )?;
+
+        // Init kernel stack
+        let kstack_base = kstack_vm_alloc(kstack)?;
 
         // Init trapframe
         let trapframe_base: VirtAddr = trapframe_base(tid).into();
@@ -141,12 +149,15 @@ impl Task {
         unsafe { set_spp(SPP::User) };
         *trapframe = TrapFrame::new(
             KERNEL_MM.lock().page_table.satp(),
-            kstack_base - ADDR_ALIGN,
+            kstack_base,
             user_trap_handler as usize,
             mm.entry.value(),
             sstatus::read(),
-            ustack_base - ADDR_ALIGN,
+            ustack_base,
         );
+
+        // Init file descriptor table
+        let fd_manager = FDTable::new();
 
         let task = Self {
             kstack,
@@ -162,6 +173,7 @@ impl Task {
             pid: Arc::new(PID(pid)),
             tid_allocator: Arc::new(Mutex::new(tid_allocator)),
             mm: Arc::new(Mutex::new(mm)),
+            fd_manager: Arc::new(Mutex::new(fd_manager)),
         };
         Ok(task)
     }
@@ -183,7 +195,6 @@ impl Drop for Task {
         // We don't release the memory resource occupied by the kernel stack.
         // This memory area might be used agian when a new task calls for a
         // new kernel stack.
-
         self.tid_allocator.lock().dealloc(self.tid);
     }
 }
@@ -195,7 +206,11 @@ pub fn trapframe_base(tid: usize) -> usize {
     TRAMPOLINE_VA - PAGE_SIZE - tid * PAGE_SIZE
 }
 
-/// Returns user stack base of the task in the address space by task identification.
-pub fn ustack_base(tid: usize) -> usize {
-    USER_STACK_BASE - tid * (USER_STACK_SIZE + PAGE_SIZE)
+/// Returns task stack layout [top, base) by task identification.
+///
+/// Stack grows from high address to low address.
+pub fn ustack_layout(tid: usize) -> (usize, usize) {
+    let ustack_base = USER_STACK_BASE - tid * (USER_STACK_SIZE + PAGE_SIZE);
+    let ustack_top = ustack_base - USER_STACK_SIZE;
+    (ustack_top, ustack_base - ADDR_ALIGN)
 }

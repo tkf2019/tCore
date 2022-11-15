@@ -1,7 +1,12 @@
 use alloc::sync::Arc;
+use log::trace;
 use spin::Mutex;
 use tmm_rv::{PTEFlags, Page, VirtAddr};
-use xmas_elf::{header, program, ElfFile};
+use xmas_elf::{
+    header,
+    program::{self, SegmentData},
+    ElfFile,
+};
 
 use crate::{
     error::{KernelError, KernelResult},
@@ -12,12 +17,23 @@ use super::{pma::FixedPMA, MM};
 
 pub struct ELFInfo {}
 
+/// Finds the user ELF in the given directory and loads the program
+/// into the address space.
+/// 
+/// Returns user entry and user stack base address parsed from the ELF.
+pub fn find_user(
+    dir: &str,
+    name: &str,
+    args: Vec<&str>,
+    mm: &mut MM,
+) -> KernelResult<(usize, usize)> {
+    
+}
+
 /// Load from elf.
 pub fn from_elf(elf_data: &[u8], mm: &mut MM) -> KernelResult<ELFInfo> {
     let elf = ElfFile::new(elf_data).unwrap();
     let elf_header = elf.header;
-
-    // println!("{:#?}", elf.header);
 
     // Check elf type
     if (elf_header.pt2.type_().as_type() != header::Type::Executable
@@ -56,8 +72,12 @@ pub fn from_elf(elf_data: &[u8], mm: &mut MM) -> KernelResult<ELFInfo> {
 
                 // Allocate a new virtual memory area
                 let count = max_page - Page::floor(start_va).into();
+                let data = match ph.get_data(&elf).unwrap() {
+                    SegmentData::Undefined(data) => data,
+                    _ => return Err(KernelError::ELFInvalid),
+                };
                 mm.alloc_write(
-                    Some(&elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize]),
+                    Some(data),
                     start_va,
                     end_va,
                     map_flags,

@@ -129,7 +129,8 @@ impl MM {
         Ok(())
     }
 
-    /// Allocate a new [`VMArea`] and write the data to the mapped physical areas.
+    /// Allocate a new [`VMArea`] with the virtual range of `[start_va, end_va)`. 
+    /// Writes the data to the mapped physical areas.
     pub fn alloc_write(
         &mut self,
         data: Option<&[u8]>,

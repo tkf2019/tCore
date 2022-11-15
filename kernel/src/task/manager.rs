@@ -7,7 +7,9 @@ use talloc::{IDAllocator, RecycleAllocator};
 use tmm_rv::{PTEFlags, PAGE_SIZE};
 
 use crate::{
-    config::{KERNEL_STACK_PAGES, KERNEL_STACK_SIZE, MAIN_HART, MAIN_TASK, TRAMPOLINE_VA},
+    config::{
+        ADDR_ALIGN, KERNEL_STACK_PAGES, KERNEL_STACK_SIZE, MAIN_HART, MAIN_TASK, TRAMPOLINE_VA,
+    },
     error::KernelResult,
     fs::{read_all, FS},
     mm::{pma::FixedPMA, KERNEL_MM, MM},
@@ -58,7 +60,7 @@ pub fn kstack_dealloc(kstack: usize) {
 pub fn kstack_layout(kstack: usize) -> (usize, usize) {
     let base = TRAMPOLINE_VA - kstack * (KERNEL_STACK_SIZE + PAGE_SIZE);
     let top = base - KERNEL_STACK_SIZE;
-    (top, base)
+    (top, base - ADDR_ALIGN)
 }
 
 /// Allocate a kernel stack for the task by kernel stack identification.

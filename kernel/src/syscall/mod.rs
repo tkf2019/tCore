@@ -1,8 +1,9 @@
-use tsyscall::{SyscallFile, SyscallNO, SyscallProc, SyscallResult};
+use tsyscall::{SyscallFile, SyscallInfo, SyscallNO, SyscallProc, SyscallResult};
 
 use crate::error::{KernelError, KernelResult};
 
 mod file;
+mod info;
 mod proc;
 mod signal;
 
@@ -16,6 +17,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
     match id {
         SyscallNO::WRTIE => SyscallImpl::write(args[0], args[1] as *mut u8, args[2]),
         SyscallNO::EXIT => SyscallImpl::exit(args[0]),
+        SyscallNO::GETPID => SyscallImpl::getpid(),
         _ => {
             unimplemented!()
         }

@@ -6,28 +6,28 @@ use std::process::Command;
 pub struct LibcArgs {
     /// Static libc tests
     #[clap(long)]
-    static_: bool,
+    libc_static: bool,
 
     /// Dynamic libc tests
     #[clap(long)]
-    dynamic: bool,
+    libc_dynamic: bool,
 
     /// Clean before build
     #[clap(long)]
-    clean: bool,
+    libc_clean: bool,
 }
 
 impl LibcArgs {
     pub fn build(&self, libc_root: &str) {
-        if self.clean {
+        if self.libc_clean {
             Command::new("make")
                 .current_dir(&libc_root)
-                .arg("clean")
+                .arg("libc_clean")
                 .status()
                 .unwrap();
         }
 
-        if self.static_ {
+        if self.libc_static {
             Command::new("make")
                 .current_dir(&libc_root)
                 .arg("build_static")
@@ -35,10 +35,10 @@ impl LibcArgs {
                 .unwrap();
         }
 
-        if self.dynamic {
+        if self.libc_dynamic {
             Command::new("make")
                 .current_dir(&libc_root)
-                .arg("build_dynamic")
+                .arg("build_libc_dynamic")
                 .status()
                 .unwrap();
         }

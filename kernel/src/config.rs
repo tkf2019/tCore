@@ -53,6 +53,9 @@ pub const MAIN_TASK: usize = 0;
 /// Use cpu0 as main hart
 pub const MAIN_HART: usize = 0;
 
+/// Default maximum file descriptor limit.
+pub const DEFAULT_FD_LIMIT: usize = 0x100;
+
 /* User configurations */
 
 /// User heap size

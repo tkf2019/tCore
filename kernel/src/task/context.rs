@@ -20,7 +20,7 @@ impl TaskContext {
     pub fn new(trap_return: usize, kstack_base: usize) -> Self {
         Self {
             ra: trap_return,
-            sp: kstack_base - ADDR_ALIGN,
+            sp: kstack_base,
             s: [0; 12],
         }
     }

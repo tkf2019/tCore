@@ -1,8 +1,14 @@
+mod fat;
+mod fd;
+mod stdio;
+
 use alloc::{string::String, sync::Arc, vec::Vec};
 use easy_fs::{EasyFileSystem, FSManager, FileHandle, Inode, OpenFlags};
 use spin::Lazy;
 
 use crate::driver::virtio_block::BLOCK_DEVICE;
+
+pub use fd::*;
 
 pub static FS: Lazy<FileSystem> = Lazy::new(|| FileSystem {
     root: EasyFileSystem::root_inode(&EasyFileSystem::open(BLOCK_DEVICE.clone())),
