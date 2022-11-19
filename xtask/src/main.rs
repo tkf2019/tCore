@@ -115,7 +115,7 @@ impl BuildArgs {
         let user_root = user.to_str().unwrap();
         let user_src = format!("{}/src", &user_root);
         let user_target = format!("{}/target", &user_root);
-
+        println!("Building local tests {}", &user_root);
         // Build all user testcases
         Command::new("cargo")
             .arg("build")

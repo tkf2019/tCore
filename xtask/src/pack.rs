@@ -27,10 +27,6 @@ pub struct PackArgs {
     pack_bsize: usize,
 }
 
-impl PackArgs {
-    pub fn pack(&self) {}
-}
-
 pub mod pack_easy_fs {
     use easy_fs::{BlockDevice, EasyFileSystem};
     use std::{
@@ -98,7 +94,6 @@ pub mod pack_easy_fs {
 }
 
 pub mod pack_fat32 {
-    use chrono::{DateTime, Local};
     use fatfs::{format_volume, FileSystem, FormatVolumeOptions, FsOptions, StdIoWrapper, Write};
     use fscommon::BufStream;
     use std::{
@@ -108,72 +103,77 @@ pub mod pack_fat32 {
 
     use super::PackArgs;
 
+    fn traverse_dir(file: DirEntry, target_dir: String, names: &mut Vec<String>) {
+        let file_name = file.file_name().into_string().unwrap();
+        if file.path().is_dir() {
+            println!("dir: {}", file.file_name().into_string().unwrap());
+            names.push(format!("{}{}/", target_dir, file_name));
+            for inner_entry in fs::read_dir(file.path()).unwrap() {
+                traverse_dir(
+                    inner_entry.unwrap(),
+                    format!("{}{}/", target_dir, file_name),
+                    names,
+                );
+            }
+        } else {
+            names.push(format!("{}{}", target_dir, file_name));
+        }
+    }
+
+    fn traverse_fat_dir<'a>(
+        root: &fatfs::Dir<
+            '_,
+            fatfs::StdIoWrapper<fscommon::BufStream<std::fs::File>>,
+            fatfs::ChronoTimeProvider,
+            fatfs::LossyOemCpConverter,
+        >,
+        file: fatfs::DirEntry<
+            '_,
+            fatfs::StdIoWrapper<fscommon::BufStream<std::fs::File>>,
+            fatfs::ChronoTimeProvider,
+            fatfs::LossyOemCpConverter,
+        >,
+        dir_now: String,
+    ) {
+        if dir_now != "" {
+            print!("\t");
+        }
+        println!("{}", file.file_name());
+        if file.is_dir() {
+            let inner_dir = dir_now + file.file_name().as_str() + "/";
+            println!("{}", &inner_dir);
+            for dir_entry in root.open_dir(inner_dir.as_str()).unwrap().iter() {
+                let file = dir_entry.unwrap();
+                // Escape hidden files or directories.
+                if !file.file_name().starts_with(".") {
+                    traverse_fat_dir(root, file, inner_dir.clone());
+                }
+            }
+        }
+    }
+
+    fn create_new_fs(name: &str) -> io::Result<()> {
+        let img_file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&name)
+            .unwrap();
+        img_file.set_len(256 * 2048 * 512).unwrap();
+        let buf_file = BufStream::new(img_file);
+        format_volume(
+            &mut StdIoWrapper::from(buf_file),
+            FormatVolumeOptions::new(),
+        )
+        .unwrap();
+        Ok(())
+    }
+
     impl PackArgs {
-        fn traverse_dir(file: DirEntry, target_dir: String, names: &mut Vec<String>) {
-            let file_name = file.file_name().into_string().unwrap();
-            if file.path().is_dir() {
-                println!("dir: {}", file.file_name().into_string().unwrap());
-                names.push(format!("{}{}/", target_dir, file_name));
-                for inner_entry in fs::read_dir(file.path()).unwrap() {
-                    traverse_dir(
-                        inner_entry.unwrap(),
-                        format!("{}{}/", target_dir, file_name),
-                        names,
-                    );
-                }
-            } else {
-                names.push(format!("{}{}", target_dir, file_name));
-            }
-        }
-
-        fn traverse_fat_dir<'a>(
-            root: &fatfs::Dir<
-                '_,
-                fatfs::StdIoWrapper<fscommon::BufStream<std::fs::File>>,
-                fatfs::ChronoTimeProvider,
-                fatfs::LossyOemCpConverter,
-            >,
-            file: fatfs::DirEntry<
-                '_,
-                fatfs::StdIoWrapper<fscommon::BufStream<std::fs::File>>,
-                fatfs::ChronoTimeProvider,
-                fatfs::LossyOemCpConverter,
-            >,
-            dir_now: String,
-        ) {
-            if dir_now != "" {
-                print!("\t");
-            }
-            println!(file.file_name());
-            if file.is_dir() {
-                let inner_dir = dir_now + file.file_name().as_str() + "/";
-                println!("{}", &inner_dir);
-                for dir_entry in root.open_dir(inner_dir.as_str()).unwrap().iter() {
-                    let file = dir_entry.unwrap();
-                    // Escape hidden files or directories.
-                    if !file.file_name().starts_with(".") {
-                        traverse_fat_dir(root, file, inner_dir.clone());
-                    }
-                }
-            }
-        }
-
         pub fn pack_fat32(&self) {
             let target = self.pack_target.as_ref().unwrap().clone();
             let image = self.pack_image.as_ref().unwrap().clone() + "fat32.img";
-            let img_file = fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .open(&image)
-                .unwrap();
-            img_file.set_len(16 * 2048 * 512).unwrap();
-            let buf_file = BufStream::new(img_file);
-            format_volume(
-                &mut StdIoWrapper::from(buf_file),
-                FormatVolumeOptions::new(),
-            )
-            .unwrap();
+            create_new_fs(&image.as_str()).unwrap();
             println!("FAT32 image: {}", image);
 
             let mut user_apps: Vec<String> = vec![];
@@ -182,6 +182,12 @@ pub mod pack_fat32 {
                 traverse_dir(file, String::from(""), &mut user_apps);
             }
 
+            let img_file = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&image)
+                .unwrap();
+            let buf_file = BufStream::new(img_file);
             let options = FsOptions::new().update_accessed_date(true);
             let fs = FileSystem::new(buf_file, options).unwrap();
             let root = fs.root_dir();

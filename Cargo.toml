@@ -2,7 +2,7 @@
 members = [
     "xtask",
     "kernel",
-    "user",
+    "test/user",
     "crates/*",
 ]
 default-members = ["xtask"]
