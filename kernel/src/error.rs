@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KernelError {
     /// An invalid page table entry.
     PageTableInvalid,
@@ -22,8 +22,22 @@ pub enum KernelError {
     /// Unsupported syscall
     SyscallUnsupported(usize),
 
-    /// Syscall returns
-    SyscallError(),
+    /// This operation was interrupted.
+    ///
+    /// Interrupted operations can typically be retried.
+    Interrupted,
+
+    /// An error returned when an operation could not be completed because a
+    /// call to `write` returned [`Ok(0)`].
+    WriteZero,
+
+    /// An error returned when an operation could not be completed because an
+    /// "end of file" was reached prematurely.
+    ///
+    /// This typically means that an operation could only succeed if it read a
+    /// particular number of bytes but only a smaller number of bytes could be
+    /// read.
+    UnexpectedEof,
 }
 
 pub type KernelResult<T = ()> = Result<T, KernelError>;

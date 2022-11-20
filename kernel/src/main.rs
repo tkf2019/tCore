@@ -18,8 +18,6 @@ mod trap;
 
 extern crate alloc;
 
-use core::intrinsics::unreachable;
-
 use config::BOOT_STACK_SIZE;
 
 /// Entry for kernel.

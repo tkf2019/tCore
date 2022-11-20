@@ -1,19 +1,14 @@
-use alloc::{collections::BTreeMap, format, sync::Arc, vec::Vec};
-use easy_fs::{FSManager, OpenFlags};
-use log::trace;
-use riscv::register::mhartid;
+use alloc::sync::Arc;
 use spin::{Lazy, Mutex};
 use talloc::{IDAllocator, RecycleAllocator};
 use tmm_rv::{PTEFlags, PAGE_SIZE};
+use tvfs::{OpenFlags, VFS};
 
 use crate::{
-    config::{
-        ADDR_ALIGN, KERNEL_STACK_PAGES, KERNEL_STACK_SIZE, MAIN_HART, MAIN_TASK, TRAMPOLINE_VA,
-    },
+    config::{ADDR_ALIGN, KERNEL_STACK_PAGES, KERNEL_STACK_SIZE, TRAMPOLINE_VA},
     error::KernelResult,
-    fs::{read_all, FS},
-    mm::{pma::FixedPMA, KERNEL_MM, MM},
-    trap::TrapFrame,
+    fs::DISK_FS,
+    mm::{pma::FixedPMA, KERNEL_MM},
 };
 
 use super::{
@@ -137,8 +132,13 @@ pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
     let kstack = kstack_alloc();
 
     // Init task
-    let init_task = read_all(FS.open("hello", OpenFlags::RDONLY).unwrap());
-    let init_task = Arc::new(Task::new(pid, kstack, init_task.as_slice()).unwrap());
+    // let init_task = read_all(FS.open("hello", OpenFlags::RDONLY).unwrap());
+    // let init_task = Arc::new(Task::new(pid, kstack, init_task.as_slice()).unwrap());
+    let init_task = {
+        let fs = DISK_FS.lock();
+        let init_task = unsafe { fs.open("hello_world", OpenFlags::O_RDONLY).unwrap().read_all() };
+        Arc::new(Task::new(pid, kstack, init_task.as_slice()).unwrap())
+    };
 
     // Update task manager
     let mut task_manager = TASK_MANAGER.lock();
@@ -159,7 +159,7 @@ pub fn init() {
 pub fn idle() -> ! {
     loop {
         if let Some(mut task_manager) = TASK_MANAGER.try_lock() {
-            if let Some(mut task) = task_manager.sched.fetch() {
+            if let Some(task) = task_manager.sched.fetch() {
                 let idle_ctx = &task_manager.cpus.idle_ctx as *const TaskContext;
                 let next_ctx = {
                     let mut task_inner = task.inner_lock();

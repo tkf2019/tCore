@@ -11,7 +11,7 @@ pub const NSEC_PER_USEC: usize = 1_000;
 
 /// Represents an elapsed time.
 #[repr(C)]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Clone, Copy, Default)]
 pub struct TimeSpec {
     /// Number of whole seconds of elapsed time.
     pub tv_sec: usize,

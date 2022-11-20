@@ -15,11 +15,11 @@ pub struct PackArgs {
     pub pack_target: Option<String>,
 
     /// Image path.
-    #[clap(long, default_value = ".")]
-    pack_image: Option<String>,
+    #[clap(long, default_value = "./")]
+    pub pack_image: Option<String>,
 
     /// Image size in blocks.
-    #[clap(long, default_value_t = 1024)]
+    #[clap(long, default_value_t = 81920)]
     pack_size: usize,
 
     /// Image block size in bytes.
@@ -59,7 +59,7 @@ pub mod pack_easy_fs {
 
     impl PackArgs {
         pub fn pack_easy_fs(&self, cases: &Vec<&str>, target: String) -> std::io::Result<()> {
-            let image = self.pack_image.as_ref().unwrap().clone() + "easy-fs.img";
+            let image = self.pack_image.as_ref().unwrap().clone();
             let block_file = Arc::new(BlockFile(Mutex::new({
                 let f = OpenOptions::new()
                     .read(true)
@@ -93,6 +93,7 @@ pub mod pack_easy_fs {
     }
 }
 
+#[allow(unused)]
 pub mod pack_fat32 {
     use fatfs::{format_volume, FileSystem, FormatVolumeOptions, FsOptions, StdIoWrapper, Write};
     use fscommon::BufStream;
@@ -100,6 +101,8 @@ pub mod pack_fat32 {
         fs::{self, DirEntry, File},
         io::{self, Read},
     };
+
+    use crate::TEST;
 
     use super::PackArgs;
 
@@ -138,8 +141,9 @@ pub mod pack_fat32 {
         if dir_now != "" {
             print!("\t");
         }
-        println!("{}", file.file_name());
-        if file.is_dir() {
+        if !file.is_dir() {
+            println!("{}", file.file_name());
+        } else {
             let inner_dir = dir_now + file.file_name().as_str() + "/";
             println!("{}", &inner_dir);
             for dir_entry in root.open_dir(inner_dir.as_str()).unwrap().iter() {
@@ -152,28 +156,30 @@ pub mod pack_fat32 {
         }
     }
 
-    fn create_new_fs(name: &str) -> io::Result<()> {
-        let img_file = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&name)
-            .unwrap();
-        img_file.set_len(256 * 2048 * 512).unwrap();
-        let buf_file = BufStream::new(img_file);
-        format_volume(
-            &mut StdIoWrapper::from(buf_file),
-            FormatVolumeOptions::new(),
-        )
-        .unwrap();
-        Ok(())
-    }
-
     impl PackArgs {
+        fn create_new_fs(&self, name: &str) -> io::Result<()> {
+            let img_file = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(&name)
+                .unwrap();
+            img_file
+                .set_len(self.pack_size as u64 * self.pack_bsize as u64)
+                .unwrap();
+            let buf_file = BufStream::new(img_file);
+            format_volume(
+                &mut StdIoWrapper::from(buf_file),
+                FormatVolumeOptions::new(),
+            )
+            .unwrap();
+            Ok(())
+        }
+
         pub fn pack_fat32(&self) {
             let target = self.pack_target.as_ref().unwrap().clone();
-            let image = self.pack_image.as_ref().unwrap().clone() + "fat32.img";
-            create_new_fs(&image.as_str()).unwrap();
+            let image = self.pack_image.as_ref().unwrap().clone();
+            self.create_new_fs(&image.as_str()).unwrap();
             println!("FAT32 image: {}", image);
 
             let mut user_apps: Vec<String> = vec![];
@@ -192,20 +198,23 @@ pub mod pack_fat32 {
             let fs = FileSystem::new(buf_file, options).unwrap();
             let root = fs.root_dir();
 
+            user_apps.sort();
+
             for app in user_apps {
                 if app.ends_with("/") {
-                    println!("user dir: {}", app.as_str());
+                    println!("[User dir] {}", app.as_str());
                     root.create_dir(app.as_str()).unwrap();
                 } else {
                     let mut origin_file = File::open(format!("{}{}", target, app)).unwrap();
                     let mut all_data: Vec<u8> = Vec::new();
                     origin_file.read_to_end(&mut all_data).unwrap();
-                    println!("User app: {}", app.as_str());
+                    println!("[User app] {}", app.as_str());
                     let mut file_in_fs = root.create_file(app.as_str()).unwrap();
                     file_in_fs.write_all(all_data.as_slice()).unwrap();
                 }
             }
 
+            println!("\n------------ Listing apps in FAT32 image ------------");
             // List user apps in fat32.
             for dir_entry in root.iter() {
                 traverse_fat_dir(&root, dir_entry.unwrap(), String::from(""));

@@ -1,4 +1,7 @@
-use alloc::{collections::LinkedList, sync::Arc};
+use alloc::{
+    collections::{LinkedList, VecDeque},
+    sync::Arc,
+};
 use core::{any::Any, fmt};
 use spin::Mutex;
 
@@ -81,6 +84,90 @@ impl Drop for BlockCacheUnit {
     }
 }
 
+pub trait BlockCache {
+    /// The maximum number of block cache units.
+    fn capacity(&self) -> usize;
+
+    /// Get a shared pointer to the target block in the block device.
+    fn get_block(
+        &mut self,
+        block_id: usize,
+        block_dev: Arc<dyn BlockDevice>,
+    ) -> Arc<Mutex<BlockCacheUnit>>;
+
+    /// Synchronize all block cache units to block device.
+    fn sync_all(&self);
+}
+
+pub struct FIFOBlockCache {
+    max_size: usize,
+    inner: VecDeque<(usize, Arc<Mutex<BlockCacheUnit>>)>,
+}
+
+impl FIFOBlockCache {
+    pub fn new(size: usize) -> Self {
+        Self {
+            max_size: size,
+            inner: VecDeque::new(),
+        }
+    }
+}
+
+impl BlockCache for FIFOBlockCache {
+    fn capacity(&self) -> usize {
+        self.max_size
+    }
+
+    fn get_block(
+        &mut self,
+        block_id: usize,
+        block_dev: Arc<dyn BlockDevice>,
+    ) -> Arc<Mutex<BlockCacheUnit>> {
+        if let Some(pair) = self.inner.iter().find(|pair| pair.0 == block_id) {
+            Arc::clone(&pair.1)
+        } else {
+            // substitute
+            if self.inner.len() == self.max_size {
+                // from front to tail
+                if let Some((idx, _)) = self
+                    .inner
+                    .iter()
+                    .enumerate()
+                    .find(|(_, pair)| Arc::strong_count(&pair.1) == 1)
+                {
+                    self.inner.drain(idx..=idx);
+                } else {
+                    panic!("Run out of BlockCache!");
+                }
+            }
+            // load block into mem and push back
+            let block_cache = Arc::new(Mutex::new(BlockCacheUnit::new(
+                block_id,
+                Arc::clone(&block_dev),
+            )));
+            self.inner.push_back((block_id, Arc::clone(&block_cache)));
+            block_cache
+        }
+    }
+
+    fn sync_all(&self) {
+        for (_, unit) in self.inner.iter() {
+            unit.lock().sync();
+        }
+    }
+}
+
+impl fmt::Debug for FIFOBlockCache {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Blocks in Cache (id, rc): [")?;
+        for pair in self.inner.iter() {
+            write!(f, " ({}, {})", pair.0, Arc::strong_count(&pair.1))?;
+        }
+        write!(f, " ]")?;
+        Ok(())
+    }
+}
+
 pub struct LRUBlockCache {
     max_size: usize,
     inner: LinkedList<(usize, Arc<Mutex<BlockCacheUnit>>)>,
@@ -93,8 +180,13 @@ impl LRUBlockCache {
             inner: LinkedList::new(),
         }
     }
+}
+impl BlockCache for LRUBlockCache {
+    fn capacity(&self) -> usize {
+        self.max_size
+    }
 
-    pub fn get_block(
+    fn get_block(
         &mut self,
         block_id: usize,
         block_dev: Arc<dyn BlockDevice>,
@@ -126,6 +218,12 @@ impl LRUBlockCache {
             let unit = Arc::new(Mutex::new(BlockCacheUnit::new(block_id, block_dev)));
             inner.push_back((block_id, unit.clone()));
             unit
+        }
+    }
+
+    fn sync_all(&self) {
+        for (_, unit) in self.inner.iter() {
+            unit.lock().sync();
         }
     }
 }

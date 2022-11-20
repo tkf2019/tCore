@@ -74,16 +74,20 @@ struct BuildArgs {
     #[clap(long)]
     dump: bool,
 
+    /// If set, run build tests.
+    #[clap(long)]
+    build_test: bool,
+
     /// Use libc or local user tests.
     #[clap(long)]
     libc: bool,
 
-    /// Testcases pre-built in `oscomp_testcases`.
+    /// Testcases pre-built in test/oscomp.
     ///
-    /// If set, the flag `libc` will be ignored.
+    /// If set, the flag `test/libc` will be ignored.
     /// If not set, the `pack_args` will be ignored.
     #[clap(long)]
-    oscamp: bool,
+    oscomp: bool,
 
     /// Build libc tests.
     #[clap(flatten)]
@@ -162,29 +166,18 @@ impl BuildArgs {
             .expect("Faild to pack libc tests");
     }
 
-    /// Build oscamp user tests.
-    fn build_oscamp_test(&self) {
-        let fs = self
-            .pack_args
-            .pack_fs
-            .as_ref()
-            .expect("No file system type specified.")
-            .as_str();
-        println!("Packing {} image for os camp testcases...", fs);
-        match fs {
-            "easy-fs" => {}
-            "fat32" => {}
-            _ => unimplemented!(),
-        }
+    /// Build oscomp user tests.
+    fn build_oscomp_test(&self) {
+        self.pack_args.pack_fat32();
     }
 
     /// Build testcases.
     ///
     /// Returns a feature string parsed from command line arguments.
     fn build_test(&self) -> &str {
-        if self.oscamp {
-            self.build_oscamp_test();
-            "oscamp"
+        if self.oscomp {
+            self.build_oscomp_test();
+            "oscomp"
         } else if self.libc {
             self.build_libc_test();
             "libc_test"
@@ -231,7 +224,11 @@ impl BuildArgs {
         } else {
             ("build", opt_level)
         };
-        let features = self.build_test();
+        let features = if self.build_test {
+            self.build_test()
+        } else {
+            ""
+        };
 
         // Linker file for target platform to configure kernel layout
         let linker = PROJECT
@@ -311,11 +308,7 @@ impl QemuArgs {
                 "-drive",
                 format!(
                     "file={},if=none,format=raw,id=x0",
-                    PROJECT
-                        .join("easy-fs.img")
-                        .into_os_string()
-                        .into_string()
-                        .unwrap()
+                    self.build.pack_args.pack_image.as_ref().unwrap().clone()
                 )
                 .as_str(),
                 "-device",

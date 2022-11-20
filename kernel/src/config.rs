@@ -53,6 +53,12 @@ pub const MAIN_TASK: usize = 0;
 /// Use cpu0 as main hart
 pub const MAIN_HART: usize = 0;
 
+/// The number of block cache units for virtio.
+pub const CACHE_SIZE: usize = 32;
+
+/// Size of virtual block device: 40 MB
+pub const FS_IMG_SIZE: usize = 40 * 1024 * 1024;
+
 /// Default maximum file descriptor limit.
 pub const DEFAULT_FD_LIMIT: usize = 0x100;
 

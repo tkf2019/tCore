@@ -110,17 +110,17 @@ pub struct Task {
 
 impl Task {
     /// Create a new task with pid and kernel stack allocated by global manager.
-    pub fn new(pid: usize, kstack: usize, args: Vec<&str>) -> KernelResult<Self> {
+    pub fn new(pid: usize, kstack: usize, elf_data: &[u8]) -> KernelResult<Self> {
         // Init address space
         let mut mm = MM::new()?;
 
-        // from_elf(elf_data, &mut mm)?;
+        from_elf(elf_data, &mut mm)?;
 
         // Init user stack
         let mut tid_allocator = RecycleAllocator::new(MAIN_TASK);
         let tid = tid_allocator.alloc();
         let (ustack_top, ustack_base) = ustack_layout(tid);
-        trace!("USTACK {:#X}, {:#X}", ustack_base, ustack_top);
+
         mm.alloc_write(
             None,
             ustack_top.into(),
@@ -157,7 +157,7 @@ impl Task {
         );
 
         // Init file descriptor table
-        let fd_manager = FDTable::new();
+        let fd_manager = FDManager::new();
 
         let task = Self {
             kstack,

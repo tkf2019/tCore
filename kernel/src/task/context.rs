@@ -1,5 +1,3 @@
-use crate::config::ADDR_ALIGN;
-
 /// Saved registers for kernel context switch
 #[repr(C)]
 #[derive(Debug)]

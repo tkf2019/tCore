@@ -2,7 +2,7 @@ mod trampoline;
 mod trapframe;
 
 use core::arch::asm;
-use log::{debug, info, trace, warn};
+use log::trace;
 use riscv::register::{scause::*, utvec::TrapMode, *};
 
 pub use trampoline::trampoline;

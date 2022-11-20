@@ -1,7 +1,5 @@
 use tsyscall::{SyscallFile, SyscallInfo, SyscallNO, SyscallProc, SyscallResult};
 
-use crate::error::{KernelError, KernelResult};
-
 mod file;
 mod info;
 mod proc;

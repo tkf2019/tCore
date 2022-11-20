@@ -1,10 +1,10 @@
 use super::{
-    block_cache_sync_all, get_block_cache, Bitmap, BlockDevice, DiskInode, DiskInodeType, Inode,
-    SuperBlock,
+    block_cache_sync_all, get_block_cache, Bitmap, DiskInode, DiskInodeType, Inode, SuperBlock,
 };
 use crate::BLOCK_SZ;
 use alloc::sync::Arc;
 use spin::Mutex;
+use tcache::{BlockDevice, CacheUnit};
 ///An easy file system on block
 pub struct EasyFileSystem {
     ///Real device
@@ -50,14 +50,14 @@ impl EasyFileSystem {
         for i in 0..total_blocks {
             get_block_cache(i as usize, Arc::clone(&block_device))
                 .lock()
-                .modify(0, |data_block: &mut DataBlock| {
+                .write(0, |data_block: &mut DataBlock| {
                     for byte in data_block.iter_mut() {
                         *byte = 0;
                     }
                 });
         }
         // initialize SuperBlock
-        get_block_cache(0, Arc::clone(&block_device)).lock().modify(
+        get_block_cache(0, Arc::clone(&block_device)).lock().write(
             0,
             |super_block: &mut SuperBlock| {
                 super_block.initialize(
@@ -75,7 +75,7 @@ impl EasyFileSystem {
         let (root_inode_block_id, root_inode_offset) = efs.get_disk_inode_pos(0);
         get_block_cache(root_inode_block_id as usize, Arc::clone(&block_device))
             .lock()
-            .modify(root_inode_offset, |disk_inode: &mut DiskInode| {
+            .write(root_inode_offset, |disk_inode: &mut DiskInode| {
                 disk_inode.initialize(DiskInodeType::Directory);
             });
         block_cache_sync_all();
@@ -138,7 +138,7 @@ impl EasyFileSystem {
     pub fn dealloc_data(&mut self, block_id: u32) {
         get_block_cache(block_id as usize, Arc::clone(&self.block_device))
             .lock()
-            .modify(0, |data_block: &mut DataBlock| {
+            .write(0, |data_block: &mut DataBlock| {
                 data_block.iter_mut().for_each(|p| {
                     *p = 0;
                 })

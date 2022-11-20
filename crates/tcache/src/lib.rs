@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(unused)]
 #![feature(linked_list_remove)]
 
 extern crate alloc;
@@ -8,6 +9,8 @@ mod block;
 mod test;
 
 use core::any::Any;
+
+pub use block::*;
 
 pub trait CacheUnit: Send + Sync + Any {
     /// Synchronize data in this block to the next level of memory system.

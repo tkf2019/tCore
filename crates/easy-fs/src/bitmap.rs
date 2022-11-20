@@ -1,5 +1,6 @@
-use super::{get_block_cache, BlockDevice, BLOCK_SZ};
+use super::{get_block_cache, BLOCK_SZ};
 use alloc::sync::Arc;
+use tcache::{BlockDevice, CacheUnit};
 /// A bitmap block
 type BitmapBlock = [u64; 64];
 /// Number of bits in a block
@@ -33,7 +34,7 @@ impl Bitmap {
                 Arc::clone(block_device),
             )
             .lock()
-            .modify(0, |bitmap_block: &mut BitmapBlock| {
+            .write(0, |bitmap_block: &mut BitmapBlock| {
                 if let Some((bits64_pos, inner_pos)) = bitmap_block
                     .iter()
                     .enumerate()
@@ -58,7 +59,7 @@ impl Bitmap {
         let (block_pos, bits64_pos, inner_pos) = decomposition(bit);
         get_block_cache(block_pos + self.start_block_id, Arc::clone(block_device))
             .lock()
-            .modify(0, |bitmap_block: &mut BitmapBlock| {
+            .write(0, |bitmap_block: &mut BitmapBlock| {
                 assert!(bitmap_block[bits64_pos] & (1u64 << inner_pos) > 0);
                 bitmap_block[bits64_pos] -= 1u64 << inner_pos;
             });

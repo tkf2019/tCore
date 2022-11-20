@@ -1,11 +1,12 @@
 use super::{
-    block_cache_sync_all, get_block_cache, BlockDevice, DirEntry, DiskInode, DiskInodeType,
-    EasyFileSystem, DIRENT_SZ,
+    block_cache_sync_all, get_block_cache, DirEntry, DiskInode, DiskInodeType, EasyFileSystem,
+    DIRENT_SZ,
 };
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use spin::{Mutex, MutexGuard};
+use tcache::{BlockDevice, CacheUnit};
 /// Virtual filesystem layer over easy-fs
 pub struct Inode {
     block_id: usize,
@@ -41,7 +42,7 @@ impl Inode {
     fn modify_disk_inode<V>(&self, f: impl FnOnce(&mut DiskInode) -> V) -> V {
         get_block_cache(self.block_id, Arc::clone(&self.block_device))
             .lock()
-            .modify(self.block_offset, f)
+            .write(self.block_offset, f)
     }
 
     /// Find inode under a disk inode by name
@@ -107,7 +108,7 @@ impl Inode {
         let (new_inode_block_id, new_inode_block_offset) = fs.get_disk_inode_pos(new_inode_id);
         get_block_cache(new_inode_block_id as usize, Arc::clone(&self.block_device))
             .lock()
-            .modify(new_inode_block_offset, |new_inode: &mut DiskInode| {
+            .write(new_inode_block_offset, |new_inode: &mut DiskInode| {
                 new_inode.initialize(DiskInodeType::File);
             });
         self.modify_disk_inode(|root_inode| {

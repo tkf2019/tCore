@@ -16,7 +16,7 @@ pub static BLOCK_DEVICE: Lazy<Arc<dyn BlockDevice>> = Lazy::new(|| {
     })
 });
 
-struct VirtIOBlock(Mutex<VirtIOBlk<'static, VirtioHal>>);
+pub struct VirtIOBlock(Mutex<VirtIOBlk<'static, VirtioHal>>);
 
 impl BlockDevice for VirtIOBlock {
     fn read_block(&self, block_id: usize, buf: &mut [u8]) {

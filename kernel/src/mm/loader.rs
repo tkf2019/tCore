@@ -1,5 +1,4 @@
-use alloc::sync::Arc;
-use log::trace;
+use alloc::{sync::Arc, vec::Vec};
 use spin::Mutex;
 use tmm_rv::{PTEFlags, Page, VirtAddr};
 use xmas_elf::{
@@ -8,10 +7,7 @@ use xmas_elf::{
     ElfFile,
 };
 
-use crate::{
-    error::{KernelError, KernelResult},
-    println,
-};
+use crate::error::{KernelError, KernelResult};
 
 use super::{pma::FixedPMA, MM};
 
@@ -19,7 +15,7 @@ pub struct ELFInfo {}
 
 /// Finds the user ELF in the given directory and loads the program
 /// into the address space.
-/// 
+///
 /// Returns user entry and user stack base address parsed from the ELF.
 pub fn find_user(
     dir: &str,
@@ -27,7 +23,7 @@ pub fn find_user(
     args: Vec<&str>,
     mm: &mut MM,
 ) -> KernelResult<(usize, usize)> {
-    
+    Ok((0, 0))
 }
 
 /// Load from elf.

@@ -1,6 +1,6 @@
 use log::{info, Level, LevelFilter, Log, Metadata, Record};
 
-use crate::{cons::print, println};
+use crate::println;
 
 struct Logger;
 
