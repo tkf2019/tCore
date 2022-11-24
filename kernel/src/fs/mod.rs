@@ -1,6 +1,7 @@
 use spin::{Lazy, Mutex};
 
 mod fd;
+mod link;
 mod stdio;
 
 cfg_if::cfg_if! {

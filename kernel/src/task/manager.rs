@@ -1,4 +1,5 @@
 use alloc::sync::Arc;
+use log::trace;
 use spin::{Lazy, Mutex};
 use talloc::{IDAllocator, RecycleAllocator};
 use tmm_rv::{PTEFlags, PAGE_SIZE};
@@ -12,7 +13,7 @@ use crate::{
 };
 
 use super::{
-    context::{switch, TaskContext},
+    context::{TaskContext, __move_to_next, __switch},
     schedule::{QueueScheduler, Scheduler},
     task::Task,
     TaskState,
@@ -132,11 +133,13 @@ pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
     let kstack = kstack_alloc();
 
     // Init task
-    // let init_task = read_all(FS.open("hello", OpenFlags::RDONLY).unwrap());
-    // let init_task = Arc::new(Task::new(pid, kstack, init_task.as_slice()).unwrap());
     let init_task = {
         let fs = DISK_FS.lock();
-        let init_task = unsafe { fs.open("hello_world", OpenFlags::O_RDONLY).unwrap().read_all() };
+        let init_task = unsafe {
+            fs.open("rcore/hello_world", OpenFlags::O_RDONLY)
+                .unwrap()
+                .read_all()
+        };
         Arc::new(Task::new(pid, kstack, init_task.as_slice()).unwrap())
     };
 
@@ -150,6 +153,7 @@ pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
 
 /// Initialize  [`INIT_TASK`] manually.
 pub fn init() {
+    #[allow(unused_must_use)]
     INIT_TASK.clone();
 }
 
@@ -169,8 +173,10 @@ pub fn idle() -> ! {
                 task_manager.cpus.current = Some(task);
                 drop(task_manager);
                 unsafe {
-                    switch(idle_ctx, next_ctx);
+                    __switch(idle_ctx, next_ctx);
                 }
+            } else {
+                panic!("No task to execute!");
             }
         }
     }
@@ -179,12 +185,18 @@ pub fn idle() -> ! {
 /// Exit current task and run next task.
 pub fn do_exit(exit_code: i32) {
     let current = current_task().unwrap();
-    let mut current_inner = current.inner_lock();
+    trace!("Task {} exited with code {}", current.tid, exit_code);
 
+    let mut current_inner = current.inner_lock();
     current_inner.exit_code = exit_code;
     current_inner.state = TaskState::Zombie;
+    drop(current_inner);
+    drop(current);
 
-    loop {
-        // let init_task = INIT_TASK.
+    let mut task_manager = TASK_MANAGER.lock();
+    let idle_ctx = &mut task_manager.cpus.idle_ctx as *const TaskContext;
+    drop(task_manager);
+    unsafe {
+        __move_to_next(idle_ctx);
     }
 }

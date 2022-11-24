@@ -1,4 +1,8 @@
+use core::intrinsics::unreachable;
+
 use tsyscall::*;
+
+use crate::task::do_exit;
 
 use super::SyscallImpl;
 
@@ -8,7 +12,8 @@ impl SyscallProc for SyscallImpl {
     }
 
     fn exit(status: usize) -> ! {
-        todo!()
+        do_exit(status as i32);
+        unreachable!()
     }
 
     fn execve(pathname: usize, argv: usize, envp: usize) -> SyscallResult {

@@ -96,6 +96,11 @@ pub trait File: Send + Sync + AsAny {
     fn is_dir(&self) -> bool {
         false
     }
+
+    /// Gets the number of hard links.
+    fn get_nlink(&self) -> Option<usize> {
+        None
+    }
 }
 
 pub trait AsAny {

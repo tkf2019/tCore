@@ -1,5 +1,3 @@
-mod link;
-
 use alloc::{sync::Arc, vec::Vec};
 use fatfs::{
     DefaultTimeProvider, FsOptions, IoBase, LossyOemCpConverter, Read, Seek, SeekFrom, Write,
@@ -18,7 +16,7 @@ use crate::{
     println,
 };
 
-use self::link::get_nlink;
+use super::link::{get_nlink, get_path};
 
 type FatTP = DefaultTimeProvider;
 type FatOCC = LossyOemCpConverter;
@@ -398,8 +396,8 @@ static FAT_FS: Lazy<fatfs::FileSystem<FatIO, FatTP, FatOCC>> = Lazy::new(|| {
 impl VFS for FileSystem {
     fn open(&self, path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO> {
         let root = FAT_FS.root_dir();
-        let raw_path = path;
-        let mut path = Path::new(raw_path);
+        let raw_path = Path::new(path);
+        let mut path = get_path(&raw_path);
         let file = match path.pop() {
             Some(file) => file,
             // Empty path is not allowed.
@@ -429,11 +427,7 @@ impl VFS for FileSystem {
                 if flags.contains(OpenFlags::O_CREAT) {
                     let file = dir.create_file(file.as_str()).unwrap();
                     Ok(Arc::new(FSFile::new(
-                        readable,
-                        writable,
-                        Path::new(raw_path),
-                        file,
-                        flags,
+                        readable, writable, raw_path, file, flags,
                     )))
                 } else {
                     Err(ErrNO::ENOENT)
