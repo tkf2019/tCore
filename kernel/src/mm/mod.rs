@@ -8,7 +8,7 @@ use vma::VMArea;
 use crate::{
     config::{MMIO, PAGE_SIZE, PHYSICAL_MEMORY_END, TRAMPOLINE_VA},
     error::{KernelError, KernelResult},
-    trap::trampoline,
+    trap::__trampoline,
 };
 
 use self::pma::{IdenticalPMA, PMArea};
@@ -74,7 +74,7 @@ impl MM {
                 mm.page_table
                     .map(
                         VirtAddr::from(TRAMPOLINE_VA).into(),
-                        PhysAddr::from(trampoline as usize).into(),
+                        PhysAddr::from(__trampoline as usize).into(),
                         PTEFlags::READABLE | PTEFlags::EXECUTABLE | PTEFlags::VALID,
                     )
                     .map_err(|err| {
@@ -129,7 +129,7 @@ impl MM {
         Ok(())
     }
 
-    /// Allocate a new [`VMArea`] with the virtual range of `[start_va, end_va)`. 
+    /// Allocate a new [`VMArea`] with the virtual range of `[start_va, end_va)`.
     /// Writes the data to the mapped physical areas.
     pub fn alloc_write(
         &mut self,

@@ -2,24 +2,14 @@ mod logger;
 mod panic;
 
 use core::fmt::{Arguments, Result, Write};
-use sbi_rt::*;
-
 pub use logger::init;
+use sbi_rt::*;
+use spin::{Lazy, Mutex};
 
-struct Console;
-
-impl Write for Console {
-    fn write_str(&mut self, s: &str) -> Result {
-        for c in s.chars() {
-            #[allow(deprecated)]
-            legacy::console_putchar(c as _);
-        }
-        Ok(())
-    }
-}
+use crate::arch::puts;
 
 pub fn print(args: Arguments) {
-    Console.write_fmt(args).unwrap();
+    puts(args, false);
 }
 
 #[macro_export]

@@ -13,7 +13,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
     let id = args.0;
     let args = args.1;
     match id {
-        SyscallNO::WRTIE => SyscallImpl::write(args[0], args[1] as *mut u8, args[2]),
+        SyscallNO::WRTIE => SyscallImpl::write(args[0], args[1] as *const u8, args[2]),
         SyscallNO::EXIT => SyscallImpl::exit(args[0]),
         SyscallNO::GETPID => SyscallImpl::getpid(),
         _ => {

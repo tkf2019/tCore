@@ -59,7 +59,7 @@ pub trait SyscallFile {
     fn close(fd: usize) -> SyscallResult;
 
     /// Write to a file descriptor.
-    fn write(fd: usize, buf: *mut u8, count: usize) -> SyscallResult;
+    fn write(fd: usize, buf: *const u8, count: usize) -> SyscallResult;
 }
 
 pub trait SyscallDev {}

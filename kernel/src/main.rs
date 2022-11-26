@@ -5,6 +5,8 @@
 #![feature(alloc_error_handler)]
 #![feature(core_intrinsics)]
 
+#[path = "arch/riscv/mod.rs"]
+mod arch;
 mod config;
 mod cons;
 mod driver;
@@ -19,27 +21,7 @@ mod trap;
 extern crate alloc;
 
 use config::BOOT_STACK_SIZE;
-
-/// Entry for kernel.
-#[naked]
-#[no_mangle]
-#[link_section = ".text.entry"]
-unsafe extern "C" fn _start() -> ! {
-    // Initialize kernel stack in .bss section.
-    #[link_section = ".bss.stack"]
-    static mut STACK: [u8; BOOT_STACK_SIZE] = [0u8; BOOT_STACK_SIZE];
-
-    core::arch::asm!(
-        // Set stack pointer to the kernel stack.
-        "la sp, {stack} + {stack_size}",
-        // Jump to the main function.
-        "j  {main}",
-        stack_size = const BOOT_STACK_SIZE,
-        stack      =   sym STACK,
-        main       =   sym rust_main,
-        options(noreturn),
-    )
-}
+use log::trace;
 
 /// Clear .bss
 fn clear_bss() {
@@ -53,7 +35,8 @@ fn clear_bss() {
     }
 }
 
-extern "C" fn rust_main() -> ! {
+#[no_mangle]
+pub extern "C" fn rust_main(hartid: usize) -> ! {
     // Clear .bss
     clear_bss();
     // Initialization
@@ -61,9 +44,13 @@ extern "C" fn rust_main() -> ! {
     heap::init();
     mm::init();
     task::init();
-
+    trace!("[CPU {}] Start executing tasks.", hartid);
     // IDLE loop
     task::idle();
-
     unreachable!()
+}
+
+#[no_mangle]
+pub extern "C" fn rust_main_secondary() -> ! {
+    unimplemented!()
 }

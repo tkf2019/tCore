@@ -1,12 +1,15 @@
+use alloc::{borrow::ToOwned, string::String};
+use core::{slice::from_raw_parts, str::from_utf8_unchecked};
+use log::trace;
 use tmm_rv::VirtAddr;
 use tsyscall::*;
 
-use crate::{print, task::current_task};
+use crate::{print, println, task::current_task};
 
 use super::SyscallImpl;
 
 impl SyscallFile for SyscallImpl {
-    fn write(fd: usize, buf: *mut u8, count: usize) -> SyscallResult {
+    fn write(fd: usize, buf: *const u8, count: usize) -> SyscallResult {
         let current = current_task().unwrap();
         let mut current_mm = current.mm.lock();
         let pa: usize = current_mm
@@ -14,9 +17,9 @@ impl SyscallFile for SyscallImpl {
             .translate(VirtAddr::from(buf as usize))
             .unwrap()
             .into();
-        print!("{}", unsafe {
-            core::str::from_utf8_unchecked(core::slice::from_raw_parts(pa as _, count))
-        });
+
+        let s = unsafe { from_raw_parts(pa as *const u8, count) };
+        print!("{} ", unsafe { from_utf8_unchecked(s) });
         Ok(count)
     }
 

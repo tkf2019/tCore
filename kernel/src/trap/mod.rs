@@ -2,10 +2,11 @@ mod trampoline;
 mod trapframe;
 
 use core::arch::asm;
+use log::info;
 use log::trace;
 use riscv::register::{scause::*, utvec::TrapMode, *};
 
-pub use trampoline::trampoline;
+pub use trampoline::__trampoline;
 pub use trapframe::TrapFrame;
 
 use crate::{
@@ -26,10 +27,7 @@ pub fn user_trap_handler() -> ! {
     // Handle user trap with detailed cause
     trace!(
         "USER TRAP {:X?}, {:X?}, {:#X}, {:#X}",
-        cause,
-        status,
-        tval,
-        epc
+        cause, status, tval, epc
     );
     match cause {
         Trap::Exception(Exception::UserEnvCall) => {

@@ -6,7 +6,7 @@ use tmm_rv::{PTEFlags, PAGE_SIZE};
 use tvfs::{OpenFlags, VFS};
 
 use crate::{
-    config::{ADDR_ALIGN, KERNEL_STACK_PAGES, KERNEL_STACK_SIZE, TRAMPOLINE_VA},
+    config::{ADDR_ALIGN, INIT_TASK_PATH, KERNEL_STACK_PAGES, KERNEL_STACK_SIZE, TRAMPOLINE_VA},
     error::KernelResult,
     fs::DISK_FS,
     mm::{pma::FixedPMA, KERNEL_MM},
@@ -93,7 +93,6 @@ impl CPUContext {
     }
 }
 
-/// Schedules the task running on each CPU.
 pub struct TaskManager {
     /// Task scheduler
     pub sched: QueueScheduler,
@@ -113,10 +112,8 @@ impl TaskManager {
     }
 }
 
-pub static TASK_MANAGER: Lazy<Mutex<TaskManager>> = Lazy::new(|| {
-    let task_manager = TaskManager::new();
-    Mutex::new(task_manager)
-});
+/// Global task manager shared by harts.
+pub static TASK_MANAGER: Lazy<Mutex<TaskManager>> = Lazy::new(|| Mutex::new(TaskManager::new()));
 
 /// Get current task running on this cpu.
 pub fn current_task() -> Option<Arc<Task>> {
@@ -136,7 +133,7 @@ pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
     let init_task = {
         let fs = DISK_FS.lock();
         let init_task = unsafe {
-            fs.open("rcore/hello_world", OpenFlags::O_RDONLY)
+            fs.open(INIT_TASK_PATH, OpenFlags::O_RDONLY)
                 .unwrap()
                 .read_all()
         };
@@ -152,8 +149,8 @@ pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
 });
 
 /// Initialize  [`INIT_TASK`] manually.
+#[allow(unused)]
 pub fn init() {
-    #[allow(unused_must_use)]
     INIT_TASK.clone();
 }
 
@@ -193,10 +190,28 @@ pub fn do_exit(exit_code: i32) {
     drop(current_inner);
     drop(current);
 
-    let mut task_manager = TASK_MANAGER.lock();
-    let idle_ctx = &mut task_manager.cpus.idle_ctx as *const TaskContext;
-    drop(task_manager);
+    let idle_ctx = {
+        let task_manager = TASK_MANAGER.lock();
+        &task_manager.cpus.idle_ctx as *const TaskContext
+    };
     unsafe {
         __move_to_next(idle_ctx);
+    }
+}
+
+pub fn do_yield() {
+    let curr_ctx = {
+        let current = current_task().unwrap();
+        trace!("Task {} suspended", current.tid);
+        let mut current_inner = current.inner_lock();
+        current_inner.state = TaskState::Runnable;
+        &current_inner.ctx as *const TaskContext
+    };
+    let idle_ctx = {
+        let task_manager = TASK_MANAGER.lock();
+        &task_manager.cpus.idle_ctx as *const TaskContext
+    };
+    unsafe {
+        __switch(curr_ctx, idle_ctx);
     }
 }
