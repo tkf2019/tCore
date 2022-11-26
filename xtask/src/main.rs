@@ -268,6 +268,10 @@ struct QemuArgs {
     /// Use Build Arguments
     #[clap(flatten)]
     build: BuildArgs,
+
+    /// Multiprocessing
+    #[clap(long, default_value = "1")]
+    smp: Option<String>,
 }
 
 impl QemuArgs {
@@ -298,6 +302,7 @@ impl QemuArgs {
         ));
         cmd.args(&["-machine", "virt"])
             .args(&["-m", "2G"])
+            .args(&["-smp", self.smp.as_ref().unwrap().as_str()])
             .arg("-nographic")
             .arg("-bios")
             .arg(&bootloader)

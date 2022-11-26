@@ -27,7 +27,10 @@ pub fn user_trap_handler() -> ! {
     // Handle user trap with detailed cause
     trace!(
         "USER TRAP {:X?}, {:X?}, {:#X}, {:#X}",
-        cause, status, tval, epc
+        cause,
+        status,
+        tval,
+        epc
     );
     match cause {
         Trap::Exception(Exception::UserEnvCall) => {

@@ -1,6 +1,6 @@
 use log::{info, Level, LevelFilter, Log, Metadata, Record};
 
-use crate::println;
+use crate::{arch::get_cpu_id, println};
 
 struct Logger;
 
@@ -20,9 +20,11 @@ impl Log for Logger {
             Level::Debug => 32, // Green
             Level::Trace => 90, // BrightBlack
         };
+        let cpu_id = get_cpu_id();
         println!(
-            "\u{1B}[{}m[{:>5}] ({}:{}) {} \u{1B}[0m",
+            "\u{1B}[{}m[CPU {}][{:>5}] ({}:{}) {} \u{1B}[0m",
             color_code,
+            cpu_id,
             record.level(),
             record.file().unwrap(),
             record.line().unwrap(),

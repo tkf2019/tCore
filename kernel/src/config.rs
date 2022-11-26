@@ -4,12 +4,10 @@ heap and stack have better be integral multiple of PAGE_SIZE.
 */
 #![allow(unused)]
 
-use core::intrinsics::size_of;
-
 use tmm_rv::PAGE_SIZE_BITS;
 pub use tmm_rv::{LOW_MAX_VA, MAX_VA, PAGE_SIZE};
 
-pub const ADDR_ALIGN: usize = size_of::<usize>();
+pub const ADDR_ALIGN: usize = core::mem::size_of::<usize>();
 
 /* Global configurations */
 

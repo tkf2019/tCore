@@ -1,4 +1,4 @@
-use alloc::sync::Arc;
+use alloc::{sync::Arc, vec::Vec};
 use log::trace;
 use spin::{Lazy, Mutex};
 use talloc::{IDAllocator, RecycleAllocator};
@@ -6,7 +6,10 @@ use tmm_rv::{PTEFlags, PAGE_SIZE};
 use tvfs::{OpenFlags, VFS};
 
 use crate::{
-    config::{ADDR_ALIGN, INIT_TASK_PATH, KERNEL_STACK_PAGES, KERNEL_STACK_SIZE, TRAMPOLINE_VA},
+    arch::get_cpu_id,
+    config::{
+        ADDR_ALIGN, CPU_NUM, INIT_TASK_PATH, KERNEL_STACK_PAGES, KERNEL_STACK_SIZE, TRAMPOLINE_VA,
+    },
     error::KernelResult,
     fs::DISK_FS,
     mm::{pma::FixedPMA, KERNEL_MM},
@@ -98,7 +101,7 @@ pub struct TaskManager {
     pub sched: QueueScheduler,
 
     /// CPU contexts mapped by hartid.
-    pub cpus: CPUContext,
+    pub cpus: Vec<CPUContext>,
 }
 
 impl TaskManager {
@@ -106,20 +109,34 @@ impl TaskManager {
     pub fn new() -> Self {
         Self {
             sched: QueueScheduler::new(),
-            // cpus: BTreeMap::new(),
-            cpus: CPUContext::new(),
+            cpus: Vec::new(),
         }
     }
 }
 
-/// Global task manager shared by harts.
-pub static TASK_MANAGER: Lazy<Mutex<TaskManager>> = Lazy::new(|| Mutex::new(TaskManager::new()));
+/// Global task manager shared by CPUs.
+pub static TASK_MANAGER: Lazy<Mutex<TaskManager>> = Lazy::new(|| {
+    let mut task_manager = TaskManager::new();
+    // Initialize CPU contexts.
+    for cpu_id in 0..CPU_NUM {
+        task_manager.cpus.push(CPUContext::new());
+    }
+    Mutex::new(task_manager)
+});
 
-/// Get current task running on this cpu.
+/// Get current task running on this CPU.
 pub fn current_task() -> Option<Arc<Task>> {
+    let cpu_id = get_cpu_id();
     let task_manager = TASK_MANAGER.lock();
-    let cpu_context = &task_manager.cpus;
-    cpu_context.current.as_ref().map(Arc::clone)
+    let cpu_ctx = &task_manager.cpus[cpu_id];
+    cpu_ctx.current.as_ref().map(Arc::clone)
+}
+
+/// IDLE task context on this CPU.
+pub fn idle_ctx() -> *const TaskContext {
+    let cpu_id = get_cpu_id();
+    let task_manager = TASK_MANAGER.lock();
+    &task_manager.cpus[cpu_id].idle_ctx as _
 }
 
 pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
@@ -141,8 +158,9 @@ pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
     };
 
     // Update task manager
+    let cpu_id = get_cpu_id();
     let mut task_manager = TASK_MANAGER.lock();
-    task_manager.cpus.current = Some(init_task.clone());
+    task_manager.cpus[cpu_id].current = Some(init_task.clone());
     task_manager.sched.add(init_task.clone());
 
     init_task
@@ -159,19 +177,19 @@ pub fn init() {
 /// 2.  Each cpu runs the task fetched from schedule queue
 pub fn idle() -> ! {
     loop {
+        let cpu_id = get_cpu_id();
         if let Some(mut task_manager) = TASK_MANAGER.try_lock() {
             if let Some(task) = task_manager.sched.fetch() {
-                let idle_ctx = &task_manager.cpus.idle_ctx as *const TaskContext;
+                let cpu_ctx = &mut task_manager.cpus[cpu_id];
+                let idle_ctx = &cpu_ctx.idle_ctx as *const TaskContext;
                 let next_ctx = {
                     let mut task_inner = task.inner_lock();
                     task_inner.state = TaskState::Running;
                     &task_inner.ctx as *const TaskContext
                 };
-                task_manager.cpus.current = Some(task);
+                cpu_ctx.current = Some(task);
                 drop(task_manager);
-                unsafe {
-                    __switch(idle_ctx, next_ctx);
-                }
+                unsafe { __switch(idle_ctx, next_ctx) };
             } else {
                 panic!("No task to execute!");
             }
@@ -190,13 +208,7 @@ pub fn do_exit(exit_code: i32) {
     drop(current_inner);
     drop(current);
 
-    let idle_ctx = {
-        let task_manager = TASK_MANAGER.lock();
-        &task_manager.cpus.idle_ctx as *const TaskContext
-    };
-    unsafe {
-        __move_to_next(idle_ctx);
-    }
+    unsafe { __move_to_next(idle_ctx()) };
 }
 
 pub fn do_yield() {
@@ -207,11 +219,6 @@ pub fn do_yield() {
         current_inner.state = TaskState::Runnable;
         &current_inner.ctx as *const TaskContext
     };
-    let idle_ctx = {
-        let task_manager = TASK_MANAGER.lock();
-        &task_manager.cpus.idle_ctx as *const TaskContext
-    };
-    unsafe {
-        __switch(curr_ctx, idle_ctx);
-    }
+
+    unsafe { __switch(curr_ctx, idle_ctx()) };
 }

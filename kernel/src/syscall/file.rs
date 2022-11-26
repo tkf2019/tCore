@@ -4,7 +4,7 @@ use log::trace;
 use tmm_rv::VirtAddr;
 use tsyscall::*;
 
-use crate::{print, println, task::current_task};
+use crate::{arch::get_cpu_id, print, println, task::current_task};
 
 use super::SyscallImpl;
 

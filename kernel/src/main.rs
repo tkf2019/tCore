@@ -20,8 +20,12 @@ mod trap;
 
 extern crate alloc;
 
-use config::BOOT_STACK_SIZE;
 use log::trace;
+
+use crate::{
+    arch::{__entry_others, start_hart},
+    config::{BOOT_STACK_SIZE, CPU_NUM},
+};
 
 /// Clear .bss
 fn clear_bss() {
@@ -44,13 +48,22 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
     heap::init();
     mm::init();
     task::init();
-    trace!("[CPU {}] Start executing tasks.", hartid);
+    trace!("Start executing tasks.");
+    // Wake up other harts.
+    for cpu_id in 0..CPU_NUM {
+        if cpu_id != hartid {
+            let entry = __entry_others as usize;
+            trace!("Try to start hart {}", cpu_id);
+            start_hart(cpu_id, entry, 0);
+        }
+    }
     // IDLE loop
     task::idle();
     unreachable!()
 }
 
 #[no_mangle]
-pub extern "C" fn rust_main_secondary() -> ! {
-    unimplemented!()
+pub extern "C" fn rust_main_others(hartid: usize) -> ! {
+    trace!("(Secondary) Start executing tasks.");
+    loop {}
 }

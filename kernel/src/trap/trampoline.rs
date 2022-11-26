@@ -7,7 +7,7 @@
 #[naked]
 #[no_mangle]
 #[allow(named_asm_labels)]
-#[link_section = ".text.trampoline"]
+#[link_section = ".text.trampoline"] 
 pub unsafe extern "C" fn __trampoline() {
     core::arch::asm!(
         // Jump to stvec (user trap entry)
@@ -64,6 +64,8 @@ pub unsafe extern "C" fn __trampoline() {
         "ld t0, 16(sp)",
         // Load the kernel page table root address
         "ld t1, 0(sp)",
+        // Load cpu id
+        "ld tp, 288(sp)",
         // Initialize kernel stack pointer
         "ld sp, 8(sp)",
         // Change to the kernel page table root
@@ -85,6 +87,8 @@ pub unsafe extern "C" fn __trampoline() {
         ",
         // Now sscratch agiain points to user trapframe
         "csrw sscratch, a0",
+        // Save cpu id
+        "sd tp, 288(a0)",
         // Restore user registers
         "
         ld ra, 40(a0)

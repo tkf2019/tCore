@@ -6,6 +6,7 @@ use talloc::{IDAllocator, RecycleAllocator};
 use tmm_rv::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE};
 
 use crate::{
+    arch::get_cpu_id,
     config::{
         ADDR_ALIGN, MAIN_TASK, TRAMPOLINE_VA, USER_STACK_BASE, USER_STACK_PAGES, USER_STACK_SIZE,
     },
@@ -154,6 +155,8 @@ impl Task {
             mm.entry.value(),
             sstatus::read(),
             ustack_base,
+            // CPU id will be saved when the user task is restored.
+            usize::MAX,
         );
 
         // Init file descriptor table

@@ -24,6 +24,8 @@ pub struct TrapFrame {
     /// Saved global registers (arch dependent)
     /// No need to save x0 (wired to zero)
     user_regs: [usize; 31],
+    /// Saved hartid
+    cpu_id: usize,
 }
 
 impl TrapFrame {
@@ -35,6 +37,7 @@ impl TrapFrame {
         user_epc: usize,
         user_status: Sstatus,
         user_sp: usize,
+        cpu_id: usize,
     ) -> Self {
         let mut trapframe = Self {
             kernel_satp,
@@ -43,6 +46,7 @@ impl TrapFrame {
             user_epc,
             user_status,
             user_regs: [0; 31],
+            cpu_id,
         };
         trapframe.user_regs[1] = user_sp;
         trapframe
