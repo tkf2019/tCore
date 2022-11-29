@@ -7,14 +7,14 @@
 #[naked]
 #[no_mangle]
 #[allow(named_asm_labels)]
-#[link_section = ".text.trampoline"] 
+#[link_section = ".text.trampoline"]
 pub unsafe extern "C" fn __trampoline() {
     core::arch::asm!(
         // Jump to stvec (user trap entry)
         "
         .align 4
-        .globl uservec
-    uservec:
+        .globl __uservec
+    __uservec:
         ",
         // Now sp points to user trapframe, and sscratch points to user stack.
         "csrrw sp, sscratch, sp",
@@ -74,13 +74,13 @@ pub unsafe extern "C" fn __trampoline() {
         "sfence.vma zero, zero",
         // Jump to trap handler
         "jr t0",
-        // userret(trapframe_va, page_table_root)
+        // __userret(trapframe_va, page_table_root)
         // switch from kernel to user
         "
-        .globl userret
-    userret:
+        .globl __userret
+    __userret:
         ",
-        // Restore user page table (see uservec)
+        // Restore user page table (see __uservec)
         "
         csrw satp, a1
         sfence.vma zero, zero
@@ -133,6 +133,67 @@ pub unsafe extern "C" fn __trampoline() {
         "ld a0, 112(a0)",
         // Return to user context
         "sret",
+        // kernel trap vector
+        "
+        .globl __kernelvec
+    __kernelvec:
+        ",
+        // Allocate stack space
+        "addi sp, sp, -248",
+        // Save kernel registers
+        "
+        sd ra, 0(sp)
+        sd gp, 8(sp)
+        ",
+        // Skip tp, used for cpu id
+        "
+        sd t0, 16(sp)
+        sd t1, 24(sp)
+        sd t2, 32(sp)
+        sd s0, 40(sp)
+        sd s1, 48(sp)
+        sd a0, 56(sp)
+        sd a1, 64(sp)
+        sd a2, 72(sp)
+        sd a3, 80(sp)
+        sd a4, 88(sp)
+        sd a5, 96(sp)
+        sd a6, 104(sp)
+        sd a7, 112(sp)
+        sd s2, 120(sp)
+        sd s3, 128(sp)
+        sd s4, 136(sp)
+        sd s5, 144(sp)
+        sd s6, 152(sp)
+        sd s7, 160(sp)
+        sd s8, 168(sp)
+        sd s9, 176(sp)
+        sd s10, 184(sp)
+        sd s11, 192(sp)
+        sd t3, 200(sp)
+        sd t4, 208(sp)
+        sd t5, 216(sp)
+        sd t6, 224(sp)
+        ",
+        // Save sepc and sstatus
+        "
+        csrr t0, sepc
+        csrr t1, sstatus
+        sd t0, 232(sp)
+        sd t1, 240(sp)
+        ",
+        // Return new sp (*KernelTrapContext)
+        "mv a0, sp",
+        // Jump to kernel_trap_handler(&KernelTrapContext)
+        "
+        csrr t2, sscratch
+        jalr t2
+        ",
+        // kernel return
+        "
+        .globl __kernelret
+    __kernelret:
+        ",
         options(noreturn),
     );
 }

@@ -5,7 +5,7 @@ use numeric_enum_macro::numeric_enum;
 
 numeric_enum! {
     #[repr(usize)]
-    #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+    #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Clone, Copy)]
     #[doc = "Errno in Linux"]
     pub enum ErrNO {
         /// Operation not permitted

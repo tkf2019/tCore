@@ -1,4 +1,8 @@
-use alloc::{rc::Weak, sync::Arc, vec::Vec};
+use alloc::{
+    string::String,
+    sync::{Arc, Weak},
+    vec::Vec,
+};
 use log::{trace, warn};
 use riscv::register::sstatus::{self, set_spp, SPP};
 use spin::{mutex::Mutex, MutexGuard};
@@ -6,13 +10,11 @@ use talloc::{IDAllocator, RecycleAllocator};
 use tmm_rv::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE};
 
 use crate::{
-    arch::get_cpu_id,
-    config::{
-        ADDR_ALIGN, MAIN_TASK, TRAMPOLINE_VA, USER_STACK_BASE, USER_STACK_PAGES, USER_STACK_SIZE,
-    },
+    config::*,
     error::{KernelError, KernelResult},
     fs::FDManager,
-    mm::{from_elf, pma::FixedPMA, KERNEL_MM, MM},
+    loader::from_elf,
+    mm::{pma::FixedPMA, KERNEL_MM, MM},
     trap::{user_trap_handler, user_trap_return, TrapFrame},
 };
 
@@ -31,6 +33,7 @@ use super::{
 /// to running or runnable by `SIGCONT` signal.
 /// - **Zombie** (Z): When a task has completed its execution or is terminated, it will send the
 /// `SIGCHLD` signal to the parent task and go into the zombie state.
+#[derive(Debug, Clone, Copy)]
 pub enum TaskState {
     Runnable,
     Running,
@@ -107,15 +110,22 @@ pub struct Task {
 
     /// File descriptor table.
     pub fd_manager: Arc<Mutex<FDManager>>,
+
+    /// Name of this task.
+    pub name: String,
 }
 
 impl Task {
     /// Create a new task with pid and kernel stack allocated by global manager.
-    pub fn new(pid: usize, kstack: usize, elf_data: &[u8]) -> KernelResult<Self> {
+    pub fn new(
+        pid: usize,
+        kstack: usize,
+        elf_data: &[u8],
+        args: Vec<String>,
+    ) -> KernelResult<Self> {
         // Init address space
-        let mut mm = MM::new()?;
-
-        from_elf(elf_data, &mut mm)?;
+        let name = args[0].clone();
+        let mut mm = from_elf(elf_data, args)?;
 
         // Init user stack
         let mut tid_allocator = RecycleAllocator::new(MAIN_TASK);
@@ -162,6 +172,7 @@ impl Task {
         // Init file descriptor table
         let fd_manager = FDManager::new();
 
+        trace!("Create task {}: pid {}, tid {}", name, pid, tid);
         let task = Self {
             kstack,
             tid,
@@ -177,6 +188,7 @@ impl Task {
             tid_allocator: Arc::new(Mutex::new(tid_allocator)),
             mm: Arc::new(Mutex::new(mm)),
             fd_manager: Arc::new(Mutex::new(fd_manager)),
+            name,
         };
         Ok(task)
     }
@@ -189,6 +201,17 @@ impl Task {
     /// Acquire inner lock to modify the metadata in [`TaskInner`].
     pub fn inner_lock(&self) -> MutexGuard<TaskInner> {
         self.inner.lock()
+    }
+
+    /// Try to acquire inner lock to modify the metadata in [`TaskInner`]
+    pub fn inner_try_lock(&self) -> Option<MutexGuard<TaskInner>> {
+        self.inner.try_lock()
+    }
+
+    /// Get task status
+    pub fn get_state(&self) -> TaskState {
+        let inner = self.inner.lock();
+        inner.state
     }
 }
 

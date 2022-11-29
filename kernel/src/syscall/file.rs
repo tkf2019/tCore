@@ -1,10 +1,8 @@
-use alloc::{borrow::ToOwned, string::String};
 use core::{slice::from_raw_parts, str::from_utf8_unchecked};
-use log::trace;
 use tmm_rv::VirtAddr;
 use tsyscall::*;
 
-use crate::{arch::get_cpu_id, print, println, task::current_task};
+use crate::{print, task::current_task};
 
 use super::SyscallImpl;
 

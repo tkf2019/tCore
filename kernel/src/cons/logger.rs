@@ -22,7 +22,7 @@ impl Log for Logger {
         };
         let cpu_id = get_cpu_id();
         println!(
-            "\u{1B}[{}m[CPU {}][{:>5}] ({}:{}) {} \u{1B}[0m",
+            "\u{1B}[{}m[CPU{:>3}][{:>5}] ({}:{}) {} \u{1B}[0m",
             color_code,
             cpu_id,
             record.level(),

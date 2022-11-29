@@ -118,5 +118,5 @@ pub trait VFS: Send + Sync {
     /// - `path`: Absolute path which must start with '/'.
     /// - `flags`: Standard [`OpenFlags`].
     /// See https://man7.org/linux/man-pages/man2/open.2.html.
-    fn open(&self, path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO>;
+    fn open(&self, path: &Path, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO>;
 }

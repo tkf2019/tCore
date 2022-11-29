@@ -1,33 +1,43 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{string::String, sync::Arc, vec::Vec};
 use spin::Mutex;
 use tmm_rv::{PTEFlags, Page, VirtAddr};
+use tvfs::OpenFlags;
 use xmas_elf::{
     header,
     program::{self, SegmentData},
     ElfFile,
 };
 
-use crate::error::{KernelError, KernelResult};
+use crate::{
+    error::{KernelError, KernelResult},
+    fs::open,
+    mm::{pma::FixedPMA, MM},
+    task::{kstack_alloc, pid_alloc, Task},
+};
 
-use super::{pma::FixedPMA, MM};
-
-pub struct ELFInfo {}
-
-/// Finds the user ELF in the given directory and loads the program
-/// into the address space.
-///
-/// Returns user entry and user stack base address parsed from the ELF.
-pub fn find_user(
-    dir: &str,
-    name: &str,
-    args: Vec<&str>,
-    mm: &mut MM,
-) -> KernelResult<(usize, usize)> {
-    Ok((0, 0))
+/// Finds the user ELF in the given directory and creates the task.
+pub fn from_args(dir: String, args: Vec<String>) -> KernelResult<Arc<Task>> {
+    if args.len() < 1 {
+        return Err(KernelError::InvalidArgs);
+    }
+    let name = args[0].as_str();
+    let path = dir + "/" + name;
+    let file = unsafe {
+        open(path.as_str(), OpenFlags::O_RDONLY)
+            .map_err(|errno| KernelError::ErrNO(errno))?
+            .read_all()
+    };
+    let elf_data = unsafe { file.as_slice() };
+    // New process identification
+    let pid = pid_alloc();
+    // New kernel stack for user task
+    let kstack = kstack_alloc();
+    Ok(Arc::new(Task::new(pid, kstack, elf_data, args)?))
 }
 
-/// Load from elf.
-pub fn from_elf(elf_data: &[u8], mm: &mut MM) -> KernelResult<ELFInfo> {
+/// Create address space from elf.
+pub fn from_elf(elf_data: &[u8], args: Vec<String>) -> KernelResult<MM> {
+    let mut mm = MM::new()?;
     let elf = ElfFile::new(elf_data).unwrap();
     let elf_header = elf.header;
 
@@ -88,5 +98,5 @@ pub fn from_elf(elf_data: &[u8], mm: &mut MM) -> KernelResult<ELFInfo> {
     mm.start_brk = max_page.into();
     mm.brk = mm.start_brk;
     mm.entry = (elf_header.pt2.entry_point() as usize).into();
-    Ok(ELFInfo {})
+    Ok(mm)
 }

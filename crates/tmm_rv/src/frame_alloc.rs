@@ -7,7 +7,7 @@ use core::{
 use log::info;
 use spin::Lazy;
 
-use crate::{AllocatedPages, Frame, FrameRange, PageTable, PhysAddr};
+use crate::{AllocatedPages, Frame, FrameRange, PageTable, PhysAddr, PAGE_SIZE};
 
 /// Defines global frame allocator. This implementation is based on buddy system allocator.
 pub static GLOBAL_FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> =
@@ -45,14 +45,32 @@ impl AllocatedFrames {
     /// Allocates frames from start to end.
     /// Use global [`GLOBAL_FRAME_ALLOCATOR`] to track allocated frames.
     ///
+    /// # Argument
+    ///
+    /// - `count`: the number of frames
+    /// - `flush`: if set, flush the memory region with the start address of allocated frames.
+    ///
+    /// # Return
+    /// 
     /// Throws error, otherwise allocation with the number of zero is unpredictable.
-    pub fn new(count: usize) -> Result<Self, &'static str> {
+    pub fn new(count: usize, flush: bool) -> Result<Self, &'static str> {
         if count == 0 {
             return Err("Cannot allocate frames with zero count.");
         }
         if let Some(start) = frame_alloc(count) {
+            let start = Frame::from(start);
+            let end = Frame::from(start + count);
+            if flush {
+                unsafe {
+                    core::slice::from_raw_parts_mut(
+                        start.start_address().value() as *mut u8,
+                        PAGE_SIZE * count,
+                    )
+                    .fill(0)
+                };
+            }
             Ok(Self {
-                frames: FrameRange::new(Frame::from(start), Frame::from(start + count)),
+                frames: FrameRange::new(start, end),
             })
         } else {
             Err("Failed to allocate frame.")

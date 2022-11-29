@@ -1,5 +1,3 @@
-use core::intrinsics::unreachable;
-
 use tsyscall::*;
 
 use crate::task::do_exit;

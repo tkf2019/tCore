@@ -13,11 +13,8 @@ use crate::{
 
 use self::pma::{IdenticalPMA, PMArea};
 
-mod loader;
 pub mod pma;
 pub mod vma;
-
-pub use loader::from_elf;
 
 pub type VMA = Arc<Mutex<VMArea>>;
 

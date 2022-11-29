@@ -1,10 +1,8 @@
 mod logger;
 mod panic;
 
-use core::fmt::{Arguments, Result, Write};
+use core::fmt::Arguments;
 pub use logger::init;
-use sbi_rt::*;
-use spin::{Lazy, Mutex};
 
 use crate::arch::puts;
 

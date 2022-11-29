@@ -13,6 +13,7 @@ mod driver;
 mod error;
 mod fs;
 mod heap;
+mod loader;
 mod mm;
 mod syscall;
 mod task;
@@ -24,7 +25,7 @@ use log::trace;
 
 use crate::{
     arch::{__entry_others, start_hart},
-    config::{BOOT_STACK_SIZE, CPU_NUM},
+    config::CPU_NUM,
 };
 
 /// Clear .bss
@@ -41,12 +42,12 @@ fn clear_bss() {
 
 #[no_mangle]
 pub extern "C" fn rust_main(hartid: usize) -> ! {
-    // Clear .bss
     clear_bss();
-    // Initialization
     cons::init();
     heap::init();
     mm::init();
+    trap::set_kernel_trap();
+    oscomp::init(oscomp::testcases::LIBC_STATIC_TESTCASES);
     task::init();
     trace!("Start executing tasks.");
     // Wake up other harts.
@@ -59,7 +60,6 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
     }
     // IDLE loop
     task::idle();
-    unreachable!()
 }
 
 #[no_mangle]

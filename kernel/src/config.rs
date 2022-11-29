@@ -23,7 +23,7 @@ pub const TRAMPOLINE_VA: usize = MAX_VA - PAGE_SIZE + 1;
 pub const CPU_NUM: usize = 4;
 
 /// Boot kernel size allocated in `_start` for single CPU.
-pub const BOOT_STACK_SIZE: usize = 0x1_0000;
+pub const BOOT_STACK_SIZE: usize = 0x4_0000;
 
 /// Total boot kernel size.
 pub const TOTAL_BOOT_STACK_SIZE: usize = BOOT_STACK_SIZE * CPU_NUM;
@@ -66,8 +66,14 @@ pub const FS_IMG_SIZE: usize = 40 * 1024 * 1024;
 /// Default maximum file descriptor limit.
 pub const DEFAULT_FD_LIMIT: usize = 0x100;
 
+/// ROOT
+pub const ROOT_DIR: &str = "/";
+
 /// Absolute path of init task
 pub const INIT_TASK_PATH: &str = "rcore/hello_world";
+
+/// TEST
+pub const IS_TEST_ENV: bool = true;
 
 /* User configurations */
 

@@ -44,6 +44,9 @@ impl PMArea for IdenticalPMA {
 
 /// Represents a fixed physical memory area allocated with real frames when
 /// created by mapping requests from the initialization of address spaces.
+/// 
+/// Frames owned by this area will not be initialized with `0`, thus we need
+/// to write the area later after creation.
 pub struct FixedPMA {
     /// Allocated frames from global allocator. This area has the ownership
     /// of these frames. The physical frames will be deallocated if this fixed
@@ -53,7 +56,7 @@ pub struct FixedPMA {
 
 impl FixedPMA {
     pub fn new(count: usize) -> KernelResult<Self> {
-        match AllocatedFrames::new(count) {
+        match AllocatedFrames::new(count, false) {
             Ok(frames) => Ok(Self { frames }),
             Err(err) => {
                 warn!("{}", err);

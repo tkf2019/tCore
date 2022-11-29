@@ -13,10 +13,9 @@ use crate::{
     config::{CACHE_SIZE, FS_IMG_SIZE},
     driver::virtio_block::BLOCK_DEVICE,
     error::KernelError,
-    println,
 };
 
-use super::link::{get_nlink, get_path};
+use super::link::get_nlink;
 
 type FatTP = DefaultTimeProvider;
 type FatOCC = LossyOemCpConverter;
@@ -183,7 +182,7 @@ pub struct FSFile {
     /// Able to write.
     pub writable: bool,
 
-    /// Directory path and file name.
+    /// Real directory path and file name.
     pub path: Path,
 
     /// Local and mutable data.
@@ -394,10 +393,10 @@ static FAT_FS: Lazy<fatfs::FileSystem<FatIO, FatTP, FatOCC>> = Lazy::new(|| {
 });
 
 impl VFS for FileSystem {
-    fn open(&self, path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO> {
+    fn open(&self, path: &Path, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO> {
         let root = FAT_FS.root_dir();
-        let raw_path = Path::new(path);
-        let mut path = get_path(&raw_path);
+        let raw_path = path.clone();
+        let mut path = path.clone();
         let file = match path.pop() {
             Some(file) => file,
             // Empty path is not allowed.

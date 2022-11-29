@@ -1,11 +1,11 @@
-use _core::mem::size_of;
 use alloc::{vec, vec::Vec};
 use bitflags::*;
-use log::{debug, warn};
+use core::{fmt, mem::size_of};
+use log::{debug, info, warn};
 
 use crate::{
-    frame_alloc, AllocatedFrames, Frame, Page, PhysAddr, VirtAddr, PPN_MASK_SV39, PPN_OFFSET_SV39,
-    SATP_MODE_SV39,
+    frame_alloc, AllocatedFrames, Frame, Page, PhysAddr, VirtAddr, PAGE_SIZE, PPN_MASK_SV39,
+    PPN_OFFSET_SV39, SATP_MODE_SV39,
 };
 
 bitflags! {
@@ -133,6 +133,17 @@ impl PageTableEntry {
     }
 }
 
+impl fmt::Debug for PageTableEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "PTE: ppn {:X}, flags {:#?}",
+            self.0 >> 10,
+            PTEFlags::from_bits(self.0 & 0xFF)
+        )
+    }
+}
+
 bitflags! {
     /// Page table walker flag bits.
     pub struct PTWalkerFlags:u8 {
@@ -156,15 +167,13 @@ pub struct PageTable {
 impl PageTable {
     /// Create a page table with a newly allocated root frame.
     pub fn new() -> Result<Self, &'static str> {
-        let root_frame = AllocatedFrames::new(1)?;
+        let root_frame = AllocatedFrames::new(1, true)?;
         Ok(Self {
             // No iteration after a successful allocation, thus do `unwrap()` freely.
             root: root_frame.start,
             frames: vec![root_frame],
         })
     }
-
-    ///
 
     /// Walk down this [`PageTable`], The virtual page number is given.
     /// In SV39, `vpn` is splitted into 3 indexes, 9 bits each, which is to locate the
@@ -188,7 +197,7 @@ impl PageTable {
             // No existing entry, create a new one.
             if !entry.flags().is_valid() {
                 if flags.intersects(PTWalkerFlags::CREAT) && j < 2 {
-                    let new_frame = AllocatedFrames::new(1)?;
+                    let new_frame = AllocatedFrames::new(1, true)?;
                     // Write new valid entry to the target frame.
                     entry.set_flags(PTEFlags::VALID);
                     entry.set_ppn(&new_frame.start);

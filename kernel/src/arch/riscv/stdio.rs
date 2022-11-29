@@ -2,8 +2,6 @@ use core::fmt::{Arguments, Write};
 
 use spin::{Lazy, Mutex};
 
-use crate::println;
-
 struct Stdin;
 
 impl Stdin {

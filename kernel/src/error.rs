@@ -1,5 +1,7 @@
 #![allow(unused)]
 
+use terrno::ErrNO;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KernelError {
     /// An invalid page table entry.
@@ -38,6 +40,12 @@ pub enum KernelError {
     /// particular number of bytes but only a smaller number of bytes could be
     /// read.
     UnexpectedEof,
+
+    /// Invalid input arguments
+    InvalidArgs,
+
+    /// A warpper for errno
+    ErrNO(ErrNO),
 }
 
 pub type KernelResult<T = ()> = Result<T, KernelError>;

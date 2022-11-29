@@ -292,9 +292,6 @@ impl QemuArgs {
             .arg(&kernel_bin)
             .status()
             .expect("Failed to generate kernel binary file");
-
-        // RustSBI bootloader binary for qemu
-        let bootloader = PROJECT.join("plat/qemu/rustsbi.bin");
         // Run Qemu
         let mut cmd = Command::new(format!(
             "qemu-system-{}",
@@ -304,8 +301,7 @@ impl QemuArgs {
             .args(&["-m", "2G"])
             .args(&["-smp", self.smp.as_ref().unwrap().as_str()])
             .arg("-nographic")
-            .arg("-bios")
-            .arg(&bootloader)
+            .args(&["-bios", "default"])
             .arg("-kernel")
             .arg(&kernel_bin)
             .args(&["-serial", "mon:stdio"])

@@ -7,13 +7,13 @@ use crate::{
     syscall::SyscallArgs,
 };
 
-/// User context is saved in trapframe for the trap handling code in trampoline.
+/// User context is saved in trapframe by trap handler in trampoline.
 #[repr(C)]
 #[derive(Debug)]
 pub struct TrapFrame {
     /// Kernel page table root
     kernel_satp: usize,
-    /// Kernel stack poit0nter
+    /// Kernel stack pointer
     kernel_sp: usize,
     /// Trap handler address
     trap_handler: usize,
@@ -84,4 +84,14 @@ impl TrapFrame {
     pub fn set_a0(&mut self, a0: usize) {
         self.user_regs[9] = a0;
     }
+}
+
+
+/// Kernel trap context is saved on the kernel stack.
+#[repr(C)]
+#[derive(Debug)]
+pub struct KernelTrapContext {
+    regs: [usize; 29],
+    sepc: usize,
+    sstatus: Sstatus,
 }

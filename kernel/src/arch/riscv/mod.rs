@@ -3,7 +3,7 @@ mod stdio;
 pub use stdio::{getchar, putchar, puts};
 
 use crate::{
-    config::{BOOT_STACK_SIZE, CPU_NUM, TOTAL_BOOT_STACK_SIZE},
+    config::{BOOT_STACK_SIZE, TOTAL_BOOT_STACK_SIZE},
     rust_main, rust_main_others,
 };
 

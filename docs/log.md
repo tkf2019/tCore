@@ -74,3 +74,28 @@ fn open(&self, path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO> {
 
 ## 11.26
 
+关闭 log 之后会出现 qemu 执行卡住的情况，用 gdb 调试发现 kernel 执行到这里时 trap 了：
+
+```asm
+8020a6b8: 85 48        	li	a7, 1
+8020a6ba: 03 c5 05 00  	lbu	a0, 0(a1)
+8020a6be: 73 00 00 00  	ecall	
+```
+
+这里 a1 从一个合法的物理地址变成了 1，应该是 SBI 有问题，我之前从某个地方拷贝了一个 `rustsbi.bin` 的镜像，换成 qemu default bios 就可以正常运行了。
+
+## 11.27
+
+继续调 SMP 的代码，加载测例会卡住，继续上 gdb 调试。
+
+学习了一下如何在 gdb 中执行脚本：
+
+```txt
+(gdb) define nstep
+> set $foo = $arg0
+> while ($foo--)
+>  step
+>  end
+> end
+(gdb) nstep 100
+```
