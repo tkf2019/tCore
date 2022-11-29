@@ -36,6 +36,10 @@ pub fn set_user_trap() {
     unsafe { stvec::write(TRAMPOLINE_VA as usize, TrapMode::Direct) };
 }
 
+/// User trap handler manages the task according to the cause:
+///
+/// 1. Calls syscall dispatcher and handler.
+/// 2. Handles page fault caused by Instruction Fetch, Load or Store.
 #[no_mangle]
 pub fn user_trap_handler() -> ! {
     set_kernel_trap();
@@ -63,7 +67,7 @@ pub fn user_trap_handler() -> ! {
         _ => {
             // Handle user trap with detailed cause
             trace!(
-                "User trap {:X?}, {:X?}, {:#X}, {:#X}",
+                "[U] {:X?}, {:X?}, {:#X}, {:#X}",
                 scause.cause(),
                 sstatus,
                 stval,
@@ -75,6 +79,15 @@ pub fn user_trap_handler() -> ! {
     user_trap_return();
 }
 
+/// Something prepared before `sret` back to user:
+///
+/// 1. Set `stvec` to user trap entry again.
+/// 2. Jump to raw assembly code, passing the address of trapframe and `satp`.
+///
+/// # DEAD LOCK
+///
+/// This function acquires a reference and the lock of address space metadata of
+/// current task. We must drop them before changing the control flow without unwinding.
 #[no_mangle]
 pub fn user_trap_return() -> ! {
     extern "C" {
@@ -95,7 +108,6 @@ pub fn user_trap_return() -> ! {
 
     unsafe {
         asm!(
-            "fence.i",
             "jr {userret}",
             userret = in(reg) userret,
             in("a0") trapframe_base,
@@ -112,7 +124,7 @@ pub fn kernel_trap_handler(ctx: &KernelTrapContext) -> ! {
     match scause.cause() {
         _ => {
             panic!(
-                "Kernel trap {:X?}, stval = {:#X}, ctx = {:#X?} ",
+                "[S] {:X?}, stval = {:#X}, ctx = {:#X?} ",
                 scause.cause(),
                 stval,
                 ctx

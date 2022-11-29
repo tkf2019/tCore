@@ -76,19 +76,19 @@ pub const LUA_TESTCASES: &[&str] = &[
 ];
 
 pub const LIBC_STATIC_TESTCASES: &[&str] = &[
-    "dirname",
     "argv",
     "basename",
     "clocale_mbfuncs",
     "clock_gettime",
     "crypt",
+    "dirname",
     "env",
     "fdopen",
-    "fnmatch",
     "fnmatch",
     "fscanf",
     "fwscanf",
     "iconv_open",
+    "argv 1 2",
 ];
 
 pub const LIBC_DYNAMIC_TESTCASES: &[&str] = &[
@@ -99,6 +99,9 @@ pub const LIBC_DYNAMIC_TESTCASES: &[&str] = &[
     "dyn/mkstemp_failure.dout",
     "dyn/utime.dout",
     "dyn/setjmp.dout",
+    "dyn/search_tsearch.dout",
+    "dyn/memmem_oob_read.dout",
+    "dyn/mbc.dout",
     "dyn/string_memset.dout",
     "dyn/time.dout",
     "dyn/pthread_cond_smasher.dout",
@@ -108,9 +111,6 @@ pub const LIBC_DYNAMIC_TESTCASES: &[&str] = &[
     "dyn/strptime.dout",
     "dyn/dn_expand_empty.dout",
     "dyn/wcsstr.dout",
-    "dyn/search_tsearch.dout",
-    "dyn/memmem_oob_read.dout",
-    "dyn/mbc.dout",
     "dyn/basename.dout",
     "dyn/lrand48_signextend.dout",
     "dyn/regex_negated_range.dout",

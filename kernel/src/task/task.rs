@@ -3,6 +3,7 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
+use core::fmt;
 use log::{trace, warn};
 use riscv::register::sstatus::{self, set_spp, SPP};
 use spin::{mutex::Mutex, MutexGuard};
@@ -222,6 +223,12 @@ impl Drop for Task {
         // This memory area might be used agian when a new task calls for a
         // new kernel stack.
         self.tid_allocator.lock().dealloc(self.tid);
+    }
+}
+
+impl fmt::Debug for Task {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Task [{} {}:{}]", self.name, self.pid.0, self.tid)
     }
 }
 

@@ -163,6 +163,7 @@ pub fn init() {
 }
 
 /// IDLE task:
+///
 /// 1. Each cpu tries to acquire the lock of global task manager.
 /// 2. Each cpu runs the task fetched from schedule queue.
 /// 3. Handle the final state after a task finishes `do_yield` or `do_exit`.
@@ -179,54 +180,49 @@ pub fn idle() -> ! {
             }
         }
 
-        let task = task.expect("No task to execute!");
-        let cpu_id = get_cpu_id();
-        let cpu_ctx = &mut task_manager.cpus[cpu_id];
-        let idle_ctx = &cpu_ctx.idle_ctx as *const TaskContext;
-        let next_ctx = {
-            let mut task_inner = task.inner_lock();
-            task_inner.state = TaskState::Running;
-            &task_inner.ctx as *const TaskContext
-        };
-        // Ownership moved to `current`.
-        cpu_ctx.current = Some(task);
-        // Release the lock.
-        drop(task_manager);
+        if let Some(task) = task {
+            let cpu_id = get_cpu_id();
+            let cpu_ctx = &mut task_manager.cpus[cpu_id];
+            let idle_ctx = &cpu_ctx.idle_ctx as *const TaskContext;
+            let next_ctx = {
+                let mut task_inner = task.inner_lock();
+                task_inner.state = TaskState::Running;
+                &task_inner.ctx as *const TaskContext
+            };
+            // Ownership moved to `current`.
+            cpu_ctx.current = Some(task);
+            // Release the lock.
+            drop(task_manager);
 
-        unsafe { __switch(idle_ctx, next_ctx) };
+            unsafe { __switch(idle_ctx, next_ctx) };
 
-        // Back to idle task.
-        let current = current_task().take().expect("From IDLE task");
-        match current.get_state() {
-            TaskState::Runnable => {
-                let mut task_manager = TASK_MANAGER.lock();
-                task_manager.sched.add(current);
-            }
-            TaskState::Zombie => {
-                if !IS_TEST_ENV && current.pid.0 == 0 {
-                    panic!("All task exited!");
-                } else {
-                    handle_zombie(current);
+            // Back to idle task.
+            let current = current_task().take().expect("From IDLE task");
+            match current.get_state() {
+                TaskState::Runnable => {
+                    let mut task_manager = TASK_MANAGER.lock();
+                    task_manager.sched.add(current);
                 }
-            }
-            _ => {
-                panic!("Invalid task state back to idle!");
+                TaskState::Zombie => {
+                    if !IS_TEST_ENV && current.pid.0 == 0 {
+                        panic!("All task exited!");
+                    } else {
+                        handle_zombie(current);
+                    }
+                }
+                _ => {
+                    panic!("Invalid task state back to idle!");
+                }
             }
         }
     }
 }
 
-/// Exit current task and run next task.
+/// Current task exits. Run next task.
 pub fn do_exit(exit_code: i32) {
     let curr_ctx = {
         let current = current_task().unwrap();
-        trace!(
-            "Task {} {}:{} exited with code {}",
-            current.name,
-            current.pid.0,
-            current.tid,
-            exit_code
-        );
+        trace!("{:#?} exited with code {}", current, exit_code);
         let mut current_inner = current.inner_lock();
         current_inner.exit_code = exit_code;
         current_inner.state = TaskState::Zombie;
@@ -235,10 +231,11 @@ pub fn do_exit(exit_code: i32) {
     unsafe { __switch(curr_ctx, idle_ctx()) };
 }
 
+/// Current task suspends. Run next task.
 pub fn do_yield() {
     let curr_ctx = {
         let current = current_task().unwrap();
-        trace!("Task {}:{} suspended", current.pid.0, current.tid);
+        trace!("{:#?} suspended", current);
         let mut current_inner = current.inner_lock();
         current_inner.state = TaskState::Runnable;
         &current_inner.ctx as *const TaskContext

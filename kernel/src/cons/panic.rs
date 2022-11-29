@@ -2,6 +2,8 @@ use core::panic::PanicInfo;
 use log::error;
 use sbi_rt::*;
 
+use crate::arch::get_cpu_id;
+
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     if let Some(location) = info.location() {

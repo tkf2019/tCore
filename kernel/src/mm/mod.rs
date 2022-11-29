@@ -2,7 +2,7 @@ use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use core::slice;
 use log::{info, warn};
 use spin::{Lazy, Mutex};
-use tmm_rv::{frame_init, Frame, PTEFlags, Page, PageTable, PhysAddr, VirtAddr};
+use tmm_rv::{Frame, PTEFlags, Page, PageTable, PhysAddr, VirtAddr};
 use vma::VMArea;
 
 use crate::{
@@ -248,24 +248,11 @@ fn new_kernel() -> KernelResult<MM> {
     Ok(mm)
 }
 
-/// Initialize global frame allocator.
 /// Activate virtual address translation and protectiong using kernel page table.
 pub fn init() {
-    info!("Initializing kernel address space...");
-
-    extern "C" {
-        fn ekernel();
-    }
-    frame_init(
-        Frame::ceil(PhysAddr::from(ekernel as usize)).into(),
-        Frame::floor(PhysAddr::from(PHYSICAL_MEMORY_END)).into(),
-    );
-
     let satp = KERNEL_MM.lock().page_table.satp();
     unsafe {
         riscv::register::satp::write(satp);
         core::arch::asm!("sfence.vma");
     }
-
-    info!("Kernel address space initialized successfully.");
 }

@@ -3,9 +3,13 @@
 
 extern crate alloc;
 
-use alloc::{collections::BTreeSet, string::String, vec::Vec};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+    vec::Vec,
+};
 use core::{fmt, slice::Iter};
-use log::{info, trace};
+use log::{info, trace, warn};
 use spin::{Lazy, Mutex};
 
 pub mod testcases;
@@ -13,14 +17,11 @@ pub mod testcases;
 pub struct TestManger {
     pub cases: Option<&'static [&'static str]>,
 
-    /// Current test (next to run)
-    pub current: usize,
-
     /// The number of passed tests
     pub passed: usize,
 
     /// Current test
-    pub running: BTreeSet<String>,
+    pub running: BTreeMap<String, usize>,
 
     /// A list of failed tests
     pub failed: Vec<String>,
@@ -31,8 +32,7 @@ impl TestManger {
         Self {
             cases: None,
             passed: 0,
-            current: 0,
-            running: BTreeSet::new(),
+            running: BTreeMap::new(),
             failed: Vec::new(),
         }
     }
@@ -44,23 +44,28 @@ impl TestManger {
 
     /// Load a test.
     pub fn load(&mut self, name: &String) {
-        self.running.insert(name.clone());
+        self.running
+            .entry(name.clone())
+            .and_modify(|e| *e += 1)
+            .or_insert(1);
     }
 
     /// Update test result.
     pub fn exit(&mut self, exit_code: i32, name: &String) {
-        if !self.running.contains(name) {
+        if self.running.get(name).is_none() {
             return;
         }
         match exit_code {
             0 => {
+                warn!("{} passed", name);
                 self.passed += 1;
             }
             _ => {
+                warn!("{} failed", name);
                 self.failed.push(name.clone());
             }
         }
-        self.running.remove(name);
+        self.running.entry(name.clone()).and_modify(|e| *e -= 1);
     }
 
     /// Show test status
@@ -105,12 +110,17 @@ pub fn init(cases: &'static [&'static str]) {
 pub fn fetch_test() -> Option<Vec<String>> {
     TEST_ITER.lock().next().map_or_else(
         || {
-            TEST_MANAGER.lock().info();
+            let test_manager = TEST_MANAGER.lock();
+            if test_manager.passed + test_manager.failed.len() == test_manager.cases.unwrap().len()
+            {
+                test_manager.info();
+                panic!("TEST END");
+            }
             None
         },
         |&user_command| {
             let argv = split_argv(user_command.as_bytes());
-            TEST_MANAGER.lock().load(&user_command.into());
+            TEST_MANAGER.lock().load(&argv[0]);
             Some(argv)
         },
     )
