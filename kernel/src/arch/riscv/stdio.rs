@@ -40,11 +40,6 @@ pub fn getchar() -> u8 {
     STDIN.lock().getchar()
 }
 
-#[inline]
-pub fn putchar(c: u8) {
-    STDOUT.lock().putchar(c);
-}
-
 /// Stderr has higher priority than Stdout.
 #[inline]
 pub fn puts(args: Arguments, err: bool) {

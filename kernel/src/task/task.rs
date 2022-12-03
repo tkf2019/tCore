@@ -16,6 +16,7 @@ use crate::{
     fs::FDManager,
     loader::from_elf,
     mm::{pma::FixedPMA, KERNEL_MM, MM},
+    task::{kstack_alloc, pid_alloc},
     trap::{user_trap_handler, user_trap_return, TrapFrame},
 };
 
@@ -64,6 +65,17 @@ pub struct TaskInner {
     /// These tasks will be adopted by INIT task to avoid being dropped when the reference
     /// counter becomes 0.
     pub children: Vec<Arc<Task>>,
+
+    /// If a thread is started using `clone(2)` with the `CLONE_CHILD_SETTID` flag,
+    /// set_child_tid is set to the value passed in the ctid argument of that system call.
+    ///
+    /// When set_child_tid is set, the very first thing the new thread does is to write
+    /// its thread ID at this address.
+    pub set_child_tid: usize,
+
+    /// If a thread is started using `clone(2)` with the `CLONE_CHILD_CLEARTID` flag,
+    /// clear_child_tid is set to the value passed in the ctid argument of that system call.
+    pub clear_child_tid: usize,
 }
 
 unsafe impl Send for TaskInner {}
@@ -117,35 +129,24 @@ pub struct Task {
 }
 
 impl Task {
-    /// Create a new task with pid and kernel stack allocated by global manager.
-    pub fn new(
-        pid: usize,
-        kstack: usize,
-        elf_data: &[u8],
-        args: Vec<String>,
-    ) -> KernelResult<Self> {
-        // Init address space
+    /// Create a new task from ELF data.
+    pub fn new(elf_data: &[u8], args: Vec<String>) -> KernelResult<Self> {
+        // Get task name
         let name = args[0].clone();
-        let mut mm = from_elf(elf_data, args)?;
 
-        // Init user stack
-        let mut tid_allocator = RecycleAllocator::new(MAIN_TASK);
-        let tid = tid_allocator.alloc();
-        let (ustack_top, ustack_base) = ustack_layout(tid);
+        // Init address space
+        let mut mm = MM::new()?;
+        let sp = from_elf(elf_data, args, &mut mm)?;
 
-        mm.alloc_write(
-            None,
-            ustack_top.into(),
-            ustack_base.into(),
-            PTEFlags::READABLE | PTEFlags::WRITABLE | PTEFlags::USER_ACCESSIBLE,
-            Arc::new(Mutex::new(FixedPMA::new(USER_STACK_PAGES)?)),
-        )?;
+        // New process identification
+        let pid = pid_alloc();
 
-        // Init kernel stack
+        // New kernel stack for user task
+        let kstack = kstack_alloc();
         let kstack_base = kstack_vm_alloc(kstack)?;
 
         // Init trapframe
-        let trapframe_base: VirtAddr = trapframe_base(tid).into();
+        let trapframe_base: VirtAddr = trapframe_base(MAIN_TASK).into();
         mm.alloc_write(
             None,
             trapframe_base,
@@ -165,7 +166,7 @@ impl Task {
             user_trap_handler as usize,
             mm.entry.value(),
             sstatus::read(),
-            ustack_base,
+            sp.into(),
             // CPU id will be saved when the user task is restored.
             usize::MAX,
         );
@@ -173,10 +174,9 @@ impl Task {
         // Init file descriptor table
         let fd_manager = FDManager::new();
 
-        trace!("Create task {}: pid {}, tid {}", name, pid, tid);
         let task = Self {
             kstack,
-            tid,
+            tid: MAIN_TASK,
             trapframe_pa,
             inner: Mutex::new(TaskInner {
                 exit_code: 0,
@@ -184,9 +184,11 @@ impl Task {
                 state: TaskState::Runnable,
                 parent: None,
                 children: Vec::new(),
+                set_child_tid: 0,
+                clear_child_tid: 0,
             }),
             pid: Arc::new(PID(pid)),
-            tid_allocator: Arc::new(Mutex::new(tid_allocator)),
+            tid_allocator: Arc::new(Mutex::new(RecycleAllocator::new(MAIN_TASK + 1))),
             mm: Arc::new(Mutex::new(mm)),
             fd_manager: Arc::new(Mutex::new(fd_manager)),
             name,

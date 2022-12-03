@@ -2,7 +2,7 @@ use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use core::slice;
 use log::{info, warn};
 use spin::{Lazy, Mutex};
-use tmm_rv::{Frame, PTEFlags, Page, PageTable, PhysAddr, VirtAddr};
+use tmm_rv::{PTEFlags, Page, PageTable, PhysAddr, VirtAddr};
 use vma::VMArea;
 
 use crate::{

@@ -1,6 +1,6 @@
 mod stdio;
 
-pub use stdio::{getchar, putchar, puts};
+pub use stdio::{getchar, puts};
 
 use crate::{
     config::{BOOT_STACK_SIZE, TOTAL_BOOT_STACK_SIZE},

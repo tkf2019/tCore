@@ -61,13 +61,13 @@ pub fn user_trap_handler() -> ! {
             drop(current);
             match syscall(trapframe.syscall_args().unwrap()) {
                 Ok(ret) => trapframe.set_a0(ret),
-                Err(errno) => trapframe.set_a0(errno.try_into().unwrap()),
+                Err(errno) => trapframe.set_a0(-isize::from(errno) as usize),
             };
         }
         _ => {
             // Handle user trap with detailed cause
             trace!(
-                "[U] {:X?}, {:X?}, {:#X}, {:#X}",
+                "[U] {:X?}, {:X?}, stval={:#X}, sepc={:#X}",
                 scause.cause(),
                 sstatus,
                 stval,

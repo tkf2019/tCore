@@ -75,21 +75,7 @@ pub const LUA_TESTCASES: &[&str] = &[
     "lua strings.lua",
 ];
 
-pub const LIBC_STATIC_TESTCASES: &[&str] = &[
-    "argv",
-    "basename",
-    "clocale_mbfuncs",
-    "clock_gettime",
-    "crypt",
-    "dirname",
-    "env",
-    "fdopen",
-    "fnmatch",
-    "fscanf",
-    "fwscanf",
-    "iconv_open",
-    "argv 1 2",
-];
+pub const LIBC_STATIC_TESTCASES: &[&str] = &["argv"];
 
 pub const LIBC_DYNAMIC_TESTCASES: &[&str] = &[
     "dyn/getpwnam_r_crash.dout",

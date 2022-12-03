@@ -4,10 +4,11 @@
 use numeric_enum_macro::numeric_enum;
 
 numeric_enum! {
-    #[repr(usize)]
+    #[repr(isize)]
     #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Clone, Copy)]
+    #[allow(non_camel_case_types)]
     #[doc = "Errno in Linux"]
-    pub enum ErrNO {
+    pub enum Errno {
         /// Operation not permitted
         EPERM = 1,
         /// No such file or directory
@@ -282,5 +283,4 @@ numeric_enum! {
         /// Memory page has hardware error
         EHWPOISON = 133,
     }
-
 }

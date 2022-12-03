@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use terrno::ErrNO;
+use terrno::Errno;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KernelError {
@@ -19,7 +19,9 @@ pub enum KernelError {
     /// Failed to resolve ELF
     /// - Wrong magic number
     /// - Unsupported architecture or XLEN
-    ELFInvalid,
+    ELFInvalidHeader,
+
+    ELFInvalidSegment,
 
     /// Unsupported syscall
     SyscallUnsupported(usize),
@@ -45,7 +47,13 @@ pub enum KernelError {
     InvalidArgs,
 
     /// A warpper for errno
-    ErrNO(ErrNO),
+    Errno(Errno),
+
+    /// FD out of bound or removed.
+    FDNotFound,
+
+    /// FD exceeds limit
+    FDOutOfBound,
 }
 
 pub type KernelResult<T = ()> = Result<T, KernelError>;

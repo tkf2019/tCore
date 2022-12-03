@@ -14,8 +14,10 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
     let args = args.1;
     match id {
         SyscallNO::WRTIE => SyscallImpl::write(args[0], args[1] as *const u8, args[2]),
-        SyscallNO::EXIT => SyscallImpl::exit(args[0]),
+        SyscallNO::EXIT | SyscallNO::EXIT_GROUP => SyscallImpl::exit(args[0]),
+        SyscallNO::SET_TID_ADDRESS => SyscallImpl::set_tid_address(args[0]),
         SyscallNO::GETPID => SyscallImpl::getpid(),
+        SyscallNO::GETTID => SyscallImpl::gettid(),
         _ => {
             unimplemented!()
         }

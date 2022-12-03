@@ -56,15 +56,15 @@ impl<'a> Foo for Foo+'a {
 - 遇到一个有关 Rust 语言的问题： `match` 闭包不会根据最外层函数返回值的类型进行推导，例如如下写法会报错，经过和闭浩扬的讨论，发现在这种两层以上闭包推导时，`match` 只能根据内部分支闭包返回值的覆盖情况推导，所以需要用一个局部变量强行指定动态推导的类型来通过编译（这个我自己盯着看了一下午也没有想出来到底是怎么回事）
 
 ```rust
-fn open(&self, path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO> {
+fn open(&self, path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
     root.open_dir(path).and_then(|dir| match {
         ... // Some branches
     })
 }
 // It works
-fn open(&self, path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO> {
+fn open(&self, path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
     root.open_dir(path).and_then(|dir| {
-        let result: Result<Arc<dyn File>, ErrNO> = match {
+        let result: Result<Arc<dyn File>, Errno> = match {
         ... // Some branches
         };
         result
@@ -74,15 +74,7 @@ fn open(&self, path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO> {
 
 ## 11.26
 
-关闭 log 之后会出现 qemu 执行卡住的情况，用 gdb 调试发现 kernel 执行到这里时 trap 了：
 
-```asm
-8020a6b8: 85 48        	li	a7, 1
-8020a6ba: 03 c5 05 00  	lbu	a0, 0(a1)
-8020a6be: 73 00 00 00  	ecall	
-```
-
-这里 a1 从一个合法的物理地址变成了 1，应该是 SBI 有问题，我之前从某个地方拷贝了一个 `rustsbi.bin` 的镜像，换成 qemu default bios 就可以正常运行了。
 
 ## 11.27
 

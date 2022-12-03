@@ -1,4 +1,4 @@
-use alloc::{vec, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 use bitflags::*;
 use core::{fmt, mem::size_of};
 use log::{debug, info, warn};
@@ -175,6 +175,13 @@ impl PageTable {
         })
     }
 
+    /// `satp` controls supervisor-mode address translation and protection.
+    /// This register holds the physical page number of the root page table,
+    /// an address identifier and the MODE field.
+    pub fn satp(&self) -> usize {
+        SATP_MODE_SV39 | self.root.number()
+    }
+
     /// Walk down this [`PageTable`], The virtual page number is given.
     /// In SV39, `vpn` is splitted into 3 indexes, 9 bits each, which is to locate the
     /// [`PageTableEntry`] among 512 entries in a 4KB page table frame.
@@ -245,11 +252,38 @@ impl PageTable {
             })
     }
 
-    /// `satp` controls supervisor-mode address translation and protection.
-    /// This register holds the physical page number of the root page table,
-    /// an address identifier and the MODE field.
-    pub fn satp(&self) -> usize {
-        SATP_MODE_SV39 | self.root.number()
+    /// Gets bytes translated with the range of [start_va, start_va + len),
+    /// which might cover several pages.
+    pub fn get_buf_mut(
+        &mut self,
+        va: VirtAddr,
+        len: usize,
+    ) -> Result<Vec<&'static mut [u8]>, &'static str> {
+        let mut start_va = va;
+        let end_va = start_va + len;
+        let mut v = Vec::new();
+        while start_va < end_va {
+            let start_pa = self.translate(start_va)?;
+            let next_page = Page::from(start_va) + 1;
+            let page_len: usize = (end_va - start_va)
+                .min(next_page.start_address() - start_va)
+                .into();
+            v.push(unsafe {
+                core::slice::from_raw_parts_mut(start_pa.value() as *mut _, page_len)
+            });
+            start_va += page_len;
+        }
+        Ok(v)
+    }
+
+    /// Gets a string loaded from starting virtual address. The string must end
+    /// with `'\0'` in virtual address space.
+    pub fn get_str(&mut self, va: VirtAddr, len: usize) -> Result<String, &'static str> {
+        let mut string = String::new();
+        for bytes in self.get_buf_mut(va, len)? {
+            string.extend(bytes.into_iter().map(|ch| *ch as char));
+        }
+        Ok(string)
     }
 }
 

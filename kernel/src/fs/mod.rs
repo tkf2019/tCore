@@ -19,7 +19,7 @@ pub use fd::*;
 pub use stdio::*;
 
 use link::get_path;
-use terrno::ErrNO;
+use terrno::Errno;
 use tvfs::*;
 
 pub static DISK_FS: Lazy<Mutex<FileSystem>> = Lazy::new(|| Mutex::new(FileSystem));
@@ -32,7 +32,7 @@ pub static DISK_FS: Lazy<Mutex<FileSystem>> = Lazy::new(|| Mutex::new(FileSystem
 ///
 /// 1. Check if the file exists in the [`MEM_FS`].
 /// 2. Check if the file exists in the [`DISK_FS`].
-pub fn open(path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO> {
+pub fn open(path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
     let path = Path::new(path);
     let real_path = get_path(&path);
     // TODO: Try to open file in VFS.

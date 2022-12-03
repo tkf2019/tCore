@@ -26,7 +26,7 @@ use tmm_rv::{frame_init, Frame, PhysAddr};
 
 use crate::{
     arch::{__entry_others, start_hart},
-    config::{CPU_NUM, PHYSICAL_MEMORY_END, IS_TEST_ENV},
+    config::{CPU_NUM, IS_TEST_ENV, PHYSICAL_MEMORY_END},
 };
 
 /// Clear .bss

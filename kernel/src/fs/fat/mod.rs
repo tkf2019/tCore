@@ -5,7 +5,7 @@ use fatfs::{
 use log::{trace, warn};
 use spin::{Lazy, Mutex, MutexGuard};
 use tcache::{BlockCache, CacheUnit, LRUBlockCache, BLOCK_SIZE};
-use terrno::ErrNO;
+use terrno::Errno;
 use ttimer::TimeSpec;
 use tvfs::{File, OpenFlags, Path, SeekWhence, Stat, StatMode, VFS};
 
@@ -393,26 +393,26 @@ static FAT_FS: Lazy<fatfs::FileSystem<FatIO, FatTP, FatOCC>> = Lazy::new(|| {
 });
 
 impl VFS for FileSystem {
-    fn open(&self, path: &Path, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO> {
+    fn open(&self, path: &Path, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
         let root = FAT_FS.root_dir();
         let raw_path = path.clone();
         let mut path = path.clone();
         let file = match path.pop() {
             Some(file) => file,
             // Empty path is not allowed.
-            None => return Err(ErrNO::EINVAL),
+            None => return Err(Errno::EINVAL),
         };
         // Find in the root directory
         let (readable, writable) = flags.read_write();
         let dir = if path.is_root() {
             root
         } else {
-            root.open_dir(path.rela()).map_err(|_| ErrNO::ENOENT)?
+            root.open_dir(path.rela()).map_err(|_| Errno::ENOENT)?
         };
         match dir.open_file(file.as_str()) {
             Ok(file) => {
                 if flags.contains(OpenFlags::O_CREAT | OpenFlags::O_EXCL) {
-                    Err(ErrNO::EEXIST)
+                    Err(Errno::EEXIST)
                 } else {
                     let file = FSFile::new(readable, writable, path, file, flags);
                     if flags.contains(OpenFlags::O_CREAT) {
@@ -429,12 +429,12 @@ impl VFS for FileSystem {
                         readable, writable, raw_path, file, flags,
                     )))
                 } else {
-                    Err(ErrNO::ENOENT)
+                    Err(Errno::ENOENT)
                 }
             }
             Err(err) => {
                 warn!("{:?}", err);
-                Err(ErrNO::EINVAL)
+                Err(Errno::EINVAL)
             }
         }
     }

@@ -9,7 +9,7 @@ use alloc::{
     vec::Vec,
 };
 use core::{fmt, slice::Iter};
-use log::{info, trace, warn};
+use log::{debug, info, trace, warn};
 use spin::{Lazy, Mutex};
 
 pub mod testcases;
@@ -57,7 +57,7 @@ impl TestManger {
         }
         match exit_code {
             0 => {
-                warn!("{} passed", name);
+                debug!("{} passed", name);
                 self.passed += 1;
             }
             _ => {

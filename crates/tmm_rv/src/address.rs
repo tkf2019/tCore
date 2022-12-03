@@ -62,3 +62,15 @@ impl Page {
         indexes
     }
 }
+
+impl PhysAddr {
+    /// Returns a immutable reference of `T` starting from the physical address.
+    pub fn get_ref<T>(&self) -> &'static T {
+        unsafe { (self.0 as *const T).as_ref().unwrap() }
+    }
+
+    /// Returns a mutable reference of `T` starting from the physical address.
+    pub fn get_mut<T>(&self) -> &'static mut T {
+        unsafe { (self.0 as *mut T).as_mut().unwrap() }
+    }
+}

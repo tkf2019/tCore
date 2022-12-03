@@ -14,7 +14,7 @@ use core::any::Any;
 pub use flag::*;
 pub use path::*;
 pub use stat::*;
-use terrno::ErrNO;
+use terrno::Errno;
 
 /// In UNIX, everything is a File, such as:
 ///
@@ -118,5 +118,5 @@ pub trait VFS: Send + Sync {
     /// - `path`: Absolute path which must start with '/'.
     /// - `flags`: Standard [`OpenFlags`].
     /// See https://man7.org/linux/man-pages/man2/open.2.html.
-    fn open(&self, path: &Path, flags: OpenFlags) -> Result<Arc<dyn File>, ErrNO>;
+    fn open(&self, path: &Path, flags: OpenFlags) -> Result<Arc<dyn File>, Errno>;
 }

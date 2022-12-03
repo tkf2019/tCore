@@ -20,21 +20,25 @@
 #![allow(non_camel_case_types)]
 
 use numeric_enum_macro::numeric_enum;
-use terrno::ErrNO;
+use terrno::Errno;
 
 numeric_enum! {
     #[repr(usize)]
     #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+    #[allow(non_camel_case_types)]
     pub enum SyscallNO {
         OPENAT = 56,
         WRTIE = 64,
         EXIT = 93,
+        EXIT_GROUP = 94,
+        SET_TID_ADDRESS = 96,
         GETPID = 172,
+        GETTID = 178,
         CLONE = 220,
     }
 }
 
-pub type SyscallResult = Result<usize, ErrNO>;
+pub type SyscallResult = Result<usize, Errno>;
 
 pub trait SyscallProc {
     /// Terminate the calling process.
@@ -67,6 +71,20 @@ pub trait SyscallDev {}
 pub trait SyscallInfo {
     /// Get process identification, always successfully
     fn getpid() -> SyscallResult;
+
+    /// Get thread identification, always successfully
+    fn gettid() -> SyscallResult;
+
+    /// Sets the clear_child_tid value for the calling thread to `tidptr`.
+    ///
+    /// # Return
+    ///
+    /// `set_tid_address()` always returns the caller's thread ID.
+    ///
+    /// # Error
+    ///
+    /// `set_tid_address()` always succeeds.
+    fn set_tid_address(tidptr: usize) -> SyscallResult;
 }
 
 pub trait SyscallComm {}

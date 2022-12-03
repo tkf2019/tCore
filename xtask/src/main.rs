@@ -62,7 +62,7 @@ struct BuildArgs {
     #[clap(long, default_value = "debug")]
     log: Option<String>,
 
-    /// Start test instead of normal build.
+    /// Test mode.
     #[clap(long)]
     test: bool,
 
@@ -174,16 +174,13 @@ impl BuildArgs {
     /// Build testcases.
     ///
     /// Returns a feature string parsed from command line arguments.
-    fn build_test(&self) -> &str {
+    fn build_test(&self) {
         if self.oscomp {
             self.build_oscomp_test();
-            "oscomp"
         } else if self.libc {
             self.build_libc_test();
-            "libc_test"
         } else {
             self.build_local_test();
-            "local_test"
         }
     }
 
@@ -219,16 +216,13 @@ impl BuildArgs {
         } else {
             "--release"
         };
-        let (subcmd, options) = if self.test {
-            ("rustc", "-- --test")
-        } else {
-            ("build", opt_level)
-        };
-        let features = if self.build_test {
-            self.build_test()
-        } else {
-            ""
-        };
+        let (subcmd, options) = ("build", opt_level);
+        let test = if self.test { "test" } else { "" };
+        let oscomp = if self.oscomp { "oscomp" } else { "" };
+
+        if self.build_test {
+            self.build_test();
+        }
 
         // Linker file for target platform to configure kernel layout
         let linker = PROJECT
@@ -241,7 +235,7 @@ impl BuildArgs {
             .arg(subcmd)
             .args(&["--package", self.kernel.as_ref().unwrap().as_str()])
             .args(&["--target", target])
-            .args(&["--features", features])
+            .args(&["--features", format!("{} {}", test, oscomp).as_str()])
             .arg(options)
             .env("LOG", self.log.as_ref().unwrap().as_str())
             .env(
