@@ -15,6 +15,8 @@ mod test;
 
 pub use address::{Frame, FrameRange, Page, PageRange, PhysAddr, VirtAddr};
 pub use config::*;
-pub use frame_alloc::{frame_alloc, frame_dealloc, frame_init, AllocatedFrames};
-pub use page_alloc::AllocatedPages;
+pub use frame_alloc::{
+    frame_alloc, frame_dealloc, frame_init, AllocatedFrame, AllocatedFrameRange,
+};
+pub use page_alloc::AllocatedPageRange;
 pub use page_table::{PTEFlags, PTWalkerFlags, PageTable, PageTableEntry};

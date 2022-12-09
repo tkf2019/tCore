@@ -24,13 +24,17 @@ pub trait File: Send + Sync + AsAny {
     ///
     /// Returns the number of bytes read from this file.
     /// Returns [`None`] if the file is not readable.
-    fn read(&self, buf: &mut [u8]) -> Option<usize>;
+    fn read(&self, buf: &mut [u8]) -> Option<usize> {
+        None
+    }
 
     /// Writes bytes from the buffer to this file.
     ///
     /// Returns the number of bytes written to this file.
     /// Returns [`None`] if the file is not writable.
-    fn write(&self, buf: &[u8]) -> Option<usize>;
+    fn write(&self, buf: &[u8]) -> Option<usize> {
+        None
+    }
 
     /// Clear the [`File`].
     fn clear(&self) {}
@@ -66,12 +70,12 @@ pub trait File: Send + Sync + AsAny {
 
     /// Returns if the file is ready to read.
     fn read_ready(&self) -> bool {
-        true
+        false
     }
 
     /// Returns if the file is ready to write.
     fn write_ready(&self) -> bool {
-        true
+        false
     }
 
     /// Moves the cursor with [`SeekWhence`] flags.

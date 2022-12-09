@@ -74,9 +74,24 @@ macro_rules! implement_address {
                     self.0 & ($page_size - 1)
                 }
 
+                #[doc = "Returns the " $chunk " boundary specified by this `" $TypeName "`.\n"]
+                pub const fn [<$chunk _align>](&self) -> $TypeName {
+                    $TypeName(self.0 & !($page_size - 1))
+                }
+
                 #[doc = "Returns if the address is aligned or not."]
                 pub const fn is_aligned(&self) -> bool {
                     self.[<$chunk _offset>]() == 0
+                }
+
+                #[doc ="Returns an immutable reference of `T` starting from the physical address."]
+                pub fn get_ref<T>(&self) -> &'static T {
+                    unsafe { (self.0 as *const T).as_ref().unwrap() }
+                }
+
+                #[doc = "Returns a mutable reference of `T` starting from the physical address."]
+                pub fn get_mut<T>(&self) -> &'static mut T {
+                    unsafe { (self.0 as *mut T).as_mut().unwrap() }
                 }
             }
             impl fmt::Debug for $TypeName {
@@ -174,6 +189,18 @@ macro_rules! implement_page_frame {
                 pub const fn ceil(addr: $address) -> $TypeName {
                     $TypeName {
                         number: (addr.value() - 1 + $page_size) / $page_size,
+                    }
+                }
+
+                #[doc = "Returns an immutable slice of `" $TypeName "`."]
+                pub fn as_slice(&self) -> &[u8] {
+                    unsafe { core::slice::from_raw_parts(self.start_address().value() as *const _, $page_size) }
+                }
+
+                #[doc = "Returns a mutable slice of `" $TypeName "`."]
+                pub fn as_slice_mut(&self) -> &mut [u8] {
+                    unsafe {
+                        core::slice::from_raw_parts_mut(self.start_address().value() as *mut _, $page_size)
                     }
                 }
             }

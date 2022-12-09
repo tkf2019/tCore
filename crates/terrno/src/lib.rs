@@ -9,6 +9,7 @@ numeric_enum! {
     #[allow(non_camel_case_types)]
     #[doc = "Errno in Linux"]
     pub enum Errno {
+        NONE = 0,
         /// Operation not permitted
         EPERM = 1,
         /// No such file or directory

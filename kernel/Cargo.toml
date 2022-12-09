@@ -31,6 +31,6 @@ tvfs = { path = "../crates/tvfs" }
 terrno = { path = "../crates/terrno" }
 
 [features]
-default = []
+default = ["oscomp", "test"]
 test = []
 oscomp = []

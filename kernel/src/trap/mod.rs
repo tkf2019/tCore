@@ -5,9 +5,13 @@ use core::{arch::asm, panic};
 use log::trace;
 use riscv::register::{scause::*, utvec::TrapMode, *};
 
+use tmm_rv::VirtAddr;
 pub use trampoline::__trampoline;
 pub use trapframe::TrapFrame;
 
+use crate::error::KernelError;
+use crate::mm::vma::VMFlags;
+use crate::println;
 use crate::task::do_exit;
 use crate::{
     config::TRAMPOLINE_VA,
@@ -51,6 +55,23 @@ pub fn user_trap_handler() -> ! {
     // Only handle user trap
     assert!(sstatus.spp() == sstatus::SPP::User);
 
+    // Handle user trap with detailed cause
+    let show_trapframe = |tf: &TrapFrame| {
+        println!("{:#X?}", tf);
+    };
+    let trap_info = || {
+        trace!(
+            "[U] {:X?}, {:X?}, stval={:#X}, sepc={:#X}",
+            scause.cause(),
+            sstatus,
+            stval,
+            sepc,
+        )
+    };
+    let fatal_info = |err: KernelError| {
+        trace!("[U] Fatal exception {:#?}", err);
+    };
+
     match scause.cause() {
         Trap::Exception(Exception::UserEnvCall) => {
             // pc + 4
@@ -61,18 +82,28 @@ pub fn user_trap_handler() -> ! {
             drop(current);
             match syscall(trapframe.syscall_args().unwrap()) {
                 Ok(ret) => trapframe.set_a0(ret),
-                Err(errno) => trapframe.set_a0(-isize::from(errno) as usize),
+                Err(errno) => {
+                    trace!("{:#?} {:#?}", trapframe.syscall_args().unwrap().0, errno);
+                    trapframe.set_a0(-isize::from(errno) as usize)
+                }
             };
         }
+        Trap::Exception(Exception::StorePageFault) => {
+            let current = current_task().unwrap();
+            let mut current_mm = current.mm.lock();
+            show_trapframe(&current.trapframe());
+            trap_info();
+            if let Err(err) = current_mm
+                .do_handle_page_fault(VirtAddr::from(stval), VMFlags::USER | VMFlags::WRITE)
+            {
+                fatal_info(err);
+                do_exit(-1);
+            }
+        }
         _ => {
-            // Handle user trap with detailed cause
-            trace!(
-                "[U] {:X?}, {:X?}, stval={:#X}, sepc={:#X}",
-                scause.cause(),
-                sstatus,
-                stval,
-                sepc
-            );
+            let current = current_task().unwrap();
+            show_trapframe(&current.trapframe());
+            trap_info();
             do_exit(-1);
         }
     }

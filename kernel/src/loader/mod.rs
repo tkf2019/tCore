@@ -2,7 +2,6 @@ pub mod flags;
 mod init;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
-use log::trace;
 use spin::Mutex;
 use tmm_rv::{PTEFlags, Page, VirtAddr, PAGE_SIZE};
 use tvfs::OpenFlags;
@@ -37,7 +36,7 @@ pub fn from_args(dir: String, args: Vec<String>) -> KernelResult<Arc<Task>> {
             .map_err(|errno| KernelError::Errno(errno))?
             .read_all()
     };
-    Ok(Arc::new(Task::new(unsafe { file.as_slice() }, args)?))
+    Ok(Arc::new(Task::new(file.as_slice(), args)?))
 }
 
 /// Create address space from elf.
@@ -105,7 +104,7 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
                     SegmentData::Undefined(data) => data,
                     _ => return Err(KernelError::ELFInvalidSegment),
                 };
-                mm.alloc_write(
+                mm.alloc_write_vma(
                     Some(data),
                     start_va + dyn_base,
                     end_va + dyn_base,
@@ -114,10 +113,10 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
                 )?;
             }
             program::Type::Interp => {
-                let data = match phdr.get_data(&elf).unwrap() {
-                    SegmentData::Undefined(data) => data,
-                    _ => return Err(KernelError::ELFInvalidSegment),
-                };
+                // let data = match phdr.get_data(&elf).unwrap() {
+                //     SegmentData::Undefined(data) => data,
+                //     _ => return Err(KernelError::ELFInvalidSegment),
+                // };
                 // let path = unsafe {raw_ptr_to}
             }
             _ => {}
@@ -138,7 +137,7 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
     // Initialize user stack
     let ustack_base = USER_STACK_BASE - ADDR_ALIGN;
     let ustack_top = USER_STACK_BASE - USER_STACK_SIZE;
-    mm.alloc_write(
+    mm.alloc_write_vma(
         None,
         ustack_top.into(),
         ustack_base.into(),
@@ -146,10 +145,7 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
         Arc::new(Mutex::new(FixedPMA::new(USER_STACK_PAGES)?)),
     )?;
     let mut vsp = VirtAddr::from(ustack_base);
-    let sp = mm
-        .page_table
-        .translate(vsp)
-        .map_err(|err| KernelError::PageTableInvalid)?;
+    let sp = mm.translate(vsp)?;
     let init_stack = InitStack::serialize(
         InitInfo {
             args,

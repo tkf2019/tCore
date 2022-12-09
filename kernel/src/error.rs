@@ -4,11 +4,20 @@ use terrno::Errno;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KernelError {
+    /// Unimplemented functions
+    Unimplemented,
+
+    /// Invalid arguments
+    InvalidArgs,
+
+    /// A warpper for errno
+    Errno(Errno),
+
+    /// Unsupported syscall
+    SyscallUnsupported(usize),
+
     /// An invalid page table entry.
     PageTableInvalid,
-
-    /// Page has not been mapped to an frame yet.
-    PageUnmapped,
 
     /// Failed to allocate a new frame: Internal Error
     FrameAllocFailed,
@@ -23,17 +32,14 @@ pub enum KernelError {
 
     ELFInvalidSegment,
 
-    /// Unsupported syscall
-    SyscallUnsupported(usize),
-
     /// This operation was interrupted.
     ///
     /// Interrupted operations can typically be retried.
-    Interrupted,
+    IOInterrupted,
 
     /// An error returned when an operation could not be completed because a
     /// call to `write` returned [`Ok(0)`].
-    WriteZero,
+    IOWriteZero,
 
     /// An error returned when an operation could not be completed because an
     /// "end of file" was reached prematurely.
@@ -41,19 +47,42 @@ pub enum KernelError {
     /// This typically means that an operation could only succeed if it read a
     /// particular number of bytes but only a smaller number of bytes could be
     /// read.
-    UnexpectedEof,
-
-    /// Invalid input arguments
-    InvalidArgs,
-
-    /// A warpper for errno
-    Errno(Errno),
+    IOUnexpectedEof,
 
     /// FD out of bound or removed.
     FDNotFound,
 
     /// FD exceeds limit
     FDOutOfBound,
+
+    /// PMA failed to read ot write
+    PMAFailedIO,
+
+    /// PMA failed to get the frame
+    PMAFrameNotFound,
+
+    /// PMA index out of range
+    PMAOutOfRange,
+
+    /// Page has not been mapped.
+    PageUnmapped,
+
+    /// Cannot find the virtual memory area.
+    VMANotFound,
+
+    /// Page fault cannot be handled.
+    FatalPageFault,
 }
 
 pub type KernelResult<T = ()> = Result<T, KernelError>;
+
+impl From<KernelError> for Errno {
+    fn from(value: KernelError) -> Self {
+        match value {
+            KernelError::Errno(errno) => errno.clone(),
+            KernelError::PageTableInvalid => Errno::EFAULT,
+            KernelError::InvalidArgs => Errno::EINVAL,
+            _ => Errno::NONE,
+        }
+    }
+}

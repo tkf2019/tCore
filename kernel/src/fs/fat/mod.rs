@@ -52,15 +52,15 @@ pub struct IoError(KernelError);
 
 impl fatfs::IoError for IoError {
     fn is_interrupted(&self) -> bool {
-        self.0 == KernelError::Interrupted
+        self.0 == KernelError::IOInterrupted
     }
 
     fn new_unexpected_eof_error() -> Self {
-        Self(KernelError::UnexpectedEof)
+        Self(KernelError::IOUnexpectedEof)
     }
 
     fn new_write_zero_error() -> Self {
-        Self(KernelError::WriteZero)
+        Self(KernelError::IOWriteZero)
     }
 }
 
@@ -146,7 +146,7 @@ impl Seek for FatIO {
             SeekFrom::End(delta) => (self.max_size as i64 + delta) as usize,
         };
         if new_pos > self.max_size {
-            Err(IoError(KernelError::UnexpectedEof))
+            Err(IoError(KernelError::IOUnexpectedEof))
         } else {
             self.pos = new_pos;
             Ok(self.pos as u64)

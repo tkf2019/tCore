@@ -8,7 +8,7 @@
 
 use tvfs::File;
 
-use crate::{arch::getchar, eprint, print, task::do_yield};
+use crate::{cons::getchar, eprint, print, task::do_yield};
 
 pub struct Stdin;
 
@@ -29,26 +29,14 @@ impl File for Stdin {
         Some(1)
     }
 
-    fn write(&self, buf: &[u8]) -> Option<usize> {
-        None
-    }
-
     fn read_ready(&self) -> bool {
         true
-    }
-
-    fn write_ready(&self) -> bool {
-        false
     }
 }
 
 pub struct Stdout;
 
 impl File for Stdout {
-    fn read(&self, buf: &mut [u8]) -> Option<usize> {
-        None
-    }
-
     fn write(&self, buf: &[u8]) -> Option<usize> {
         if let Ok(data) = core::str::from_utf8(buf) {
             print!("{}", data);
@@ -56,10 +44,6 @@ impl File for Stdout {
         } else {
             None
         }
-    }
-
-    fn read_ready(&self) -> bool {
-        false
     }
 
     fn write_ready(&self) -> bool {
@@ -70,10 +54,6 @@ impl File for Stdout {
 pub struct Stderr;
 
 impl File for Stderr {
-    fn read(&self, buf: &mut [u8]) -> Option<usize> {
-        None
-    }
-
     fn write(&self, buf: &[u8]) -> Option<usize> {
         if let Ok(data) = core::str::from_utf8(buf) {
             eprint!("{}", data);
@@ -81,10 +61,6 @@ impl File for Stderr {
         } else {
             None
         }
-    }
-
-    fn read_ready(&self) -> bool {
-        false
     }
 
     fn write_ready(&self) -> bool {

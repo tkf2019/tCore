@@ -6,12 +6,12 @@ use talloc::{IDAllocator, RecycleAllocator};
 use tmm_rv::{PTEFlags, PAGE_SIZE};
 
 use crate::{
-    arch::get_cpu_id,
     config::{
         ADDR_ALIGN, CPU_NUM, INIT_TASK_PATH, IS_TEST_ENV, KERNEL_STACK_PAGES, KERNEL_STACK_SIZE,
         MAIN_TASK, ROOT_DIR, TRAMPOLINE_VA,
     },
     error::KernelResult,
+    get_cpu_id,
     loader::from_args,
     mm::{pma::FixedPMA, KERNEL_MM},
 };
@@ -69,7 +69,7 @@ pub fn kstack_layout(kstack: usize) -> (usize, usize) {
 /// Returns the kernel stack base.
 pub fn kstack_vm_alloc(kstack: usize) -> KernelResult<usize> {
     let (kstack_top, kstack_base) = kstack_layout(kstack);
-    KERNEL_MM.lock().alloc_write(
+    KERNEL_MM.lock().alloc_write_vma(
         None,
         kstack_top.into(),
         kstack_base.into(),

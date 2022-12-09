@@ -52,7 +52,6 @@ impl Hal for VirtioHal {
     fn virt_to_phys(vaddr: usize) -> usize {
         let pa = KERNEL_MM
             .lock()
-            .page_table
             .translate(vaddr.into())
             .expect("Failed to translate virtual address");
         // debug!("virt_to_phys: {:#X} -> {:#?}", vaddr, pa);

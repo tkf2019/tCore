@@ -5,8 +5,6 @@
 #![feature(alloc_error_handler)]
 #![feature(core_intrinsics)]
 
-#[path = "arch/riscv/mod.rs"]
-mod arch;
 mod config;
 mod cons;
 mod driver;
@@ -17,17 +15,91 @@ mod loader;
 mod mm;
 mod syscall;
 mod task;
+mod timer;
 mod trap;
 
 extern crate alloc;
 
-use log::trace;
-use tmm_rv::{frame_init, Frame, PhysAddr};
+use log::{trace, warn};
+use riscv::asm::{sfence_vma, sfence_vma_all};
+use tmm_rv::{frame_init, Frame, PhysAddr, VirtAddr};
 
-use crate::{
-    arch::{__entry_others, start_hart},
-    config::{CPU_NUM, IS_TEST_ENV, PHYSICAL_MEMORY_END},
+use crate::config::{
+    BOOT_STACK_SIZE, CPU_NUM, IS_TEST_ENV, PHYSICAL_MEMORY_END, TOTAL_BOOT_STACK_SIZE,
 };
+
+// Initialize kernel stack in .bss section.
+#[link_section = ".bss.stack"]
+static mut STACK: [u8; TOTAL_BOOT_STACK_SIZE] = [0u8; TOTAL_BOOT_STACK_SIZE];
+
+/// Entry for the first kernel.
+#[naked]
+#[no_mangle]
+#[link_section = ".text.entry"]
+unsafe extern "C" fn __entry(hartid: usize) -> ! {
+    core::arch::asm!(
+        // Use tp to save hartid
+        "mv tp, a0",
+        // Set stack pointer to the kernel stack.
+        "la sp, {stack} + {stack_size}",
+        // Jump to the main function.
+        "j  {main}",
+        stack_size = const TOTAL_BOOT_STACK_SIZE,
+        stack      =   sym STACK,
+        main       =   sym rust_main,
+        options(noreturn),
+    )
+}
+
+/// Entry for other kernels.
+#[naked]
+#[no_mangle]
+pub unsafe extern "C" fn __entry_others(hartid: usize) -> ! {
+    core::arch::asm!(
+        // Use tp to save hartid
+        "mv tp, a0",
+        // Set stack pointer to the kernel stack.
+        "
+        la a1, {stack}
+        li t0, {total_stack_size}
+        li t1, {stack_size}
+        mul sp, a0, t1
+        sub sp, t0, sp
+        add sp, a1, sp
+        ",
+        // Jump to the main function.
+        "j  {main}",
+        total_stack_size = const TOTAL_BOOT_STACK_SIZE,
+        stack_size       = const BOOT_STACK_SIZE,
+        stack            =   sym STACK,
+        main             =   sym rust_main_others,
+        options(noreturn),
+    )
+}
+
+/// Get cpu id.
+#[inline]
+pub fn get_cpu_id() -> usize {
+    let cpu_id;
+    unsafe { core::arch::asm!("mv {0}, tp", out(reg) cpu_id) };
+    cpu_id
+}
+
+/// Start other harts
+#[inline]
+pub fn start_hart(hartid: usize, entry: usize, opaque: usize) {
+    let ret = sbi_rt::hart_start(hartid, entry, opaque);
+    assert!(ret.is_ok(), "Failed to shart hart {}", hartid);
+}
+
+/// Flush tlb
+pub fn flush_tlb(va: Option<VirtAddr>) {
+    if let Some(va) = va {
+        unsafe { sfence_vma(0, va.value()) };
+    } else {
+        unsafe { sfence_vma_all() };
+    }
+}
 
 /// Clear .bss
 fn clear_bss() {
@@ -55,10 +127,10 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
         Frame::ceil(PhysAddr::from(ekernel as usize)).into(),
         Frame::floor(PhysAddr::from(PHYSICAL_MEMORY_END)).into(),
     );
-    // Activate kernel virtual address space.
-    mm::init();
     // Set kernel trap entry.
     trap::set_kernel_trap();
+    // Activate kernel virtual address space.
+    mm::init();
     // Initialize oscomp testcases, which will be loaded from disk.
     if IS_TEST_ENV {
         oscomp::init(oscomp::testcases::LIBC_STATIC_TESTCASES);
@@ -79,7 +151,7 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_main_others(hartid: usize) -> ! {
+pub extern "C" fn rust_main_others(_hartid: usize) -> ! {
     // Activate kernel virtual address space.
     mm::init();
     // Set kernel trap entry.

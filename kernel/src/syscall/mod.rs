@@ -1,15 +1,19 @@
-use tsyscall::{SyscallFile, SyscallInfo, SyscallNO, SyscallProc, SyscallResult};
+use log::trace;
+use tsyscall::{SyscallFile, SyscallNO, SyscallProc, SyscallResult, SyscallTimer};
+use ttimer::TimeSpec;
 
 mod file;
-mod info;
 mod proc;
 mod signal;
+mod timer;
 
+#[derive(Debug)]
 pub struct SyscallArgs(pub SyscallNO, pub [usize; 6]);
 
 pub struct SyscallImpl;
 
 pub fn syscall(args: SyscallArgs) -> SyscallResult {
+    trace!("[U] Syscall {:X?}", args);
     let id = args.0;
     let args = args.1;
     match id {
@@ -18,8 +22,11 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
         SyscallNO::SET_TID_ADDRESS => SyscallImpl::set_tid_address(args[0]),
         SyscallNO::GETPID => SyscallImpl::getpid(),
         SyscallNO::GETTID => SyscallImpl::gettid(),
+        SyscallNO::CLOCK_GET_TIME => SyscallImpl::clock_gettime(args[0], args[1] as *mut TimeSpec),
+        SyscallNO::BRK => SyscallImpl::brk(args[0]),
+        SyscallNO::MUNMAP => SyscallImpl::munmap(args[0], args[1]),
         _ => {
-            unimplemented!()
+            unimplemented!("{:?}", id)
         }
     }
 }

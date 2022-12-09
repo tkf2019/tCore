@@ -1,16 +1,14 @@
 use alloc::{string::String, vec, vec::Vec};
 use bitflags::*;
 use core::{fmt, mem::size_of};
-use log::{debug, info, warn};
 
-use crate::{
-    frame_alloc, AllocatedFrames, Frame, Page, PhysAddr, VirtAddr, PAGE_SIZE, PPN_MASK_SV39,
-    PPN_OFFSET_SV39, SATP_MODE_SV39,
-};
+use crate::{config::*, frame_alloc::AllocatedFrame, Frame, Page, PhysAddr, VirtAddr};
 
 bitflags! {
     /// Page table entry flag bits in SV39
     pub struct PTEFlags: u64 {
+        const NONE = 0;
+
         /// Iff set, the entry is valid.
         const VALID = 1 << 0;
 
@@ -31,11 +29,12 @@ bitflags! {
         /// If set, this page is accessible in all privileges.
         const GLOBAL = 1 << 5;
 
-        /// If the entry is recently accessed.
+        /// Indicates the virtual page has been read, written, or fetched
+        /// from since the last time the A bit was cleared.
         const ACCESSED = 1 << 6;
 
-        /// If the entry is recently modified.
-        /// Must be zero in page directory.
+        /// Indicates that the virtual page has been written since the last
+        /// time the D bit was cleared.
         const DIRTY = 1 << 7;
     }
 }
@@ -161,16 +160,16 @@ pub struct PageTable {
     /// Allocated frames of this [`PageTable`].
     /// New page table entries will be created by map requests, so available physical frames need
     /// to be allocated when walking down the 3-level page table in SV39.
-    frames: Vec<AllocatedFrames>,
+    frames: Vec<AllocatedFrame>,
 }
 
 impl PageTable {
     /// Create a page table with a newly allocated root frame.
     pub fn new() -> Result<Self, &'static str> {
-        let root_frame = AllocatedFrames::new(1, true)?;
+        let root_frame = AllocatedFrame::new(true)?;
         Ok(Self {
             // No iteration after a successful allocation, thus do `unwrap()` freely.
-            root: root_frame.start,
+            root: root_frame.clone(),
             frames: vec![root_frame],
         })
     }
@@ -189,7 +188,7 @@ impl PageTable {
     /// `CREAT` bit is set in flags.
     ///
     /// This function cannot be used outside the page table. It checks the `valid` bit of the leaf.
-    fn walk(
+    pub fn walk(
         &mut self,
         page: Page,
         flags: PTWalkerFlags,
@@ -200,17 +199,16 @@ impl PageTable {
 
         for (j, index) in indexes.iter().enumerate() {
             let pa = PageTableEntry::from_index(&link, *index);
-            let mut entry = &mut PageTableEntry::new(pa);
+            let entry = &mut PageTableEntry::new(pa);
             // No existing entry, create a new one.
             if !entry.flags().is_valid() {
                 if flags.intersects(PTWalkerFlags::CREAT) && j < 2 {
-                    let new_frame = AllocatedFrames::new(1, true)?;
+                    let new_frame = AllocatedFrame::new(true)?;
                     // Write new valid entry to the target frame.
                     entry.set_flags(PTEFlags::VALID);
-                    entry.set_ppn(&new_frame.start);
+                    entry.set_ppn(&new_frame);
                     entry.write(pa);
-
-                    // Delegate the ownership to this page table
+                    // Delegate the ownership to this page table.
                     self.frames.push(new_frame);
                 } else if !flags.intersects(PTWalkerFlags::CREAT) {
                     return Err("Encounter an invalid page table entry.");
@@ -236,8 +234,8 @@ impl PageTable {
 
     /// Clears the page table entry found by the page.
     pub fn unmap(&mut self, page: Page) -> Result<(), &'static str> {
-        let (pa, mut pte) = self.walk(page, PTWalkerFlags::empty())?;
-        pte = PageTableEntry::zero();
+        let (pa, _) = self.walk(page, PTWalkerFlags::empty())?;
+        let pte = PageTableEntry::zero();
         pte.write(pa);
         Ok(())
     }
@@ -250,40 +248,6 @@ impl PageTable {
                 let pa = pte.frame().start_address();
                 pa + offset
             })
-    }
-
-    /// Gets bytes translated with the range of [start_va, start_va + len),
-    /// which might cover several pages.
-    pub fn get_buf_mut(
-        &mut self,
-        va: VirtAddr,
-        len: usize,
-    ) -> Result<Vec<&'static mut [u8]>, &'static str> {
-        let mut start_va = va;
-        let end_va = start_va + len;
-        let mut v = Vec::new();
-        while start_va < end_va {
-            let start_pa = self.translate(start_va)?;
-            let next_page = Page::from(start_va) + 1;
-            let page_len: usize = (end_va - start_va)
-                .min(next_page.start_address() - start_va)
-                .into();
-            v.push(unsafe {
-                core::slice::from_raw_parts_mut(start_pa.value() as *mut _, page_len)
-            });
-            start_va += page_len;
-        }
-        Ok(v)
-    }
-
-    /// Gets a string loaded from starting virtual address. The string must end
-    /// with `'\0'` in virtual address space.
-    pub fn get_str(&mut self, va: VirtAddr, len: usize) -> Result<String, &'static str> {
-        let mut string = String::new();
-        for bytes in self.get_buf_mut(va, len)? {
-            string.extend(bytes.into_iter().map(|ch| *ch as char));
-        }
-        Ok(string)
     }
 }
 

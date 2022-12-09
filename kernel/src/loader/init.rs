@@ -11,7 +11,6 @@ use core::{
 };
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
-use log::trace;
 use tmm_rv::{PhysAddr, VirtAddr};
 
 use super::flags::AuxType;

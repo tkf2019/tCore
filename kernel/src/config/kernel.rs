@@ -1,16 +1,8 @@
-/*!
-- PAGE_SIZE is the minimum unit of user address space areas, so user
-heap and stack have better be integral multiple of PAGE_SIZE.
-*/
-#![allow(unused)]
-#![feature(stmt_expr_attributes)]
-
 use tmm_rv::PAGE_SIZE_BITS;
 pub use tmm_rv::{LOW_MAX_VA, MAX_VA, PAGE_SIZE};
 
+/// Address alignment
 pub const ADDR_ALIGN: usize = core::mem::size_of::<usize>();
-
-/* Global configurations */
 
 /// Use guard page to avoid stack overflow.
 pub const GUARD_PAGE: usize = PAGE_SIZE;
@@ -18,10 +10,11 @@ pub const GUARD_PAGE: usize = PAGE_SIZE;
 /// Trampoline takes up the highest page both in user and kernel space.
 pub const TRAMPOLINE_VA: usize = MAX_VA - PAGE_SIZE + 1;
 
-/* Kernel configurations */
-
 /// CPUs
-pub const CPU_NUM: usize = 4;
+pub const CPU_NUM: usize =1;
+
+/// Use cpu0 as main hart
+pub const MAIN_HART: usize = 0;
 
 /// Boot kernel size allocated in `_start` for single CPU.
 pub const BOOT_STACK_SIZE: usize = 0x4_0000;
@@ -52,12 +45,6 @@ pub const MMIO: &[(usize, usize)] = &[
     (0x1000_1000, 0x00_1000), // Virtio Block in virt machine
 ];
 
-/// Main task in the same address space
-pub const MAIN_TASK: usize = 0;
-
-/// Use cpu0 as main hart
-pub const MAIN_HART: usize = 0;
-
 /// The number of block cache units for virtio.
 pub const CACHE_SIZE: usize = 32;
 
@@ -67,8 +54,11 @@ pub const FS_IMG_SIZE: usize = 40 * 1024 * 1024;
 /// Default maximum file descriptor limit.
 pub const DEFAULT_FD_LIMIT: usize = 0x100;
 
-/// ROOT
+/// Boot root directory
 pub const ROOT_DIR: &str = "/";
+
+/// Main task in the same address space
+pub const MAIN_TASK: usize = 0;
 
 /// Absolute path of init task
 pub const INIT_TASK_PATH: &str = "hello_world";
@@ -82,22 +72,5 @@ cfg_if::cfg_if! {
     }
 }
 
-/* User configurations */
-
-/// User heap size
-pub const USER_HEAP_SIZE: usize = 0x40_0000;
-
-/// User heap pages
-pub const USER_HEAP_PAGES: usize = USER_HEAP_SIZE >> PAGE_SIZE_BITS;
-
-/// User stack size
-pub const USER_STACK_SIZE: usize = 0x2000;
-
-/// User stack pages
-pub const USER_STACK_PAGES: usize = USER_STACK_SIZE >> PAGE_SIZE_BITS;
-
-/// Task stacks starts at the next page of `Trampoline`
-pub const USER_STACK_BASE: usize = LOW_MAX_VA + 1;
-
-/// Relocatable file address
-pub const ELF_BASE_RELOCATE: usize = 0x8000_0000;
+/// Maximum virtual memory areas in an address space
+pub const MAX_MAP_COUNT: usize = 256;

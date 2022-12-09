@@ -4,7 +4,7 @@ use alloc::{
     vec::Vec,
 };
 use core::fmt;
-use log::{trace, warn};
+use log::trace;
 use riscv::register::sstatus::{self, set_spp, SPP};
 use spin::{mutex::Mutex, MutexGuard};
 use talloc::{IDAllocator, RecycleAllocator};
@@ -12,7 +12,7 @@ use tmm_rv::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE};
 
 use crate::{
     config::*,
-    error::{KernelError, KernelResult},
+    error::KernelResult,
     fs::FDManager,
     loader::from_elf,
     mm::{pma::FixedPMA, KERNEL_MM, MM},
@@ -137,6 +137,7 @@ impl Task {
         // Init address space
         let mut mm = MM::new()?;
         let sp = from_elf(elf_data, args, &mut mm)?;
+        trace!("\nTask [{}]\n{:#?}", &name, mm);
 
         // New process identification
         let pid = pid_alloc();
@@ -147,17 +148,14 @@ impl Task {
 
         // Init trapframe
         let trapframe_base: VirtAddr = trapframe_base(MAIN_TASK).into();
-        mm.alloc_write(
+        mm.alloc_write_vma(
             None,
             trapframe_base,
             trapframe_base + PAGE_SIZE,
             PTEFlags::READABLE | PTEFlags::WRITABLE,
             Arc::new(Mutex::new(FixedPMA::new(1)?)),
         )?;
-        let trapframe_pa = mm.page_table.translate(trapframe_base).map_err(|e| {
-            warn!("{}", e);
-            KernelError::PageTableInvalid
-        })?;
+        let trapframe_pa = mm.translate(trapframe_base)?;
         let trapframe = TrapFrame::from(trapframe_pa);
         unsafe { set_spp(SPP::User) };
         *trapframe = TrapFrame::new(
