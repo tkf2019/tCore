@@ -8,14 +8,17 @@ use log::trace;
 use riscv::register::sstatus::{self, set_spp, SPP};
 use spin::{mutex::Mutex, MutexGuard};
 use talloc::{IDAllocator, RecycleAllocator};
+use terrno::Errno;
 use tmm_rv::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE};
+use tsyscall::SyscallResult;
+use tvfs::File;
 
 use crate::{
     config::*,
     error::KernelResult,
     fs::FDManager,
     loader::from_elf,
-    mm::{pma::FixedPMA, KERNEL_MM, MM},
+    mm::{pma::FixedPMA, BackendFile, MmapFlags, MmapProt, KERNEL_MM, MM},
     task::{kstack_alloc, pid_alloc},
     trap::{user_trap_handler, user_trap_return, TrapFrame},
 };
@@ -214,6 +217,12 @@ impl Task {
         let inner = self.inner.lock();
         inner.state
     }
+
+    /// Get the reference of a file object by file descriptor `fd`.
+    pub fn get_file(&self, fd: usize) -> KernelResult<Arc<dyn File>> {
+        let fd_manager = self.fd_manager.lock();
+        fd_manager.get(fd)
+    }
 }
 
 impl Drop for Task {
@@ -246,4 +255,90 @@ pub fn ustack_layout(tid: usize) -> (usize, usize) {
     let ustack_base = USER_STACK_BASE - tid * (USER_STACK_SIZE + PAGE_SIZE);
     let ustack_top = ustack_base - USER_STACK_SIZE;
     (ustack_top, ustack_base - ADDR_ALIGN)
+}
+
+/* Syscall helpers */
+
+impl Task {
+    /// A helper for [`tsyscall::SyscallProc::mmap`].
+    ///
+    /// TODO: MAP_SHARED and MAP_PRIVATE
+    pub fn do_mmap(
+        &self,
+        hint: VirtAddr,
+        len: usize,
+        prot: MmapProt,
+        flags: MmapFlags,
+        fd: usize,
+        off: usize,
+    ) -> SyscallResult {
+        trace!(
+            "MMAP {:?}, 0x{:X?} {:#?} {:#?} 0x{:X} 0x{:X}",
+            hint,
+            len,
+            prot,
+            flags,
+            fd,
+            off
+        );
+
+        if len == 0
+            || !hint.is_aligned()
+            || !(hint + len).is_aligned()
+            || hint + len > VirtAddr::from(LOW_MAX_VA)
+            || hint == VirtAddr::zero() && flags.contains(MmapFlags::MAP_FIXED)
+        {
+            return Err(Errno::EINVAL);
+        }
+
+        let mut mm = self.mm.lock();
+        if mm.map_count() >= MAX_MAP_COUNT {
+            return Err(Errno::ENOMEM);
+        }
+
+        // Find an available area by kernel.
+        let anywhere = hint == VirtAddr::zero() && !flags.contains(MmapFlags::MAP_FIXED);
+
+        // Handle different cases indicated by `MmapFlags`.
+        if flags.contains(MmapFlags::MAP_ANONYMOUS) {
+            if fd as isize == -1 && off == 0 {
+                if let Ok(start) = mm.alloc_vma(hint, hint + len, prot.into(), anywhere, None) {
+                    trace!("{:#?}", mm);
+                    return Ok(start.value());
+                } else {
+                    return Err(Errno::ENOMEM);
+                }
+            }
+            return Err(Errno::EINVAL);
+        }
+
+        // Map to backend file.
+        if let Ok(file) = self.fd_manager.lock().get(fd) {
+            if !file.is_reg() || !file.read_ready() {
+                return Err(Errno::EACCES);
+            }
+            if let Some(_) = file.seek(off, tvfs::SeekWhence::Set) {
+                let backend = BackendFile::new(file, off);
+                if let Ok(start) =
+                    mm.alloc_vma(hint, hint + len, prot.into(), anywhere, Some(backend))
+                {
+                    return Ok(start.value());
+                } else {
+                    return Err(Errno::ENOMEM);
+                }
+            } else {
+                return Err(Errno::EACCES);
+            }
+        } else {
+            return Err(Errno::EBADF);
+        }
+
+        // Invalid arguments or unimplemented cases
+        // flags contained none of MAP_PRIVATE, MAP_SHARED, or MAP_SHARED_VALIDATE.
+        // Err(Errno::EINVAL)
+    }
+    
+    // pub fn do_open(&self, ) -> SyscallResult {
+
+    // }
 }

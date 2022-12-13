@@ -1,8 +1,11 @@
-use log::trace;
+use terrno::Errno;
 use tmm_rv::VirtAddr;
 use tsyscall::*;
 
-use crate::task::{current_task, do_exit};
+use crate::{
+    mm::{MmapFlags, MmapProt},
+    task::{current_task, do_exit},
+};
 
 use super::SyscallImpl;
 
@@ -47,5 +50,30 @@ impl SyscallProc for SyscallImpl {
             .do_munmap(VirtAddr::from(addr), len)
             .map(|_| 0)
             .map_err(|err| err.into())
+    }
+
+    fn mmap(
+        addr: usize,
+        len: usize,
+        prot: usize,
+        flags: usize,
+        fd: usize,
+        off: usize,
+    ) -> SyscallResult {
+        let prot = MmapProt::from_bits(prot);
+        let flags = MmapFlags::from_bits(flags);
+        if prot.is_none() || flags.is_none() {
+            return Err(Errno::EINVAL);
+        }
+
+        let current = current_task().unwrap();
+        current.do_mmap(
+            VirtAddr::from(addr),
+            len,
+            prot.unwrap(),
+            flags.unwrap(),
+            fd,
+            off,
+        )
     }
 }

@@ -25,6 +25,8 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
         SyscallNO::CLOCK_GET_TIME => SyscallImpl::clock_gettime(args[0], args[1] as *mut TimeSpec),
         SyscallNO::BRK => SyscallImpl::brk(args[0]),
         SyscallNO::MUNMAP => SyscallImpl::munmap(args[0], args[1]),
+        SyscallNO::MMAP => SyscallImpl::mmap(args[0], args[1], args[2], args[3], args[4], args[5]),
+        SyscallNO::OPENAT => SyscallImpl::openat(args[0], args[1] as *const u8, args[2], args[3]),
         _ => {
             unimplemented!("{:?}", id)
         }

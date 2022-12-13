@@ -246,7 +246,6 @@ pub fn do_yield() {
 /// Handle zombie tasks.
 /// 1. Children of current task will be delegated to [`INIT_TASK`].
 /// 2. Current task may need to send a signal to its parent.
-/// 3.
 ///
 /// # DEAD LOCK
 ///

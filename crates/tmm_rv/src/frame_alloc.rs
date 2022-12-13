@@ -1,6 +1,6 @@
 use buddy_system_allocator::LockedFrameAllocator;
 use core::{fmt, ops::Deref};
-use log::info;
+use log::{info, trace};
 use spin::Lazy;
 
 use crate::{Frame, FrameRange, PageTable, PAGE_SIZE};
@@ -45,13 +45,10 @@ impl AllocatedFrame {
             let frame = Frame::from(frame);
             if flush {
                 unsafe {
-                    core::slice::from_raw_parts_mut(
-                        frame.start_address().value() as *mut u8,
-                        PAGE_SIZE,
-                    )
-                    .fill(0)
+                    core::ptr::write_bytes(frame.start_address().value() as *mut u8, 0, PAGE_SIZE)
                 };
             }
+            // trace!("AllocatedFrame {:?}", frame);
             Ok(Self { frame })
         } else {
             Err("Failed to allocate frame.")
@@ -111,13 +108,14 @@ impl AllocatedFrameRange {
             let end = Frame::from(start + count);
             if flush {
                 unsafe {
-                    core::slice::from_raw_parts_mut(
+                    core::ptr::write_bytes(
                         start.start_address().value() as *mut u8,
+                        0,
                         PAGE_SIZE * count,
                     )
-                    .fill(0)
                 };
             }
+            // trace!("AllocatedFrames {:?}", FrameRange::new(start, end));
             Ok(Self {
                 frames: FrameRange::new(start, end),
             })
@@ -135,10 +133,7 @@ impl AllocatedFrameRange {
         let (left, right) = if at_frame == self.start {
             (FrameRange::empty(), FrameRange::new(at_frame, self.start))
         } else if at_frame == self.end {
-            (
-                FrameRange::new(self.start, at_frame),
-                FrameRange::empty(),
-            )
+            (FrameRange::new(self.start, at_frame), FrameRange::empty())
         } else if at_frame > self.start && at_frame < self.end {
             (
                 FrameRange::new(self.start, at_frame),

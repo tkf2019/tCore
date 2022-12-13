@@ -1,11 +1,12 @@
 mod file;
+mod flags;
 mod kernel;
 pub mod pma;
 pub mod vma;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::{fmt, mem::size_of, slice};
-use log::{info, trace, warn};
+use log::warn;
 use spin::Mutex;
 use terrno::Errno;
 use tmm_rv::{Frame, PTEFlags, Page, PageRange, PageTable, PhysAddr, VirtAddr};
@@ -13,11 +14,11 @@ use tsyscall::SyscallResult;
 
 use crate::{config::*, error::*, mm::pma::LazyPMA, trap::__trampoline};
 
+pub use file::BackendFile;
+pub use flags::*;
 pub use kernel::{init, KERNEL_MM};
 use pma::PMArea;
 use vma::VMArea;
-
-use self::vma::VMFlags;
 
 pub struct MM {
     /// Holds the pointer to [`PageTable`].
@@ -54,24 +55,6 @@ pub struct MM {
 }
 
 /* Global operations */
-
-impl fmt::Debug for MM {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "Address Space: entry=0x{:X?}, start_brk=0x{:X?}, brk=0x{:X?}",
-            self.entry.value(),
-            self.start_brk.value(),
-            self.brk.value(),
-        )?;
-        for (_, index) in &self.vma_map {
-            if let Some(vma) = &self.vma_list[*index] {
-                writeln!(f, "{:#?}", vma)?;
-            }
-        }
-        Ok(())
-    }
-}
 
 impl MM {
     /// Create a new empty [`MM`] struct.
@@ -114,6 +97,15 @@ impl MM {
         self.page_table
             .translate(va)
             .map_err(|_| KernelError::PageTableInvalid)
+    }
+
+    /// The number of virtual memory areas.
+    pub fn map_count(&mut self) -> usize {
+        self.vma_map.len()
+    }
+
+    pub fn mmap_min_addr(&self) -> VirtAddr {
+        self.start_brk + USER_HEAP_SIZE
     }
 
     /// Writes to `[start_va, end_va)` using the page table of this address space.
@@ -168,8 +160,8 @@ impl MM {
     /// Adds a new [`VMArea`] into the address space.
     ///
     /// This function does not create any memory map for the new area.
-    pub fn alloc_vma(&mut self, vma: VMArea) -> KernelResult {
-        if self.vma_map.len() >= MAX_MAP_COUNT {
+    pub fn add_vma(&mut self, vma: VMArea) -> KernelResult {
+        if self.map_count() >= MAX_MAP_COUNT {
             return Err(KernelError::Errno(Errno::ENOMEM));
         }
         let mut index = self.vma_list.len();
@@ -186,7 +178,11 @@ impl MM {
     }
 
     /// Allocates a new [`VMArea`] with the virtual range of `[start_va, end_va)`.
-    /// Writes the data to the mapped physical areas.
+    ///
+    /// Writes the data to the mapped physical areas without any check for overlaps.
+    ///
+    /// This function may be used when we try to initialize a kernel or user address
+    /// space.
     pub fn alloc_write_vma(
         &mut self,
         data: Option<&[u8]>,
@@ -197,11 +193,65 @@ impl MM {
     ) -> KernelResult {
         let vma = VMArea::new(start_va, end_va, flags.into(), pma)?;
         vma.map_all(&mut self.page_table, flags)?;
-        self.alloc_vma(vma)?;
+        self.add_vma(vma)?;
         if let Some(data) = data {
             unsafe { self.write_vma(data, start_va, end_va)? };
         }
         Ok(())
+    }
+
+    /// Allocates a new [`VMArea`].
+    ///
+    /// # Argument
+    /// - `start`: starting virtual address (aligned implicitly)
+    /// - `end`: ending virtual address (aligned implicitly)
+    /// - `flags`: page table entry flags
+    /// - `anywhere`: if set, the given address range will be ignored
+    /// - `backend`: if not none, a backend file will be managed by this area
+    pub fn alloc_vma(
+        &mut self,
+        start: VirtAddr,
+        end: VirtAddr,
+        flags: VMFlags,
+        anywhere: bool,
+        backend: Option<BackendFile>,
+    ) -> KernelResult<VirtAddr> {
+        let len = end.value() - start.value();
+        let (start, end) = if anywhere {
+            let start = self.find_free_area(start, len)?;
+            (start, start + len)
+        } else {
+            // Clear overlaps.
+            self.do_munmap(start, len)?;
+            (start, end)
+        };
+
+        let vma = VMArea::new(
+            start,
+            end,
+            flags,
+            Arc::new(Mutex::new(LazyPMA::new(page_index(start, end), backend)?)),
+        )?;
+        // There is no need to fllush TLB explicitly, because old maps
+        // have been cleaned.
+        self.add_vma(vma)?;
+
+        Ok(start)
+    }
+
+    /// Finds a free area.
+    pub fn find_free_area(&self, hint: VirtAddr, len: usize) -> KernelResult<VirtAddr> {
+        let mut last_end = VirtAddr::zero();
+        let min_addr = self.mmap_min_addr();
+        for (start, index) in self.vma_map.range(hint..) {
+            if let Some(vma) = &self.vma_list[*index] {
+                if (vma.start_va - last_end).value() >= len && vma.start_va - len >= min_addr {
+                    return Ok(vma.start_va - len);
+                }
+                last_end = vma.end_va;
+            }
+        }
+        Err(KernelError::VMAAllocFailed)
     }
 
     /// Gets bytes translated with the range of [start_va, start_va + len),
@@ -355,6 +405,7 @@ impl MM {
     ///
     /// # Argument
     /// - `va`: starting virtual address where the data type locates.
+    /// - `data`: reference of data type.
     pub fn alloc_write_type<T: Sized>(&mut self, va: VirtAddr, data: &T) -> KernelResult {
         let size = size_of::<T>();
         let end_va = va + size;
@@ -390,7 +441,6 @@ impl MM {
         // No need to allocate new pages.
         if new_page == old_page {
             self.brk = brk;
-            trace!("2");
             return Ok(brk.value());
         }
 
@@ -404,7 +454,6 @@ impl MM {
                 )
                 .is_err()
             {
-                trace!("3");
                 return Ok(self.brk.value());
             }
             self.brk = brk;
@@ -418,7 +467,7 @@ impl MM {
 
         // Initialize memory area
         if self.brk == self.start_brk {
-            self.alloc_vma(VMArea::new(
+            self.add_vma(VMArea::new(
                 self.start_brk,
                 self.start_brk + PAGE_SIZE,
                 VMFlags::USER | VMFlags::READ | VMFlags::WRITE,
@@ -435,7 +484,7 @@ impl MM {
     pub fn do_munmap(&mut self, start: VirtAddr, len: usize) -> KernelResult {
         let len = page_align(len);
         if !start.is_aligned() || len == 0 {
-            return Err(KernelError::InvalidArgs);
+            return Err(KernelError::Errno(Errno::EINVAL));
         }
         let end = start + len;
 
@@ -459,7 +508,10 @@ impl MM {
                 mid.unwrap().unmap_all(&mut self.page_table)?;
                 new_vma = right;
             } else if vma.end_va > end {
+                // vma starting address modified to end
+                self.vma_map.remove(&vma.start_va);
                 let (left, _) = vma.split(start, end)?;
+                self.vma_map.insert(vma.start_va, index);
                 left.unwrap().unmap_all(&mut self.page_table)?;
             } else {
                 let (right, _) = vma.split(start, end)?;
@@ -478,7 +530,7 @@ impl MM {
 
             // A new area splitted from the original one.
             if let Some(new_vma) = new_vma {
-                self.alloc_vma(new_vma)?;
+                self.add_vma(new_vma)?;
             }
         }
         Ok(())
@@ -491,6 +543,7 @@ impl MM {
     /// A page fault helper for [`crate::trap::user_trap_handler`].
     pub fn do_handle_page_fault(&mut self, va: VirtAddr, flags: VMFlags) -> KernelResult {
         self.get_vma(va, |vma, pt, index| {
+            // trace!("{:?} {:?}", va, vma);
             let (frame, alloc) = vma.alloc_frame(Page::from(va), pt)?;
             // Page fault cannot be handled.
             if !alloc || !vma.flags.contains(flags) {
@@ -498,5 +551,25 @@ impl MM {
             }
             Ok(())
         })
+    }
+}
+
+/* Derives */
+
+impl fmt::Debug for MM {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "\nAddress Space: entry=0x{:X?}, start_brk=0x{:X?}, brk=0x{:X?}",
+            self.entry.value(),
+            self.start_brk.value(),
+            self.brk.value(),
+        )?;
+        for (_, index) in &self.vma_map {
+            if let Some(vma) = &self.vma_list[*index] {
+                writeln!(f, "{:#?}", vma)?;
+            }
+        }
+        Ok(())
     }
 }

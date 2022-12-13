@@ -104,6 +104,7 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
                     SegmentData::Undefined(data) => data,
                     _ => return Err(KernelError::ELFInvalidSegment),
                 };
+                // Address may not be aligned.
                 mm.alloc_write_vma(
                     Some(data),
                     start_va + dyn_base,

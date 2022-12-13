@@ -1,6 +1,8 @@
 use alloc::{string::String, vec, vec::Vec};
 use bitflags::*;
 use core::{fmt, mem::size_of};
+use log::trace;
+use riscv::asm::sfence_vma;
 
 use crate::{config::*, frame_alloc::AllocatedFrame, Frame, Page, PhysAddr, VirtAddr};
 
@@ -229,6 +231,13 @@ impl PageTable {
         pte.set_flags(flags);
         pte.set_ppn(&frame);
         pte.write(pa);
+        /* if page.number() != frame.number() {
+            trace!(
+                "[MAP] {:?} => {:?}",
+                page.start_address(),
+                frame.start_address()
+            );
+        } */
         Ok(())
     }
 
@@ -237,6 +246,7 @@ impl PageTable {
         let (pa, _) = self.walk(page, PTWalkerFlags::empty())?;
         let pte = PageTableEntry::zero();
         pte.write(pa);
+        trace!("[UNMAP] {:?}", page.start_address(),);
         Ok(())
     }
 

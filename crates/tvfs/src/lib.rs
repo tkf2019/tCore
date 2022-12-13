@@ -101,6 +101,11 @@ pub trait File: Send + Sync + AsAny {
         false
     }
 
+    /// If this file is a regular file.
+    fn is_reg(&self) -> bool {
+        false
+    }
+
     /// Gets the number of hard links.
     fn get_nlink(&self) -> Option<usize> {
         None

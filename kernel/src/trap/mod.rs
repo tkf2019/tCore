@@ -9,13 +9,13 @@ use tmm_rv::VirtAddr;
 pub use trampoline::__trampoline;
 pub use trapframe::TrapFrame;
 
-use crate::error::KernelError;
-use crate::mm::vma::VMFlags;
-use crate::println;
-use crate::task::do_exit;
 use crate::{
     config::TRAMPOLINE_VA,
+    error::KernelError,
+    mm::VMFlags,
+    println,
     syscall::syscall,
+    task::do_exit,
     task::{manager::current_task, trapframe_base},
 };
 
@@ -91,7 +91,7 @@ pub fn user_trap_handler() -> ! {
         Trap::Exception(Exception::StorePageFault) => {
             let current = current_task().unwrap();
             let mut current_mm = current.mm.lock();
-            show_trapframe(&current.trapframe());
+            // show_trapframe(&current.trapframe());
             trap_info();
             if let Err(err) = current_mm
                 .do_handle_page_fault(VirtAddr::from(stval), VMFlags::USER | VMFlags::WRITE)

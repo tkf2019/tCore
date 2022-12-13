@@ -72,6 +72,9 @@ pub enum KernelError {
 
     /// Page fault cannot be handled.
     FatalPageFault,
+
+    /// Run out of free memory
+    VMAAllocFailed,
 }
 
 pub type KernelResult<T = ()> = Result<T, KernelError>;

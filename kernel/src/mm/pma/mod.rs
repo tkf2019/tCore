@@ -9,7 +9,7 @@ use tmm_rv::Frame;
 
 use crate::error::{KernelError, KernelResult};
 
-use super::file::MMFile;
+use super::file::BackendFile;
 pub use fixed::*;
 pub use identical::*;
 pub use lazy::*;
@@ -68,16 +68,16 @@ pub trait PMArea: fmt::Debug + Send + Sync {
     /// The second area is the third part in case 4.
     fn split(
         &mut self,
-        start: Option<usize>,
-        end: Option<usize>,
+        _start: Option<usize>,
+        _end: Option<usize>,
     ) -> KernelResult<(Option<PMA>, Option<PMA>)> {
         Err(KernelError::Unimplemented)
     }
 
     /// Extends this area.
-    /// 
+    ///
     /// Fixed areas cannot be extended with contiguous frames.
-    fn extend(&mut self, new_size: usize) -> KernelResult {
+    fn extend(&mut self, _new_size: usize) -> KernelResult {
         Err(KernelError::Unimplemented)
     }
 }

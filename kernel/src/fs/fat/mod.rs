@@ -382,6 +382,10 @@ impl File for FSFile {
         file.seek(SeekFrom::Start(curr_pos)).unwrap();
         curr_pos < len
     }
+
+    fn is_reg(&self) -> bool {
+        true
+    }
 }
 
 /// A wrapper for VFS implementation and configured compilation.

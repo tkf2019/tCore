@@ -1,13 +1,13 @@
-mod flags;
-
 use core::fmt;
-use log::{info, warn};
+use log::info;
 use tmm_rv::*;
 
-use crate::error::{KernelError, KernelResult};
+use crate::{
+    error::{KernelError, KernelResult},
+    flush_tlb,
+};
 
-use super::{page_index, pma::PMA};
-pub use flags::*;
+use super::{flags::*, page_index, pma::PMA};
 
 /// Represents an area in virtual address space with the range of [start_va, end_va).
 pub struct VMArea {
@@ -25,18 +25,6 @@ pub struct VMArea {
 
     /// Mapped to a physical memory area, with behaviors depending on the usage of this area.
     pma: PMA,
-}
-
-impl fmt::Debug for VMArea {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "VMA [0x{:X?}, 0x{:X?}) => {:?}",
-            self.start_va.value(),
-            self.end_va.value(),
-            self.flags
-        )
-    }
 }
 
 impl VMArea {
@@ -91,6 +79,9 @@ impl VMArea {
     /// Maps the whole virtual memory area.
     ///
     /// Notice that this function will allocate frames directly to create map.
+    ///
+    /// This function flushes TLB entries each page, thus there is no need to
+    /// call [`Self::flush_all`] explicitly.
     pub fn map_all(&self, pt: &mut PageTable, flags: PTEFlags) -> KernelResult {
         let mut pma = self.pma.lock();
         let frames = if pma.is_mapped() {
@@ -115,18 +106,29 @@ impl VMArea {
             {
                 return Err(KernelError::PageTableInvalid);
             }
+            flush_tlb(Some(page.start_address()));
         }
         Ok(())
     }
 
     /// Unmaps the whole virtual memory area, escaping errors.
+    ///
+    /// This function flushes TLB entries each page, thus there is no need to
+    /// call [`Self::flush_all`] explicitly.
     pub fn unmap_all(&self, pt: &mut PageTable) -> KernelResult {
-        for page in self.pages.range() {
-            if pt.unmap(page).is_err() {
-                continue;
+        self.pages.range().for_each(|page| {
+            if pt.unmap(page).is_ok() {
+                flush_tlb(Some(page.start_address()));
             }
-        }
+        });
         Ok(())
+    }
+
+    /// Flushes all TLB entries.
+    pub fn flush_all(&self) {
+        self.pages
+            .range()
+            .for_each(|page| flush_tlb(Some(page.start_address())));
     }
 
     /// Allocates a frame for mapped page.
@@ -178,10 +180,7 @@ impl VMArea {
         start: VirtAddr,
         end: VirtAddr,
     ) -> KernelResult<(Option<VMArea>, Option<VMArea>)> {
-        info!(
-            "VMA split {:X?} {:X?} {:X?} {:X?}",
-            start, end, self.start_va, self.end_va
-        );
+        info!("SPLIT");
         if end <= self.start_va
             || self.end_va <= start
             || start <= self.start_va && self.end_va <= end
@@ -236,8 +235,22 @@ impl VMArea {
     }
 }
 
+/* Derives */
+
 impl Clone for VMArea {
     fn clone(&self) -> Self {
         Self::new(self.start_va, self.end_va, self.flags, self.pma.clone()).unwrap()
+    }
+}
+
+impl fmt::Debug for VMArea {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "VMA [0x{:X?}, 0x{:X?}) => {:?}",
+            self.start_va.value(),
+            self.end_va.value(),
+            self.flags
+        )
     }
 }

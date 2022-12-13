@@ -1,6 +1,5 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::{fmt, ops::Deref};
-use log::trace;
 use spin::Mutex;
 use tmm_rv::{AllocatedFrameRange, Frame};
 
@@ -21,8 +20,10 @@ pub struct FixedPMA {
 }
 
 impl FixedPMA {
+    /// Creates a new fixed area and flushes the whole area to
+    /// avoid leak of private data of another task.
     pub fn new(count: usize) -> KernelResult<Self> {
-        match AllocatedFrameRange::new(count, false) {
+        match AllocatedFrameRange::new(count, true) {
             Ok(frames) => Ok(Self { frames }),
             Err(_) => Err(KernelError::FrameAllocFailed),
         }

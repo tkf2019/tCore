@@ -5,16 +5,16 @@ mod fd;
 mod link;
 mod memfs;
 mod stdio;
+mod fat;
+pub use fat::FileSystem;
 
-cfg_if::cfg_if! {
-    if #[cfg(not(feature = "oscomp"))] {
-        mod efs;
-        pub use efs::FileSystem;
-    } else {
-        mod fat;
-        pub use fat::FileSystem;
-    }
-}
+// cfg_if::cfg_if! {
+//     if #[cfg(not(feature = "oscomp"))] {
+//         mod efs;
+//         pub use efs::FileSystem;
+//     } else {
+//     }
+// }
 pub use fd::*;
 pub use stdio::*;
 

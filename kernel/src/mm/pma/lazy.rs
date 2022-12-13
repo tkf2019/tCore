@@ -8,7 +8,7 @@ use crate::{
     error::{KernelError, KernelResult},
 };
 
-use super::{MMFile, PMArea, PMA};
+use super::{BackendFile, PMArea, PMA};
 
 /// Physical memory mapped but not allocated with real memory space.
 pub struct LazyPMA {
@@ -23,11 +23,12 @@ pub struct LazyPMA {
     /// Data can be loaded from or stored to this file.
     ///
     /// Current offset of target file must be aligned to page size.
-    file: Option<MMFile>,
+    file: Option<BackendFile>,
 }
 
 impl LazyPMA {
-    pub fn new(count: usize, file: Option<MMFile>) -> KernelResult<Self> {
+    /// Creates a new lazy area.
+    pub fn new(count: usize, file: Option<BackendFile>) -> KernelResult<Self> {
         if count == 0 || count > USER_MAX_PAGES {
             return Err(KernelError::InvalidArgs);
         }
@@ -40,9 +41,11 @@ impl LazyPMA {
         })
     }
 
+    /// Creates a new lazy area with allocated frames, usually generated from
+    /// another area.
     pub fn new_with_frames(
         frames: Vec<Option<AllocatedFrame>>,
-        file: Option<MMFile>,
+        file: Option<BackendFile>,
     ) -> KernelResult<Self> {
         let mut alloc_count = 0;
         frames

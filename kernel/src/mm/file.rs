@@ -3,7 +3,7 @@ use tvfs::File;
 
 /// Memory mapped file.
 #[derive(Clone)]
-pub struct MMFile {
+pub struct BackendFile {
     /// Inner file
     file: Arc<dyn File>,
 
@@ -11,7 +11,7 @@ pub struct MMFile {
     offset: usize,
 }
 
-impl MMFile {
+impl BackendFile {
     /// Creates a new memory mapped file
     pub fn new(file: Arc<dyn File>, offset: usize) -> Self {
         Self { file, offset }
