@@ -5,41 +5,40 @@ numeric_enum_macro::numeric_enum! {
     #[doc = "Auxiliary entry type. See Linux `/include/uapi/linux/auxvec.h`"]
     pub enum AuxType {
         /// End of vector
-        NULL = 0,
+        AT_NULL = 0,
         /// Entry should be ignored
-        IGNORE = 1,
+        AT_IGNORE = 1,
         /// File descriptor of program
-        EXECFD = 2,
+        AT_EXECFD = 2,
         /// Program headers for program
-        PHDR = 3,
+        AT_PHDR = 3,
         /// Size of program header entry
-        PHENT = 4,
+        AT_PHENT = 4,
         /// Number of program headers
-        PHNUM = 5,
+        AT_PHNUM = 5,
         /// System page size
-        PAGESZ = 6,
+        AT_PAGESZ = 6,
         /// Base address of interpreter
-        BASE = 7,
+        AT_BASE = 7,
         /// Flags
-        FLAGS = 8,
+        AT_FLAGS = 8,
         /// Entry point of program
-        ENTRY = 9,
+        AT_ENTRY = 9,
         /// Program is not ELF
-        NOTELF = 10,
+        AT_NOTELF = 10,
         /// Real uid
-        UID = 11,
+        AT_UID = 11,
         /// Effective uid
-        EUID = 12,
+        AT_EUID = 12,
         /// Real gid
-        GID = 13,
+        AT_GID = 13,
         /// Effective gid
-        EGID = 14,
+        AT_EGID = 14,
         /// Frequency of times()
-        CLKTCK = 17,
+        AT_CLKTCK = 17,
         /// Secure mode boolean
-        SECURE = 23,
-        ///
+        AT_SECURE = 23,
         /// Random
-        RANDOM = 25,
+        AT_RANDOM = 25,
     }
 }

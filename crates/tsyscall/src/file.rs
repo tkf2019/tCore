@@ -1,0 +1,82 @@
+use crate::SyscallResult;
+
+/// Special value for dirfd.
+pub const AT_FDCWD: usize = -100isize as usize;
+
+pub trait SyscallFile {
+    /// Opens a file.
+    /// 
+    /// If the pathname given in pathname is relative, then it is interpreted relative
+    /// to the directory referred to by the file descriptor dirfd (rather than relative
+    /// to the current working directory of the calling process.
+    /// 
+    /// If pathname is relative and dirfd is the special value [`AT_FDCWD`], then pathname
+    /// is interpreted relative to the current working directory of the calling process.
+    /// 
+    /// If pathname is absolute, then dirfd is ignored.
+    /// 
+    /// # Argument
+    /// - `mode`: The mode argument specifies the file mode bits to be applied when
+    /// a new file is created.  If neither O_CREAT nor O_TMPFILE is specified in flags,
+    /// then mode is ignored (and can thus be specified as 0, or simply omitted). The
+    /// mode argument must be supplied if O_CREAT or O_TMPFILE is specified in flags;
+    /// if it is not supplied, some arbitrary bytes from the stack will be applied as
+    /// the file mode. The effective mode is modified by the process's umask in the usual way:
+    /// in the absence of a default ACL, the mode of the created file is (mode & ~umask).
+    /// 
+    /// # Error
+    /// - `EBADF`: pathname is relative but dirfd is neither [`AT_FDCWD`] nor a valid file descriptor.
+    /// - `EEXIST`: pathname already exists and O_CREAT and O_EXCL were used.
+    /// - `EFAULT`: pathname points outside your accessible address space.
+    /// - `EINVAL`: invalid value in flags. O_TMPFILE was specified in flags, but neither O_WRONLY
+    /// nor O_RDWR was specified. O_CREAT was specified in flags and the final component  ("basename")
+    /// of the new file's pathname is invalid (e.g., it contains characters not permitted by the
+    /// underlying filesystem).
+    /// - `EISDIR`: pathname refers to a directory and the access requested involved writing (that is,
+    /// O_WRONLY or O_RDWR is set).
+    /// - `ENOENT`: O_CREAT is not set and the named file does not exist. A directory component
+    /// in pathname does not exist or is a dangling symbolic link.
+    /// - `ENOTDIR`: A component used as a directory in pathname is not, in fact, a directory,
+    /// or O_DIRECTORY was specified and pathname was not a directory. pathname is a relative
+    /// pathname and dirfd is a file descriptor referring to a file other than a directory.
+    fn openat(dirfd: usize, pathname: *const u8, flags: usize, mode: usize) -> SyscallResult;
+
+    /// Close a file descriptor.
+    fn close(fd: usize) -> SyscallResult;
+
+    /// Writes to a file descriptor.
+    ///
+    ///
+    /// # Error
+    /// - `EFAULT`: buf is outside your accessible address space.
+    /// - `EBADF`: fd is not a valid file descriptor or is not open for writing.
+    /// - `EINVAL`: fd is attached to an object which is unsuitable for writing;
+    /// or the file was opened with the O_DIRECT flag, and either the address
+    /// specified in buf, the value specified in count, or the file offset is
+    /// not suitably aligned.
+    /// - `EPIPE`: fd is connected to a pipe or socket whose reading end is closed.
+    /// When this happens the writing process will also receive a SIGPIPE signal.
+    /// (Thus, the write return value is seen only if the program catches, blocks
+    /// or ignores this signal.)
+    /// - `EINTR`: The call was interrupted by a signal before any data was written;
+    /// see signal(7).
+    fn write(fd: usize, buf: *const u8, count: usize) -> SyscallResult;
+
+    /// Reads from a file descriptor.
+    ///
+    /// On success, the number of bytes read is returned (zero indicates end of file),
+    /// and the file position is advanced by this number. It is not an error if this
+    /// number is smaller than the number of bytes requested; this may happen for
+    /// example because fewer bytes are actually available right now (maybe because
+    /// we were close to end-of-file, or because we are reading from a pipe, or from a
+    /// terminal), or because read() was interrupted by a signal.
+    ///
+    /// # Error
+    /// - `EFAULT`: buf is outside your accessible address space.
+    /// - `EBADF`: fd is not a valid file descriptor or is not open for reading.
+    /// - `EINVAL`: fd is attached to an object which is unsuitable for writing.
+    /// or the file was opened with the O_DIRECT flag, and either the address
+    /// specified in buf, the value specified in count, or the file offset is
+    /// not suitably aligned.
+    fn read(fd: usize, buf: *mut u8, count: usize) -> SyscallResult;
+}

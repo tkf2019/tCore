@@ -10,8 +10,8 @@ use spin::{mutex::Mutex, MutexGuard};
 use talloc::{IDAllocator, RecycleAllocator};
 use terrno::Errno;
 use tmm_rv::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE};
-use tsyscall::SyscallResult;
-use tvfs::File;
+use tsyscall::{SyscallResult, AT_FDCWD};
+use tvfs::{File, OpenFlags, StatMode};
 
 use crate::{
     config::*,
@@ -337,8 +337,32 @@ impl Task {
         // flags contained none of MAP_PRIVATE, MAP_SHARED, or MAP_SHARED_VALIDATE.
         // Err(Errno::EINVAL)
     }
-    
-    // pub fn do_open(&self, ) -> SyscallResult {
 
-    // }
+    /// A helper for [`tsyscall::SyscallFile::openat`].
+    pub fn do_open(
+        &self,
+        dirfd: usize,
+        pathname: *const u8,
+        flags: OpenFlags,
+        mode: Option<StatMode>,
+    ) -> SyscallResult {
+        if flags.contains(OpenFlags::O_CREAT) && mode.is_none()
+            || flags.intersects(OpenFlags::O_WRONLY | OpenFlags::O_RDWR)
+        {
+            return Err(Errno::EINVAL);
+        }
+
+        
+
+        if dirfd == AT_FDCWD {
+        } else {
+        }
+
+        let file = self.fd_manager.lock().get(dirfd)?;
+        if !file.is_dir() {
+            return;
+        }
+        Ok(())
+        // let mut mm = self.mm.lock();
+    }
 }

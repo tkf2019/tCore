@@ -58,7 +58,9 @@ bitflags! {
 
         /// Obtain a file descriptor that can be used for two purposes: to indicate a
         /// location in the filesystem tree and to perform operations that act purely at
-        /// the file descriptor level.
+        /// the file descriptor level. The file itself is not opened, and other file
+        /// operations (e.g., read(2), write(2), fchmod(2), fchown(2), fgetxattr(2),
+        /// ioctl(2), mmap(2)) fail with the error EBADF.
         ///
         /// When O_PATH is specified in flags, flag bits other than `O_CLOEXEC`, `O_DIRECTORY`,
         /// and `O_NOFOLLOW` are ignored.

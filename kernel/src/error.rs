@@ -85,6 +85,7 @@ impl From<KernelError> for Errno {
             KernelError::Errno(errno) => errno.clone(),
             KernelError::PageTableInvalid => Errno::EFAULT,
             KernelError::InvalidArgs => Errno::EINVAL,
+            KernelError::FDNotFound => Errno::EBADF,
             _ => Errno::NONE,
         }
     }

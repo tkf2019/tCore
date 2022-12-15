@@ -254,55 +254,6 @@ impl MM {
         Err(KernelError::VMAAllocFailed)
     }
 
-    /// Gets bytes translated with the range of [start_va, start_va + len),
-    /// which might cover several pages.
-    ///
-    /// This function is unsafe, thus writing the buffer might not be recorded
-    /// in physical memory area and data will be lost when we deallocates the
-    /// frame.
-    ///
-    /// # Argument
-    /// - `va`: starting virtual address
-    /// - `len`: total length of the buffer
-    unsafe fn get_buf_mut(
-        &mut self,
-        va: VirtAddr,
-        len: usize,
-    ) -> KernelResult<Vec<&'static mut [u8]>> {
-        let mut start_va = va;
-        let end_va = start_va + len;
-        let mut v = Vec::new();
-        while start_va < end_va {
-            let start_pa = self
-                .page_table
-                .translate(start_va)
-                .map_err(|_| KernelError::PageTableInvalid)?;
-            let next_page = Page::from(start_va) + 1;
-            let page_len: usize = (end_va - start_va)
-                .min(next_page.start_address() - start_va)
-                .into();
-            v.push(slice::from_raw_parts_mut(
-                start_pa.value() as *mut _,
-                page_len,
-            ));
-            start_va += page_len;
-        }
-        Ok(v)
-    }
-
-    /// Gets a string loaded from starting virtual address.
-    ///
-    /// # Argument
-    /// - `va`: starting virtual address.
-    /// - `len`: total length of the string.
-    pub fn get_str(&mut self, va: VirtAddr, len: usize) -> KernelResult<String> {
-        let mut string = String::new();
-        for bytes in unsafe { self.get_buf_mut(va, len)? } {
-            string.extend(bytes.into_iter().map(|ch| *ch as char));
-        }
-        Ok(string)
-    }
-
     /// Gets the virtual memory area that contains the virutal address.
     /// Applies the given operation to the target area.
     ///
@@ -413,6 +364,48 @@ impl MM {
         let data = unsafe { slice::from_raw_parts(data as *const T as *const _, size) };
         unsafe { self.write_vma(data, va, end_va)? };
         Ok(())
+    }
+
+    /// Gets bytes translated with the range of [start_va, start_va + len),
+    /// which might cover several pages.
+    ///
+    /// This function is unsafe, thus writing the buffer might not be recorded
+    /// in physical memory area and data will be lost when we deallocates the
+    /// frame.
+    ///
+    /// # Argument
+    /// - `va`: starting virtual address
+    /// - `len`: total length of the buffer
+    pub unsafe fn get_buf_mut(
+        &mut self,
+        va: VirtAddr,
+        len: usize,
+    ) -> KernelResult<Vec<&'static mut [u8]>> {
+        let mut start_va = va;
+        let end_va = start_va + len;
+        let mut v = Vec::new();
+        self.alloc_frame_range(start_va, end_va)?
+            .iter()
+            .for_each(|frame| v.push(frame.as_slice_mut()));
+        Ok(v)
+    }
+
+    /// Gets a string loaded from starting virtual address.
+    ///
+    /// # Argument
+    /// - `va`: starting virtual address.
+    /// - `len`: total length of the string. If the length is not provided,
+    /// the string will end with a '\0'.
+    pub fn get_str(&mut self, va: VirtAddr, len: Option<usize>) -> KernelResult<String> {
+        let mut string = String::new();
+        if let Some(len) = len {
+            for bytes in unsafe { self.get_buf_mut(va, len)? } {
+                string.extend(bytes.into_iter().map(|ch| *ch as char));
+            }
+        } else {
+            
+        }
+        Ok(string)
     }
 }
 

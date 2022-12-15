@@ -88,6 +88,7 @@ pub struct Stat {
 }
 
 impl Stat {
+    /// TODO
     pub fn new(
         st_mode: u32,
         st_nlink: u32,
