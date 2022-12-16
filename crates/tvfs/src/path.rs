@@ -30,6 +30,11 @@ impl Path {
         new_path
     }
 
+    /// Creates a root path.
+    pub fn root() -> Self {
+        Self::new("/")
+    }
+
     /// Gets the relative path without the first `'/'`.
     pub fn rela(&self) -> &str {
         if self.0.len() == 1 {
@@ -39,9 +44,18 @@ impl Path {
         }
     }
 
+    /// Extracts a string slice containing the entire `Path`.
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
     /// Root path
     pub fn is_root(&self) -> bool {
         self.0.len() == 1
+    }
+
+    pub fn is_dir(&self) -> bool {
+        self.0.ends_with("/")
     }
 
     /// Canonicalizes this path.
@@ -49,81 +63,61 @@ impl Path {
     /// 1. Removes `"."` and `".."`;
     /// 2. Replaces contiguous `'/'`s with a single `'/'`.
     pub fn canonicalize(&mut self) {
+        let is_dir = self.is_dir();
         self.0 = self
             .split()
             .iter()
             .fold(String::new(), |path, &item| path + "/" + item);
-    }
-
-    /// Extends current path with another path. This function is used for seperating
-    /// directory path and file name.
-    ///
-    /// Returns the last item of the input path if `'/'` is not the last character of input path.
-    /// Returns empty item if the input path is implied as a directory path (which ends with `'/'`).
-    ///
-    /// Path may contain `".."`, thus `self` may be shroted after this function called.
-    ///
-    /// This path will be considered as a directory path.
-    pub fn extend_get<'a>(&mut self, path: &'a str) -> &'a str {
-        let pos = self.extend(path);
-        &path[pos..]
+        if is_dir {
+            self.0.push('/');
+        }
     }
 
     /// Extends current path with another path. This function is used for seperating
     /// directory path and file name.
     ///
     /// Returns one more than the position of the last `'/'` of the input path if `'/'` is not
-    /// the last character of input path.
+    /// the last character of input path. Otherwise, returns the length of current directory path.
     ///
     /// Path may contain `".."`, thus `self` may be shroted after this function called.
     ///
     /// This path will be considered as a directory path.
-    pub fn extend(&mut self, path: &str) -> usize {
+    pub fn extend(&mut self, path: &str) {
+        assert!(self.is_dir());
         let mut pos = 0;
-        loop {
-            if let Some(new_pos) = (&path[pos..]).find('/') {
-                if new_pos == 2 && &path[pos..pos + new_pos] == ".." {
-                    if self.0.ends_with('/') {
-                        self.0.pop();
-                    }
-                    // Cannot pop the first `'/'`.
-                    while self.0.len() > 1 && self.0.pop() != Some('/') {}
-                } else if new_pos == 1 && &path[pos..pos + new_pos] == "." {
-                    // Do nothing
-                } else if new_pos != 0 {
-                    if !self.0.ends_with('/') {
-                        self.0.push('/');
-                    }
-                    self.0 += &path[pos..pos + new_pos];
-                }
-                pos += new_pos + 1;
-            } else {
-                break pos;
-            }
-        }
+        self.0 += path;
+        self.canonicalize();
     }
 
     /// Appends a path item.
     ///
     /// This path will be considered as a directory path.
     pub fn join(&mut self, item: &str) {
-        if !self.0.ends_with("/") {
+        let is_dir = self.is_dir();
+        if !is_dir {
             self.0.push('/');
         }
         self.0 += item;
+        self.0.push('/');
+        self.canonicalize();
     }
 
     /// Gets the last item of this path.
     pub fn last(&mut self) -> Option<String> {
-        if self.0.ends_with('/') {
+        let is_dir = self.is_dir();
+        if is_dir {
             self.0.pop();
         }
         let pos = self.0.rfind('/').unwrap();
-        if pos == 0 {
+        let item = if pos == 0 {
             None
         } else {
             Some(String::from(&self.0.as_str()[pos + 1..]))
+        };
+        if is_dir {
+            self.0.push('/');
         }
+        item
     }
 
     /// Gets the last item of this path and remove it.
@@ -157,5 +151,13 @@ impl Path {
             }
             v
         })
+    }
+}
+
+impl From<String> for Path {
+    fn from(value: String) -> Self {
+        let mut path = Self(value);
+        path.canonicalize();
+        path
     }
 }

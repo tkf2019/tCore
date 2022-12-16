@@ -1,6 +1,7 @@
 use alloc::collections::BTreeMap;
 use spin::{Lazy, Mutex};
-use tvfs::Path;
+
+use super::path::Path;
 
 /// Virtual path mapped to real path.
 static LINK_PATH_MAP: Lazy<Mutex<BTreeMap<Path, Path>>> = Lazy::new(|| Mutex::new(BTreeMap::new()));

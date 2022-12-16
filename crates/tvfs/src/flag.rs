@@ -1,6 +1,4 @@
-use bitflags::bitflags;
-
-bitflags! {
+bitflags::bitflags! {
     pub struct OpenFlags: u32 {
         /// Read only
         const O_RDONLY = 0o0;
@@ -88,14 +86,18 @@ impl OpenFlags {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SeekWhence {
-    /// Sets the offset to the provided number of bytes.
-    Set = 0,
+numeric_enum_macro::numeric_enum! {
+    #[repr(usize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum SeekWhence {
+        /// Sets the offset to the provided number of bytes.
+        Set = 0,
 
-    /// Sets the offset to the current position plus the specified number of bytes.
-    Current = 1,
+        /// Sets the offset to the current position plus the specified number of bytes.
+        Current = 1,
 
-    /// Sets the offset to the size of this object plus the specified number of bytes.
-    End = 2,
+        /// Sets the offset to the size of this object plus the specified number of bytes.
+        End = 2,
+    }
 }
+

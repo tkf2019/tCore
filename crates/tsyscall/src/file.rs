@@ -3,18 +3,29 @@ use crate::SyscallResult;
 /// Special value for dirfd.
 pub const AT_FDCWD: usize = -100isize as usize;
 
+#[repr(C)]
+/// Used in readv and writev.
+///
+/// Defined in sys/uio.h.
+pub struct IoVec {
+    /// Starting address
+    pub iov_base: usize,
+    /// Number of bytes to transfer
+    pub iov_len: usize,
+}
+
 pub trait SyscallFile {
     /// Opens a file.
-    /// 
-    /// If the pathname given in pathname is relative, then it is interpreted relative
+    ///
+    /// If the pathname is relative, then it is interpreted relative
     /// to the directory referred to by the file descriptor dirfd (rather than relative
     /// to the current working directory of the calling process.
-    /// 
+    ///
     /// If pathname is relative and dirfd is the special value [`AT_FDCWD`], then pathname
     /// is interpreted relative to the current working directory of the calling process.
-    /// 
+    ///
     /// If pathname is absolute, then dirfd is ignored.
-    /// 
+    ///
     /// # Argument
     /// - `mode`: The mode argument specifies the file mode bits to be applied when
     /// a new file is created.  If neither O_CREAT nor O_TMPFILE is specified in flags,
@@ -23,7 +34,7 @@ pub trait SyscallFile {
     /// if it is not supplied, some arbitrary bytes from the stack will be applied as
     /// the file mode. The effective mode is modified by the process's umask in the usual way:
     /// in the absence of a default ACL, the mode of the created file is (mode & ~umask).
-    /// 
+    ///
     /// # Error
     /// - `EBADF`: pathname is relative but dirfd is neither [`AT_FDCWD`] nor a valid file descriptor.
     /// - `EEXIST`: pathname already exists and O_CREAT and O_EXCL were used.
@@ -42,6 +53,9 @@ pub trait SyscallFile {
     fn openat(dirfd: usize, pathname: *const u8, flags: usize, mode: usize) -> SyscallResult;
 
     /// Close a file descriptor.
+    /// 
+    /// # Error
+    /// - `EBADF`: fd isn't a valid open file descriptor.
     fn close(fd: usize) -> SyscallResult;
 
     /// Writes to a file descriptor.
@@ -79,4 +93,31 @@ pub trait SyscallFile {
     /// specified in buf, the value specified in count, or the file offset is
     /// not suitably aligned.
     fn read(fd: usize, buf: *mut u8, count: usize) -> SyscallResult;
+
+    /// Repositions the file offset of the open file description associated with
+    /// the file descriptor fd to the argument offset according to the directive
+    /// whence.
+    ///
+    /// Upon successful completion, lseek() returns the resulting offset location
+    /// as measured in bytes from the beginning of the file. On error, the value
+    /// (off_t) -1 is returned and errno is set to indicate the error.
+    ///
+    /// # Error
+    /// - `EBADF`: fd is not an open file descriptor.
+    /// - `EINVAL`: whence is not valid.
+    /// - `ESPIPE`: fd is associated with a pipe, socket, or FIFO.
+    /// - `EOVERFLOW`: The resulting file offset cannot be represented.
+    fn lseek(fd: usize, off: usize, whence: usize) -> SyscallResult;
+
+    /// Reads `iovcnt` buffers from the file associated with the file descriptor
+    /// `fd` into the buffers described by `iov`.
+    ///
+    /// See [`Self::read`].
+    fn readv(fd: usize, iov: *const IoVec, iovcnt: usize) -> SyscallResult;
+
+    /// Reads `iovcnt` buffers from the file associated with the file descriptor
+    /// `fd` into the buffers described by `iov`.
+    ///
+    /// See [`Self::write`].
+    fn writev(fd: usize, iov: *const IoVec, iovcnt: usize) -> SyscallResult;
 }

@@ -96,7 +96,7 @@ fn split_path(path: &str) -> (&str, Option<&str>) {
     })
 }
 
-enum DirEntryOrShortName<'a, IO: ReadWriteSeek, TP, OCC> {
+pub enum DirEntryOrShortName<'a, IO: ReadWriteSeek, TP, OCC> {
     DirEntry(DirEntry<'a, IO, TP, OCC>),
     ShortName([u8; SFN_SIZE]),
 }
@@ -163,7 +163,7 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
         Ok(None)
     }
 
-    fn check_for_existence(
+    pub fn check_for_existence(
         &self,
         name: &str,
         is_dir: Option<bool>,

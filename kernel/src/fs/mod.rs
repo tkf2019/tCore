@@ -1,11 +1,11 @@
 use alloc::sync::Arc;
+use log::info;
 use spin::{Lazy, Mutex};
 
-mod fd;
-mod link;
-mod memfs;
-mod stdio;
 mod fat;
+mod fd;
+mod mem;
+mod stdio;
 pub use fat::FileSystem;
 
 // cfg_if::cfg_if! {
@@ -18,11 +18,22 @@ pub use fat::FileSystem;
 pub use fd::*;
 pub use stdio::*;
 
-use link::get_path;
 use terrno::Errno;
 use tvfs::*;
 
-pub static DISK_FS: Lazy<Mutex<FileSystem>> = Lazy::new(|| Mutex::new(FileSystem));
+use self::fat::FSDir;
+
+/// Global disk filesystem.
+pub static DISK_FS: Lazy<Mutex<FileSystem>> = Lazy::new(|| {
+    let fs = FileSystem;
+
+    let root = Path::root();
+    fs.mkdir(&root, "dev").unwrap();
+    fs.mkdir(&root, "lib").unwrap();
+    fs.mkdir(&root, "tmp").unwrap();
+
+    Mutex::new(fs)
+});
 
 /// Opens a file object.
 ///
@@ -32,10 +43,44 @@ pub static DISK_FS: Lazy<Mutex<FileSystem>> = Lazy::new(|| Mutex::new(FileSystem
 ///
 /// 1. Check if the file exists in the [`MEM_FS`].
 /// 2. Check if the file exists in the [`DISK_FS`].
-pub fn open(path: &str, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
-    let path = Path::new(path);
-    let real_path = get_path(&path);
+pub fn open(path: Path, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
+    /// Root is always opened.
+    if path.is_root() {
+        return Ok(Arc::new(FSDir::new(path)));
+    }
+    let mut path = path;
+    let name = path.pop().unwrap();
+    let pdir = get_path(&path);
+
     // TODO: Try to open file in VFS.
-    let disk_file = DISK_FS.lock().open(&real_path, flags)?;
+
+    let disk_file = DISK_FS.lock().open(&pdir, name.as_str(), flags)?;
+
     Ok(disk_file)
+}
+
+/// Creates a directory.
+///
+/// - `path`: Absolute path which must start and end with '/'.
+///
+/// 1. Check if parent directory is in the [`MEM_FS`].
+/// 2. Try to create the directory in the [`DISK_FS`].
+pub fn mkdir(path: Path) -> Result<(), Errno> {
+    // Root exists.
+    if path.is_root() {
+        return Err(Errno::EEXIST);
+    }
+
+    // Not a directory.
+    if !path.is_dir() {
+        return Err(Errno::ENOTDIR);
+    }
+
+    let mut path = path;
+    let name = path.pop().unwrap();
+    let pdir = get_path(&path);
+
+    // TODO: Try to create directory in VFS
+
+    DISK_FS.lock().mkdir(&pdir, name.as_str())
 }

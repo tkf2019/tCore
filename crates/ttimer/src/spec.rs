@@ -2,7 +2,7 @@ use core::ops::{Add, AddAssign};
 
 use numeric_enum_macro::numeric_enum;
 
-use crate::config::NSEC_PER_SEC;
+use crate::{config::NSEC_PER_SEC, USEC_PER_SEC};
 
 /// Represents an elapsed time.
 #[repr(C)]
@@ -69,6 +69,21 @@ pub struct TimeVal {
 
     /// Number of microseconds of rest of elapsed time minus tv_sec.
     pub tv_usec: usize,
+}
+
+impl TimeVal {
+    /// Create a new time specification.
+    pub fn new(sec: f64) -> Self {
+        Self {
+            tv_sec: sec as usize,
+            tv_usec: ((sec - sec as usize as f64) * USEC_PER_SEC as f64) as usize,
+        }
+    }
+
+    /// Returns time in seconds.
+    pub fn time_in_sec(&self) -> f64 {
+        self.tv_sec as f64 + self.tv_usec as f64 / USEC_PER_SEC as f64
+    }
 }
 
 /// Syscall `times()` stores current process times in this struct.

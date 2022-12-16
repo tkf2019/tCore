@@ -28,6 +28,7 @@ pub use file::*;
 use numeric_enum_macro::numeric_enum;
 pub use proc::*;
 use terrno::Errno;
+pub use timer::*;
 
 numeric_enum! {
     #[repr(usize)]
@@ -35,11 +36,20 @@ numeric_enum! {
     #[allow(non_camel_case_types)]
     pub enum SyscallNO {
         OPENAT = 56,
+        CLOSE = 57,
+        PIPE = 59,
+        LSEEK = 62,
+        READ = 63,
         WRTIE = 64,
+        READV = 65,
+        WRITEV = 66,
+        PREAD = 67,
         EXIT = 93,
         EXIT_GROUP = 94,
         SET_TID_ADDRESS = 96,
+        NANOSLEEP = 101,
         CLOCK_GET_TIME = 113,
+        GET_TIME_OF_DAY = 169,
         GETPID = 172,
         GETTID = 178,
         BRK = 214,

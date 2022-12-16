@@ -99,7 +99,7 @@ impl InitStack {
         // ELF Auxiliary Table
         for (&type_, &value) in v.auxv.iter() {
             match type_ {
-                AuxType::RANDOM => stack.push_slice(&[type_.into(), random.value()]),
+                AuxType::AT_RANDOM => stack.push_slice(&[type_.into(), random.value()]),
                 _ => stack.push_slice(&[type_.into(), value]),
             };
         }

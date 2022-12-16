@@ -83,6 +83,7 @@ pub const LIBC_STATIC_TESTCASES: &[&str] = &[
     "crypt",
     "dirname",
     "env",
+    // "sleep",
     "fdopen",
     /* 
     "fnmatch",

@@ -193,12 +193,12 @@ macro_rules! implement_page_frame {
                 }
 
                 #[doc = "Returns an immutable slice of `" $TypeName "`."]
-                pub fn as_slice(&self) -> &[u8] {
+                pub fn as_slice(&self) -> &'static [u8] {
                     unsafe { core::slice::from_raw_parts(self.start_address().value() as *const _, $page_size) }
                 }
 
                 #[doc = "Returns a mutable slice of `" $TypeName "`."]
-                pub fn as_slice_mut(&self) -> &mut [u8] {
+                pub fn as_slice_mut(&self) -> &'static mut [u8] {
                     unsafe {
                         core::slice::from_raw_parts_mut(self.start_address().value() as *mut _, $page_size)
                     }

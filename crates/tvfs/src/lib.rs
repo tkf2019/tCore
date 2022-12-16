@@ -2,6 +2,7 @@
 #![allow(unused)]
 
 mod flag;
+mod link;
 mod path;
 mod stat;
 #[cfg(test)]
@@ -12,6 +13,7 @@ extern crate alloc;
 use alloc::{sync::Arc, vec::Vec};
 use core::any::Any;
 pub use flag::*;
+pub use link::*;
 pub use path::*;
 pub use stat::*;
 use terrno::Errno;
@@ -96,6 +98,11 @@ pub trait File: Send + Sync + AsAny {
         None
     }
 
+    /// Gets current offset.
+    fn get_off(&self) -> usize {
+        self.seek(0, SeekWhence::Current).unwrap()
+    }
+
     /// If this file is a directory.
     fn is_dir(&self) -> bool {
         false
@@ -110,11 +117,17 @@ pub trait File: Send + Sync + AsAny {
     fn get_nlink(&self) -> Option<usize> {
         None
     }
+
+    /// Gets the absolute path of this file.
+    fn get_path(&self) -> Option<Path> {
+        None
+    }
 }
 
 pub trait AsAny {
     fn as_any(&self) -> &dyn Any;
 }
+
 impl<T: Any> AsAny for T {
     fn as_any(&self) -> &dyn Any {
         self
@@ -124,8 +137,18 @@ impl<T: Any> AsAny for T {
 pub trait VFS: Send + Sync {
     /// Opens a file object.
     ///
-    /// - `path`: Absolute path which must start with '/'.
+    /// - `pdir`: Absolute path which must start with '/'.
+    /// - `name`: the name of the new file.
     /// - `flags`: Standard [`OpenFlags`].
     /// See https://man7.org/linux/man-pages/man2/open.2.html.
-    fn open(&self, path: &Path, flags: OpenFlags) -> Result<Arc<dyn File>, Errno>;
+    fn open(&self, pdir: &Path, name: &str, flags: OpenFlags) -> Result<Arc<dyn File>, Errno>;
+
+    /// Makes a directory.
+    ///
+    /// - `pdir`: Absolute path which must start with '/'.
+    /// - `name`: the name of the new directory.
+    fn mkdir(&self, pdir: &Path, name: &str) -> Result<(), Errno>;
+
+    /// Checks for existance.
+    fn check(&self, path: &Path) -> bool;
 }

@@ -7,7 +7,7 @@ use spin::{Lazy, Mutex, MutexGuard};
 use tcache::{BlockCache, CacheUnit, LRUBlockCache, BLOCK_SIZE};
 use terrno::Errno;
 use ttimer::TimeSpec;
-use tvfs::{File, OpenFlags, Path, SeekWhence, Stat, StatMode, VFS};
+use tvfs::*;
 
 use crate::{
     config::{CACHE_SIZE, FS_IMG_SIZE},
@@ -15,12 +15,11 @@ use crate::{
     error::KernelError,
 };
 
-use super::link::get_nlink;
-
 type FatTP = DefaultTimeProvider;
 type FatOCC = LossyOemCpConverter;
 type FatBlock = [u8; BLOCK_SIZE];
 type FatFile = fatfs::File<'static, FatIO, FatTP, FatOCC>;
+type FatDir = fatfs::Dir<'static, FatIO, FatTP, FatOCC>;
 
 /// IO wrapper for FAT.
 pub struct FatIO {
@@ -61,6 +60,15 @@ impl fatfs::IoError for IoError {
 
     fn new_write_zero_error() -> Self {
         Self(KernelError::IOWriteZero)
+    }
+}
+
+fn from(value: fatfs::Error<IoError>) -> Errno {
+    match value {
+        fatfs::Error::NotFound => Errno::ENOENT,
+        fatfs::Error::AlreadyExists => Errno::EEXIST,
+        fatfs::Error::InvalidFileNameLength => Errno::ENAMETOOLONG,
+        _ => Errno::EINVAL,
     }
 }
 
@@ -386,6 +394,32 @@ impl File for FSFile {
     fn is_reg(&self) -> bool {
         true
     }
+
+    fn get_path(&self) -> Option<Path> {
+        Some(self.path.clone())
+    }
+}
+
+/// A wrapper for directory path to implement [`File`].
+pub struct FSDir {
+    /// Real directory path.
+    pub path: Path,
+}
+
+impl FSDir {
+    pub fn new(path: Path) -> Self {
+        Self { path }
+    }
+}
+
+impl File for FSDir {
+    fn get_path(&self) -> Option<Path> {
+        Some(self.path.clone())
+    }
+
+    fn is_dir(&self) -> bool {
+        true
+    }
 }
 
 /// A wrapper for VFS implementation and configured compilation.
@@ -397,49 +431,81 @@ static FAT_FS: Lazy<fatfs::FileSystem<FatIO, FatTP, FatOCC>> = Lazy::new(|| {
 });
 
 impl VFS for FileSystem {
-    fn open(&self, path: &Path, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
-        let root = FAT_FS.root_dir();
-        let raw_path = path.clone();
-        let mut path = path.clone();
-        let file = match path.pop() {
-            Some(file) => file,
-            // Empty path is not allowed.
-            None => return Err(Errno::EINVAL),
-        };
-        // Find in the root directory
+    fn open(&self, pdir: &Path, name: &str, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
+        let mut ori_path = pdir.clone();
+        ori_path.extend(name);
+
         let (readable, writable) = flags.read_write();
-        let dir = if path.is_root() {
+
+        let root = FAT_FS.root_dir();
+        // Find in the root directory
+        let pdir = if pdir.is_root() {
             root
         } else {
-            root.open_dir(path.rela()).map_err(|_| Errno::ENOENT)?
+            root.open_dir(pdir.rela()).map_err(|_| Errno::ENOENT)?
         };
-        match dir.open_file(file.as_str()) {
-            Ok(file) => {
-                if flags.contains(OpenFlags::O_CREAT | OpenFlags::O_EXCL) {
-                    Err(Errno::EEXIST)
-                } else {
-                    let file = FSFile::new(readable, writable, path, file, flags);
-                    if flags.contains(OpenFlags::O_CREAT) {
-                        file.clear();
+
+        if flags.contains(OpenFlags::O_DIRECTORY | OpenFlags::O_DSYNC) || ori_path.is_dir() {
+            match pdir.open_dir(name) {
+                Ok(dir) => Ok(Arc::new(FSDir::new(ori_path))),
+                Err(err) => Err(from(err)),
+            }
+        } else {
+            match pdir.open_file(name) {
+                Ok(file) => {
+                    if flags.contains(OpenFlags::O_CREAT | OpenFlags::O_EXCL) {
+                        Err(Errno::EEXIST)
+                    } else {
+                        let file = FSFile::new(readable, writable, ori_path, file, flags);
+                        if flags.contains(OpenFlags::O_CREAT) {
+                            file.clear();
+                        }
+                        Ok(Arc::new(file))
                     }
-                    Ok(Arc::new(file))
                 }
-            }
-            Err(fatfs::Error::NotFound) => {
-                // Create if the file not existing
-                if flags.contains(OpenFlags::O_CREAT) {
-                    let file = dir.create_file(file.as_str()).unwrap();
-                    Ok(Arc::new(FSFile::new(
-                        readable, writable, raw_path, file, flags,
-                    )))
-                } else {
-                    Err(Errno::ENOENT)
+                Err(fatfs::Error::NotFound) => {
+                    // Create if the file not existing
+                    if flags.contains(OpenFlags::O_CREAT) {
+                        let file = pdir.create_file(name).unwrap();
+                        Ok(Arc::new(FSFile::new(
+                            readable, writable, ori_path, file, flags,
+                        )))
+                    } else {
+                        Err(Errno::ENOENT)
+                    }
                 }
+                Err(err) => Err(from(err)),
             }
-            Err(err) => {
-                warn!("{:?}", err);
-                Err(Errno::EINVAL)
+        }
+    }
+
+    fn mkdir(&self, pdir: &Path, name: &str) -> Result<(), Errno> {
+        let mut ori_path = pdir.clone();
+        ori_path.extend(name);
+        let root = FAT_FS.root_dir();
+        let pdir = if pdir.is_root() {
+            root
+        } else {
+            root.open_dir(pdir.rela()).map_err(|_| Errno::ENOENT)?
+        };
+        for entry in pdir.iter() {
+            if entry.unwrap().file_name() == name {
+                return Err(Errno::EEXIST);
             }
+        }
+        pdir.create_dir(name).map_err(|err| from(err))?;
+        Ok(())
+    }
+
+    fn check(&self, path: &Path) -> bool {
+        let root = FAT_FS.root_dir();
+        if path.is_dir() {
+            if path.is_root() {
+                return true;
+            }
+            root.open_dir(path.rela()).is_ok()
+        } else {
+            root.open_file(path.rela()).is_ok()
         }
     }
 }

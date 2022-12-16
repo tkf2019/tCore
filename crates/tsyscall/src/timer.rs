@@ -1,4 +1,4 @@
-use ttimer::{ITimerVal, TimeSpec};
+use ttimer::{ITimerVal, TimeSpec, TimeVal};
 
 use crate::SyscallResult;
 
@@ -7,7 +7,7 @@ pub trait SyscallTimer {
     ///
     /// # Error
     /// - `EFAULT`: tp points outside the accessible address space.
-    fn clock_gettime(clockid: usize, tp: *mut TimeSpec) -> SyscallResult;
+    fn clock_gettime(clockid: usize, tp: usize) -> SyscallResult;
 
     /*
         These system calls provide access to interval timers, that is, timers that
@@ -23,7 +23,7 @@ pub trait SyscallTimer {
     /// # Error
     /// - `EFAULT`: `curr_value` is not a valid pointer.
     /// - `EINVAL`: `which` is not one of [`ITimerType`]
-    fn getitimer(which: usize, curr_value: *mut ITimerVal) -> SyscallResult;
+    fn getitimer(which: usize, curr_value: usize) -> SyscallResult;
 
     /// Arms or disarms the timer specified by `which`, by setting the timer to
     /// the value specified by `new_value`.
@@ -41,7 +41,13 @@ pub trait SyscallTimer {
     /// - `EINVAL`: `which` is not one of [`ITimerType`]
     fn setitimer(
         which: usize,
-        new_value: *const ITimerVal,
-        old_value: *mut ITimerVal,
+        new_value: usize,
+        old_value: usize,
     ) -> SyscallResult;
+
+    /// Gets the time as well as the timezone.
+    /// 
+    /// # Error
+    /// - `EFAULT`: outside the accessible address
+    fn gettimeofday(tv: usize) -> SyscallResult;
 }

@@ -1,3 +1,4 @@
+mod buffer;
 mod file;
 mod flags;
 mod kernel;
@@ -10,10 +11,11 @@ use log::warn;
 use spin::Mutex;
 use terrno::Errno;
 use tmm_rv::{Frame, PTEFlags, Page, PageRange, PageTable, PhysAddr, VirtAddr};
-use tsyscall::SyscallResult;
+use tsyscall::{IoVec, SyscallResult};
 
 use crate::{config::*, error::*, mm::pma::LazyPMA, trap::__trampoline};
 
+pub use buffer::*;
 pub use file::BackendFile;
 pub use flags::*;
 pub use kernel::{init, KERNEL_MM};
@@ -369,41 +371,55 @@ impl MM {
     /// Gets bytes translated with the range of [start_va, start_va + len),
     /// which might cover several pages.
     ///
-    /// This function is unsafe, thus writing the buffer might not be recorded
-    /// in physical memory area and data will be lost when we deallocates the
-    /// frame.
+    /// The buffer may not be allocated with frames, so new frames will be
+    /// allocated for further modifications on this buffer.
     ///
     /// # Argument
     /// - `va`: starting virtual address
     /// - `len`: total length of the buffer
-    pub unsafe fn get_buf_mut(
-        &mut self,
-        va: VirtAddr,
-        len: usize,
-    ) -> KernelResult<Vec<&'static mut [u8]>> {
+    pub fn get_buf_mut(&mut self, va: VirtAddr, len: usize) -> KernelResult<UserBuffer> {
         let mut start_va = va;
         let end_va = start_va + len;
         let mut v = Vec::new();
-        self.alloc_frame_range(start_va, end_va)?
-            .iter()
-            .for_each(|frame| v.push(frame.as_slice_mut()));
-        Ok(v)
+        while start_va < end_va {
+            let next_page = Page::from(start_va) + 1;
+            let page_off = start_va.page_offset();
+            let page_len: usize = (end_va - start_va)
+                .min(next_page.start_address() - start_va)
+                .into();
+            let frame = self.alloc_frame(start_va)?;
+            v.push(&mut frame.as_slice_mut()[page_off..page_off + page_len]);
+            start_va += page_len;
+        }
+        Ok(UserBuffer::new(v))
     }
 
     /// Gets a string loaded from starting virtual address.
     ///
     /// # Argument
     /// - `va`: starting virtual address.
-    /// - `len`: total length of the string. If the length is not provided,
-    /// the string will end with a '\0'.
-    pub fn get_str(&mut self, va: VirtAddr, len: Option<usize>) -> KernelResult<String> {
+    /// - `len`: total length of the string.
+    /// If the length is not provided, the string must end with a '\0'. New frames
+    /// will be allocated until a '\0' occurs.
+    pub fn get_str(&mut self, va: VirtAddr) -> KernelResult<String> {
         let mut string = String::new();
-        if let Some(len) = len {
-            for bytes in unsafe { self.get_buf_mut(va, len)? } {
-                string.extend(bytes.into_iter().map(|ch| *ch as char));
+        let mut alloc = true;
+        let mut frame = Frame::from(0);
+        let mut va = va;
+        loop {
+            if va.page_offset() == 0 {
+                alloc = true;
             }
-        } else {
-            
+            if alloc {
+                frame = self.alloc_frame(va)?;
+                alloc = false;
+            }
+            let ch: u8 = frame.as_slice_mut()[va.page_offset()];
+            if ch == 0 {
+                break;
+            }
+            string.push(ch as char);
+            va += 1;
         }
         Ok(string)
     }

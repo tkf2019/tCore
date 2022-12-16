@@ -1,7 +1,9 @@
+use core::mem::size_of;
+
 use terrno::Errno;
 use tmm_rv::VirtAddr;
 use tsyscall::*;
-use tvfs::{OpenFlags, StatMode};
+use tvfs::{OpenFlags, SeekWhence, StatMode};
 
 use crate::task::current_task;
 
@@ -13,10 +15,9 @@ impl SyscallFile for SyscallImpl {
         let mut current_mm = current.mm.lock();
 
         // Translate user buffer into kernel string.
-        let string = current_mm
-            .get_str(VirtAddr::from(buf as usize), count)
+        let buf = current_mm
+            .get_buf_mut(VirtAddr::from(buf as usize), count)
             .map_err(|_| Errno::EFAULT)?;
-        let bytes = string.as_bytes();
         drop(current_mm);
 
         // Get the file with the given file descriptor.
@@ -27,11 +28,15 @@ impl SyscallFile for SyscallImpl {
             .map_err(|_| Errno::EBADF)?;
         drop(current);
 
-        if let Some(count) = file.write(bytes) {
-            Ok(count)
-        } else {
-            Err(Errno::EINVAL)
+        let mut write_len = 0;
+        for bytes in buf.inner {
+            if let Some(count) = file.write(bytes) {
+                write_len += count;
+            } else {
+                break;
+            }
         }
+        Ok(write_len)
     }
 
     fn read(fd: usize, buf: *mut u8, count: usize) -> SyscallResult {
@@ -51,19 +56,25 @@ impl SyscallFile for SyscallImpl {
             .map_err(|_| Errno::EBADF)?;
         drop(current);
 
-        let mut count = 0;
-        for buf in buf {
-            if let Some(c) = file.read(buf) {
-                count += c;
+        let mut read_len = 0;
+        for bytes in buf.inner {
+            if let Some(count) = file.read(bytes) {
+                read_len += count;
             } else {
-                return Err(Errno::EINVAL);
+                break;
             }
         }
-        Ok(count)
+        Ok(read_len)
     }
 
     fn close(fd: usize) -> SyscallResult {
-        todo!()
+        let current = current_task().unwrap();
+        current
+            .fd_manager
+            .lock()
+            .remove(fd)
+            .map_err(|err| Errno::from(err))?;
+        Ok(0)
     }
 
     fn openat(dirfd: usize, pathname: *const u8, flags: usize, mode: usize) -> SyscallResult {
@@ -74,6 +85,84 @@ impl SyscallFile for SyscallImpl {
         }
 
         let current = current_task().unwrap();
-        current.do_open(dirfd, pathname, flags.unwrap(), mode)
+        current
+            .do_open(dirfd, pathname, flags.unwrap(), mode)
+            .map_err(|err| err.into())
+    }
+
+    fn lseek(fd: usize, off: usize, whence: usize) -> SyscallResult {
+        match (|| {
+            let whence = SeekWhence::try_from(whence);
+            if whence.is_err() {
+                return Err(Errno::EINVAL);
+            }
+
+            let current = current_task().unwrap();
+            let file = current
+                .fd_manager
+                .lock()
+                .get(fd)
+                .map_err(|_| Errno::EBADF)?;
+
+            if usize::MAX - file.get_off() < off {
+                return Err(Errno::EINVAL);
+            }
+
+            if let Some(off) = file.seek(off, whence.unwrap()) {
+                Ok(off)
+            } else {
+                Err(Errno::ESPIPE)
+            }
+        })() {
+            Ok(off) => Ok(off),
+            Err(_) => Ok(usize::MAX),
+        }
+    }
+
+    fn readv(fd: usize, iov: *const IoVec, iovcnt: usize) -> SyscallResult {
+        let iov = VirtAddr::from(iov as usize);
+        if iov.value() & size_of::<IoVec>() != 0 {
+            return Err(Errno::EINVAL);
+        }
+
+        let current = current_task().unwrap();
+        let size = size_of::<IoVec>();
+        let mut current_mm = current.mm.lock();
+        let buf = current_mm.get_buf_mut(iov, iovcnt * size)?;
+        drop(current_mm);
+        drop(current);
+
+        let mut read_len = 0;
+        for bytes in buf.into_iter().step_by(size) {
+            let iov = unsafe { &*(bytes as *const IoVec) };
+            match Self::read(fd, iov.iov_base as *mut _, iov.iov_len) {
+                Ok(count) => read_len += count,
+                Err(_) => break,
+            }
+        }
+        Ok(read_len)
+    }
+
+    fn writev(fd: usize, iov: *const IoVec, iovcnt: usize) -> SyscallResult {
+        let iov = VirtAddr::from(iov as usize);
+        if iov.value() & size_of::<IoVec>() != 0 {
+            return Err(Errno::EINVAL);
+        }
+        let current = current_task().unwrap();
+        let size = size_of::<IoVec>();
+        let mut current_mm = current.mm.lock();
+        let buf = current_mm.get_buf_mut(iov, iovcnt * size)?;
+        drop(current_mm);
+        drop(current);
+
+        let mut write_len = 0;
+        for bytes in buf.into_iter().step_by(size) {
+            let iov = unsafe { &*(bytes as *const IoVec) };
+            match Self::write(fd, iov.iov_base as *const _, iov.iov_len) {
+                Ok(count) => write_len += count,
+                Err(_) => break,
+            }
+        }
+        Ok(write_len)
     }
 }

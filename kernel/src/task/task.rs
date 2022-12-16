@@ -3,22 +3,23 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
-use core::fmt;
+use core::{fmt, mem::size_of};
 use log::trace;
 use riscv::register::sstatus::{self, set_spp, SPP};
 use spin::{mutex::Mutex, MutexGuard};
 use talloc::{IDAllocator, RecycleAllocator};
 use terrno::Errno;
 use tmm_rv::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE};
-use tsyscall::{SyscallResult, AT_FDCWD};
-use tvfs::{File, OpenFlags, StatMode};
+use tsyscall::{IoVec, SyscallResult, AT_FDCWD};
+use tvfs::{File, OpenFlags, Path, StatMode};
 
 use crate::{
     config::*,
-    error::KernelResult,
-    fs::FDManager,
+    error::{KernelError, KernelResult},
+    fs::{open, FDManager},
     loader::from_elf,
     mm::{pma::FixedPMA, BackendFile, MmapFlags, MmapProt, KERNEL_MM, MM},
+    println,
     task::{kstack_alloc, pid_alloc},
     trap::{user_trap_handler, user_trap_return, TrapFrame},
 };
@@ -79,6 +80,9 @@ pub struct TaskInner {
     /// If a thread is started using `clone(2)` with the `CLONE_CHILD_CLEARTID` flag,
     /// clear_child_tid is set to the value passed in the ctid argument of that system call.
     pub clear_child_tid: usize,
+
+    /// Current working directory.
+    pub curr_dir: String,
 }
 
 unsafe impl Send for TaskInner {}
@@ -133,7 +137,7 @@ pub struct Task {
 
 impl Task {
     /// Create a new task from ELF data.
-    pub fn new(elf_data: &[u8], args: Vec<String>) -> KernelResult<Self> {
+    pub fn new(dir: String, elf_data: &[u8], args: Vec<String>) -> KernelResult<Self> {
         // Get task name
         let name = args[0].clone();
 
@@ -187,6 +191,7 @@ impl Task {
                 children: Vec::new(),
                 set_child_tid: 0,
                 clear_child_tid: 0,
+                curr_dir: dir,
             }),
             pid: Arc::new(PID(pid)),
             tid_allocator: Arc::new(Mutex::new(RecycleAllocator::new(MAIN_TASK + 1))),
@@ -338,6 +343,39 @@ impl Task {
         // Err(Errno::EINVAL)
     }
 
+    /// Gets the directory name from a file descriptor.
+    pub fn get_dir(&self, dirfd: usize) -> KernelResult<Path> {
+        if dirfd == AT_FDCWD {
+            Ok(Path::new(self.inner_lock().curr_dir.as_str()))
+        } else {
+            let dir = self.fd_manager.lock().get(dirfd)?;
+            if dir.is_dir() {
+                Ok(dir.get_path().unwrap())
+            } else {
+                Err(KernelError::Errno(Errno::ENOTDIR))
+            }
+        }
+    }
+
+    /// Resolves absolute path with directory file descriptor and pathname.
+    ///
+    /// If the pathname is relative, then it is interpreted relative to the directory
+    /// referred to by the file descriptor dirfd .
+    ///
+    /// If pathname is relative and dirfd is the special value [`AT_FDCWD`], then pathname
+    /// is interpreted relative to the current working directory of the calling process.
+    ///
+    /// If pathname is absolute, then dirfd is ignored.
+    pub fn resolve_path(&self, dirfd: usize, pathname: String) -> KernelResult<Path> {
+        if pathname.starts_with("/") {
+            Ok(Path::new(pathname.as_str()))
+        } else {
+            let mut path = self.get_dir(dirfd)?;
+            path.extend(pathname.as_str());
+            Ok(path)
+        }
+    }
+
     /// A helper for [`tsyscall::SyscallFile::openat`].
     pub fn do_open(
         &self,
@@ -345,24 +383,40 @@ impl Task {
         pathname: *const u8,
         flags: OpenFlags,
         mode: Option<StatMode>,
-    ) -> SyscallResult {
+    ) -> KernelResult<usize> {
         if flags.contains(OpenFlags::O_CREAT) && mode.is_none()
-            || flags.intersects(OpenFlags::O_WRONLY | OpenFlags::O_RDWR)
+            || flags.contains(OpenFlags::O_WRONLY | OpenFlags::O_RDWR)
         {
-            return Err(Errno::EINVAL);
+            return Err(KernelError::Errno(Errno::EINVAL));
         }
 
-        
+        let mut mm = self.mm.lock();
+        let path = self.resolve_path(dirfd, mm.get_str(VirtAddr::from(pathname as usize))?)?;
 
-        if dirfd == AT_FDCWD {
-        } else {
-        }
+        trace!("OPEN {:?} {:?}", path, flags);
 
-        let file = self.fd_manager.lock().get(dirfd)?;
-        if !file.is_dir() {
-            return;
+        self.fd_manager
+            .lock()
+            .push(open(path, flags).map_err(|errno| KernelError::Errno(errno))?)
+    }
+
+    /// A helper for [`tsyscall::SyscallFile::readv`] and [`tsyscall::SyscallFile::writev`].
+    pub fn for_each_iov(
+        &self,
+        iov: VirtAddr,
+        iovcnt: usize,
+        mut op: impl FnMut(usize, usize) -> bool,
+    ) -> KernelResult {
+        let size = size_of::<IoVec>();
+        let mut mm = self.mm.lock();
+        let buf = mm.get_buf_mut(iov, iovcnt * size)?;
+        let mut read_len = 0;
+        for bytes in buf.into_iter().step_by(size) {
+            let iov = unsafe { &*(bytes as *const IoVec) };
+            if !op(iov.iov_base, iov.iov_len) {
+                break;
+            }
         }
         Ok(())
-        // let mut mm = self.mm.lock();
     }
 }

@@ -4,7 +4,7 @@ mod init;
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use spin::Mutex;
 use tmm_rv::{PTEFlags, Page, VirtAddr, PAGE_SIZE};
-use tvfs::OpenFlags;
+use tvfs::{OpenFlags, Path};
 use xmas_elf::{
     header,
     program::{self, SegmentData},
@@ -30,13 +30,13 @@ pub fn from_args(dir: String, args: Vec<String>) -> KernelResult<Arc<Task>> {
         return Err(KernelError::InvalidArgs);
     }
     let name = args[0].as_str();
-    let path = dir + "/" + name;
+    let path = dir.clone() + "/" + name;
     let file = unsafe {
-        open(path.as_str(), OpenFlags::O_RDONLY)
+        open(Path::from(path), OpenFlags::O_RDONLY)
             .map_err(|errno| KernelError::Errno(errno))?
             .read_all()
     };
-    Ok(Arc::new(Task::new(file.as_slice(), args)?))
+    Ok(Arc::new(Task::new(dir, file.as_slice(), args)?))
 }
 
 /// Create address space from elf.
@@ -155,13 +155,13 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
             auxv: {
                 let mut at_table = BTreeMap::new();
                 at_table.insert(
-                    AuxType::PHDR,
+                    AuxType::AT_PHDR,
                     elf_base_va + elf_hdr.pt2.ph_offset() as usize,
                 );
-                at_table.insert(AuxType::PHENT, elf_hdr.pt2.ph_entry_size() as usize);
-                at_table.insert(AuxType::PHNUM, elf_hdr.pt2.ph_count() as usize);
-                at_table.insert(AuxType::RANDOM, 0);
-                at_table.insert(AuxType::PAGESZ, PAGE_SIZE);
+                at_table.insert(AuxType::AT_PHENT, elf_hdr.pt2.ph_entry_size() as usize);
+                at_table.insert(AuxType::AT_PHNUM, elf_hdr.pt2.ph_count() as usize);
+                at_table.insert(AuxType::AT_RANDOM, 0);
+                at_table.insert(AuxType::AT_PAGESZ, PAGE_SIZE);
                 at_table
             },
         },
