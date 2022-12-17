@@ -17,6 +17,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
     let id = args.0;
     let args = args.1;
     match id {
+        SyscallNO::UNLINKAT => SyscallImpl::unlinkat(args[0], args[1] as *const u8, args[2]),
         SyscallNO::OPENAT => SyscallImpl::openat(args[0], args[1] as *const u8, args[2], args[3]),
         SyscallNO::LSEEK => SyscallImpl::lseek(args[0], args[1], args[2]),
         SyscallNO::READ => SyscallImpl::read(args[0], args[1] as *mut u8, args[2]),

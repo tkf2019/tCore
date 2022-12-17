@@ -29,6 +29,8 @@ tsyscall = { path = "../crates/tsyscall" }
 ttimer = { path = "../crates/ttimer" }
 tvfs = { path = "../crates/tvfs" }
 terrno = { path = "../crates/terrno" }
+tmemfs = { path = "../crates/tmemfs" }
+tbuffer = { path = "../crates/tbuffer" }
 
 [features]
 default = ["oscomp", "test"]

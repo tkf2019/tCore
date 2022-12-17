@@ -35,6 +35,9 @@ numeric_enum! {
     #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
     #[allow(non_camel_case_types)]
     pub enum SyscallNO {
+        MKDIRAT = 34,
+        UNLINKAT = 35,
+        LINKAT = 37,
         OPENAT = 56,
         CLOSE = 57,
         PIPE = 59,

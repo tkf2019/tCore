@@ -1,11 +1,13 @@
 use alloc::sync::Arc;
 use log::info;
 use spin::{Lazy, Mutex};
+use terrno::Errno;
+use tvfs::*;
 
 mod fat;
 mod fd;
-mod mem;
 mod stdio;
+mod pipe;
 pub use fat::FileSystem;
 
 // cfg_if::cfg_if! {
@@ -17,9 +19,6 @@ pub use fat::FileSystem;
 // }
 pub use fd::*;
 pub use stdio::*;
-
-use terrno::Errno;
-use tvfs::*;
 
 use self::fat::FSDir;
 
@@ -39,6 +38,7 @@ pub static DISK_FS: Lazy<Mutex<FileSystem>> = Lazy::new(|| {
 ///
 /// - `path`: Absolute path which must start with '/'.
 /// - `flags`: Standard [`OpenFlags`].
+///
 /// See https://man7.org/linux/man-pages/man2/open.2.html.
 ///
 /// 1. Check if the file exists in the [`MEM_FS`].
@@ -82,5 +82,24 @@ pub fn mkdir(path: Path) -> Result<(), Errno> {
 
     // TODO: Try to create directory in VFS
 
-    DISK_FS.lock().mkdir(&pdir, name.as_str())
+    DISK_FS.lock().mkdir(&pdir, name.as_str())?;
+
+    Ok(())
+}
+
+/// Unlinks a path.
+pub fn unlink(path: Path) -> Result<(), Errno> {
+    // Root cannot be unlinked.
+    if path.is_root() {
+        return Err(Errno::EINVAL);
+    }
+
+    if let Some(mut path) = remove_link(&path) {
+        let name = path.pop().unwrap();
+        DISK_FS.lock().remove(&path, name.as_str())?;
+    } else {
+        return Err(Errno::ENOENT);
+    }
+
+    Ok(())
 }

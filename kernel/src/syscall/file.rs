@@ -165,4 +165,12 @@ impl SyscallFile for SyscallImpl {
         }
         Ok(write_len)
     }
+
+    fn unlinkat(dirfd: usize, pathname: *const u8, flags: usize) -> SyscallResult {
+        let current = current_task().unwrap();
+        current
+            .do_unlinkat(dirfd, pathname, flags)
+            .map_err(|err| Errno::from(err))?;
+        Ok(0)
+    }
 }

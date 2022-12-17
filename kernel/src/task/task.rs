@@ -10,13 +10,13 @@ use spin::{mutex::Mutex, MutexGuard};
 use talloc::{IDAllocator, RecycleAllocator};
 use terrno::Errno;
 use tmm_rv::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE};
-use tsyscall::{IoVec, SyscallResult, AT_FDCWD};
+use tsyscall::{IoVec, SyscallResult, AT_FDCWD, AT_REMOVEDIR};
 use tvfs::{File, OpenFlags, Path, StatMode};
 
 use crate::{
     config::*,
     error::{KernelError, KernelResult},
-    fs::{open, FDManager},
+    fs::{open, unlink, FDManager},
     loader::from_elf,
     mm::{pma::FixedPMA, BackendFile, MmapFlags, MmapProt, KERNEL_MM, MM},
     println,
@@ -418,5 +418,20 @@ impl Task {
             }
         }
         Ok(())
+    }
+
+    pub fn do_unlinkat(&self, dirfd: usize, pathname: *const u8, flags: usize) -> KernelResult {
+        if flags == AT_REMOVEDIR {
+            unimplemented!()
+        } else if flags == 0 {
+            let mut mm = self.mm.lock();
+            let path = self.resolve_path(dirfd, mm.get_str(VirtAddr::from(pathname as usize))?)?;
+
+            trace!("UNLINKAT {:?}", path);
+
+            unlink(path).map_err(|err| KernelError::Errno(err))
+        } else {
+            Err(KernelError::InvalidArgs)
+        }
     }
 }

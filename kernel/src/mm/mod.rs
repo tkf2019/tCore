@@ -1,4 +1,3 @@
-mod buffer;
 mod file;
 mod flags;
 mod kernel;
@@ -12,10 +11,10 @@ use spin::Mutex;
 use terrno::Errno;
 use tmm_rv::{Frame, PTEFlags, Page, PageRange, PageTable, PhysAddr, VirtAddr};
 use tsyscall::{IoVec, SyscallResult};
+use tbuffer::UserBuffer;
 
 use crate::{config::*, error::*, mm::pma::LazyPMA, trap::__trampoline};
 
-pub use buffer::*;
 pub use file::BackendFile;
 pub use flags::*;
 pub use kernel::{init, KERNEL_MM};

@@ -290,6 +290,14 @@ impl File for FSFile {
         Some(pos)
     }
 
+    fn readable(&self) -> bool {
+        self.readable
+    }
+
+    fn writable(&self) -> bool {
+        self.writable
+    }
+
     fn clear(&self) {
         let mut file = self.file.lock();
         file.seek(SeekFrom::Start(0)).unwrap();
@@ -308,7 +316,7 @@ impl File for FSFile {
             .map(|pos| match seek_from {
                 SeekFrom::Start(offset) => {
                     let len = file.seek(SeekFrom::End(0)).unwrap();
-                    if len < offset && offset - len <= FS_IMG_SIZE as u64 {
+                    if len < offset && offset <= FS_IMG_SIZE as u64 {
                         let mut buf: Vec<u8> = Vec::new();
                         buf.resize(offset as usize - len as usize, 0);
                         file.write(buf.as_slice()).unwrap();
@@ -319,7 +327,7 @@ impl File for FSFile {
                 SeekFrom::Current(offset) => {
                     let len = file.seek(SeekFrom::End(0)).unwrap();
                     let now = (curr_pos as i64 + offset) as u64;
-                    if len < now {
+                    if len < now && now <= FS_IMG_SIZE as u64 {
                         let mut buf: Vec<u8> = Vec::new();
                         buf.resize(now as usize - len as usize, 0);
                         file.write(buf.as_slice()).unwrap();
@@ -507,5 +515,15 @@ impl VFS for FileSystem {
         } else {
             root.open_file(path.rela()).is_ok()
         }
+    }
+
+    fn remove(&self, pdir: &Path, name: &str) -> Result<(), Errno> {
+        let root = FAT_FS.root_dir();
+        let pdir = if pdir.is_root() {
+            root
+        } else {
+            root.open_dir(pdir.rela()).map_err(|_| Errno::ENOENT)?
+        };
+        pdir.remove(name).map_err(|err| from(err))
     }
 }

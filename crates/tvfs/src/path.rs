@@ -103,34 +103,40 @@ impl Path {
     }
 
     /// Gets the last item of this path.
+    /// 
+    /// The item will ends with '/' if the original path is a directory.
     pub fn last(&mut self) -> Option<String> {
+        if self.is_root() {
+            return None;
+        }
         let is_dir = self.is_dir();
         if is_dir {
             self.0.pop();
         }
-        let pos = self.0.rfind('/').unwrap();
-        let item = if pos == 0 {
-            None
-        } else {
-            Some(String::from(&self.0.as_str()[pos + 1..]))
-        };
+        let pos = self.0.rfind('/').unwrap() + 1;
         if is_dir {
             self.0.push('/');
         }
-        item
+        Some(String::from(&self.0.as_str()[pos..]))
     }
 
     /// Gets the last item of this path and remove it.
+    /// 
+    /// The item will ends with '/' if the original path is a directory.
     pub fn pop(&mut self) -> Option<String> {
         if self.0.len() == 1 {
             None
         } else {
-            if self.0.ends_with('/') {
+            let is_dir = self.0.ends_with('/');
+            if is_dir {
                 self.0.pop();
             }
             let pos = self.0.rfind('/').unwrap() + 1;
-            let item = String::from(&self.0.as_str()[pos..]);
+            let mut item = String::from(&self.0.as_str()[pos..]);
             self.0.drain(pos..);
+            if is_dir {
+                item.push('/');
+            }
             Some(item)
         }
     }

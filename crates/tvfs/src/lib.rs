@@ -12,11 +12,12 @@ extern crate alloc;
 
 use alloc::{sync::Arc, vec::Vec};
 use core::any::Any;
+use terrno::Errno;
+
 pub use flag::*;
 pub use link::*;
 pub use path::*;
 pub use stat::*;
-use terrno::Errno;
 
 /// In UNIX, everything is a File, such as:
 ///
@@ -36,6 +37,14 @@ pub trait File: Send + Sync + AsAny {
     /// Returns [`None`] if the file is not writable.
     fn write(&self, buf: &[u8]) -> Option<usize> {
         None
+    }
+
+    fn readable(&self) -> bool {
+        false
+    }
+
+    fn writable(&self) -> bool {
+        false
     }
 
     /// Clear the [`File`].
@@ -151,4 +160,7 @@ pub trait VFS: Send + Sync {
 
     /// Checks for existance.
     fn check(&self, path: &Path) -> bool;
+
+    /// Removes a file.
+    fn remove(&self, pdir: &Path, name: &str) -> Result<(), Errno>;
 }

@@ -3,6 +3,9 @@ use crate::SyscallResult;
 /// Special value for dirfd.
 pub const AT_FDCWD: usize = -100isize as usize;
 
+/// Remove directory instead of unlinking file.
+pub const AT_REMOVEDIR: usize = 0x200;
+
 #[repr(C)]
 /// Used in readv and writev.
 ///
@@ -53,7 +56,7 @@ pub trait SyscallFile {
     fn openat(dirfd: usize, pathname: *const u8, flags: usize, mode: usize) -> SyscallResult;
 
     /// Close a file descriptor.
-    /// 
+    ///
     /// # Error
     /// - `EBADF`: fd isn't a valid open file descriptor.
     fn close(fd: usize) -> SyscallResult;
@@ -120,4 +123,21 @@ pub trait SyscallFile {
     ///
     /// See [`Self::write`].
     fn writev(fd: usize, iov: *const IoVec, iovcnt: usize) -> SyscallResult;
+
+    /// Deletes a name from the filesystem.  If that name was the last link to a file
+    /// and no processes have the file open, the file is deleted and the space it was
+    /// using is made available for reuse.
+    ///
+    /// If the name was the last link to a file but any processes still have the file open,
+    /// the file will remain in existence until the last file descriptor referring to it is closed.
+    ///
+    /// If the pathname is relative, then it is interpreted relative
+    /// to the directory referred to by the file descriptor dirfd (rather than relative
+    /// to the current working directory of the calling process.
+    ///
+    /// If pathname is relative and dirfd is the special value [`AT_FDCWD`], then pathname
+    /// is interpreted relative to the current working directory of the calling process.
+    ///
+    /// If pathname is absolute, then dirfd is ignored.
+    fn unlinkat(dirfd: usize, pathname: *const u8, flags: usize) -> SyscallResult;
 }

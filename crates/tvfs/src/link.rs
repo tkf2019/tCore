@@ -41,7 +41,7 @@ pub fn add_link(real_path: &Path, user_path: &Path) {
     path_map.insert(user_path.clone(), real_path.clone());
 }
 
-/// Remove a link maintained by a virutal or real path with no
+/// Removes a link maintained by a virutal or real path with no
 /// existance check.
 ///
 /// Returns the real path if the file referred by the real path
@@ -65,7 +65,6 @@ pub fn remove_link(path: &Path) -> Option<Path> {
             match count_map.get_mut(path) {
                 // The real path has been linked to.
                 Some(count) => {
-                    path_map.remove(path).unwrap();
                     *count -= 1;
                     if *count == 0 {
                         count_map.remove(path).unwrap();
