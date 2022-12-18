@@ -1,8 +1,12 @@
 use log::trace;
-use tsyscall::{IoVec, SyscallFile, SyscallNO, SyscallProc, SyscallResult, SyscallTimer};
+use tsyscall::{
+    IoVec, SyscallComm, SyscallFile, SyscallIO, SyscallNO, SyscallProc, SyscallResult, SyscallTimer,
+};
 use ttimer::TimeSpec;
 
+mod comm;
 mod file;
+mod io;
 mod proc;
 mod signal;
 mod timer;
@@ -17,6 +21,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
     let id = args.0;
     let args = args.1;
     match id {
+        SyscallNO::IOCTL => SyscallImpl::ioctl(args[0], args[1], args[2] as *const usize),
         SyscallNO::UNLINKAT => SyscallImpl::unlinkat(args[0], args[1] as *const u8, args[2]),
         SyscallNO::OPENAT => SyscallImpl::openat(args[0], args[1] as *const u8, args[2], args[3]),
         SyscallNO::LSEEK => SyscallImpl::lseek(args[0], args[1], args[2]),
@@ -34,6 +39,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
         SyscallNO::BRK => SyscallImpl::brk(args[0]),
         SyscallNO::MUNMAP => SyscallImpl::munmap(args[0], args[1]),
         SyscallNO::MMAP => SyscallImpl::mmap(args[0], args[1], args[2], args[3], args[4], args[5]),
+        SyscallNO::PIPE => SyscallImpl::pipe(args[0] as *const u32, args[1]),
         _ => {
             unimplemented!("{:?}", id)
         }

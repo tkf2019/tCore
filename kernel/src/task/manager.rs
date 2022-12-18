@@ -235,7 +235,7 @@ pub fn do_exit(exit_code: i32) {
 pub fn do_yield() {
     let curr_ctx = {
         let current = current_task().unwrap();
-        trace!("{:#?} suspended", current);
+        // trace!("{:#?} suspended", current);
         let mut current_inner = current.inner_lock();
         current_inner.state = TaskState::Runnable;
         &current_inner.ctx as *const TaskContext

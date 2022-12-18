@@ -20,11 +20,15 @@
 #![allow(unused)]
 #![allow(non_camel_case_types)]
 
+mod comm;
 mod file;
+mod io;
 mod proc;
 mod timer;
 
+pub use comm::*;
 pub use file::*;
+pub use io::*;
 use numeric_enum_macro::numeric_enum;
 pub use proc::*;
 use terrno::Errno;
@@ -35,6 +39,7 @@ numeric_enum! {
     #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
     #[allow(non_camel_case_types)]
     pub enum SyscallNO {
+        IOCTL = 29,
         MKDIRAT = 34,
         UNLINKAT = 35,
         LINKAT = 37,
@@ -63,7 +68,3 @@ numeric_enum! {
 }
 
 pub type SyscallResult = Result<usize, Errno>;
-
-pub trait SyscallDev {}
-
-pub trait SyscallComm {}

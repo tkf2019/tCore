@@ -77,12 +77,12 @@ pub const LUA_TESTCASES: &[&str] = &[
 
 pub const LIBC_STATIC_TESTCASES: &[&str] = &[
     "argv",
-    // "basename",
-    // "clock_gettime",
-    // "clocale_mbfuncs",
-    // "crypt",
-    // "dirname",
-    // "env",
+    "basename",
+    "clock_gettime",
+    "clocale_mbfuncs",
+    "crypt",
+    "dirname",
+    "env",
     // "sleep",
     "fdopen",
     "fnmatch",

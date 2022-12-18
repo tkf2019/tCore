@@ -19,6 +19,7 @@ pub use fat::FileSystem;
 // }
 pub use fd::*;
 pub use stdio::*;
+pub use pipe::*;
 
 use self::fat::FSDir;
 

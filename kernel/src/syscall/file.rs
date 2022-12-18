@@ -12,13 +12,13 @@ use super::SyscallImpl;
 impl SyscallFile for SyscallImpl {
     fn write(fd: usize, buf: *const u8, count: usize) -> SyscallResult {
         let current = current_task().unwrap();
-        let mut current_mm = current.mm.lock();
+        let mut mm = current.mm.lock();
 
         // Translate user buffer into kernel string.
-        let buf = current_mm
+        let buf = mm
             .get_buf_mut(VirtAddr::from(buf as usize), count)
             .map_err(|_| Errno::EFAULT)?;
-        drop(current_mm);
+        drop(mm);
 
         // Get the file with the given file descriptor.
         let file = current
@@ -41,12 +41,12 @@ impl SyscallFile for SyscallImpl {
 
     fn read(fd: usize, buf: *mut u8, count: usize) -> SyscallResult {
         let current = current_task().unwrap();
-        let mut current_mm = current.mm.lock();
+        let mut mm = current.mm.lock();
 
         // Get the real buffer translated into physical address.
-        let buf = unsafe { current_mm.get_buf_mut(VirtAddr::from(buf as usize), count) }
+        let buf = unsafe { mm.get_buf_mut(VirtAddr::from(buf as usize), count) }
             .map_err(|_| Errno::EFAULT)?;
-        drop(current_mm);
+        drop(mm);
 
         // Get the file with the given file descriptor.
         let file = current
@@ -103,7 +103,7 @@ impl SyscallFile for SyscallImpl {
                 .lock()
                 .get(fd)
                 .map_err(|_| Errno::EBADF)?;
-
+            
             if usize::MAX - file.get_off() < off {
                 return Err(Errno::EINVAL);
             }
@@ -120,20 +120,20 @@ impl SyscallFile for SyscallImpl {
     }
 
     fn readv(fd: usize, iov: *const IoVec, iovcnt: usize) -> SyscallResult {
+        let iov_size = size_of::<IoVec>();
         let iov = VirtAddr::from(iov as usize);
-        if iov.value() & size_of::<IoVec>() != 0 {
+        if iov.value() & (iov_size - 1) != 0 {
             return Err(Errno::EINVAL);
         }
 
         let current = current_task().unwrap();
-        let size = size_of::<IoVec>();
-        let mut current_mm = current.mm.lock();
-        let buf = current_mm.get_buf_mut(iov, iovcnt * size)?;
-        drop(current_mm);
+        let mut mm = current.mm.lock();
+        let buf = mm.get_buf_mut(iov, iovcnt * iov_size)?;
+        drop(mm);
         drop(current);
 
         let mut read_len = 0;
-        for bytes in buf.into_iter().step_by(size) {
+        for bytes in buf.into_iter().step_by(iov_size) {
             let iov = unsafe { &*(bytes as *const IoVec) };
             match Self::read(fd, iov.iov_base as *mut _, iov.iov_len) {
                 Ok(count) => read_len += count,
@@ -144,19 +144,20 @@ impl SyscallFile for SyscallImpl {
     }
 
     fn writev(fd: usize, iov: *const IoVec, iovcnt: usize) -> SyscallResult {
+        let iov_size = size_of::<IoVec>();
         let iov = VirtAddr::from(iov as usize);
-        if iov.value() & size_of::<IoVec>() != 0 {
+        if iov.value() & (iov_size- 1) != 0 {
             return Err(Errno::EINVAL);
         }
         let current = current_task().unwrap();
         let size = size_of::<IoVec>();
-        let mut current_mm = current.mm.lock();
-        let buf = current_mm.get_buf_mut(iov, iovcnt * size)?;
-        drop(current_mm);
+        let mut mm = current.mm.lock();
+        let buf = mm.get_buf_mut(iov, iovcnt * iov_size)?;
+        drop(mm);
         drop(current);
 
         let mut write_len = 0;
-        for bytes in buf.into_iter().step_by(size) {
+        for bytes in buf.into_iter().step_by(iov_size) {
             let iov = unsafe { &*(bytes as *const IoVec) };
             match Self::write(fd, iov.iov_base as *const _, iov.iov_len) {
                 Ok(count) => write_len += count,

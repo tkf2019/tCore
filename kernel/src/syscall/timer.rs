@@ -10,11 +10,10 @@ use super::SyscallImpl;
 impl SyscallTimer for SyscallImpl {
     fn clock_gettime(_clockid: usize, tp: usize) -> SyscallResult {
         let current = current_task().unwrap();
-        let mut current_mm = current.mm.lock();
+        let mut mm = current.mm.lock();
 
         // Get time specification from user address space.
-        current_mm
-            .alloc_write_type(VirtAddr::from(tp), &TimeSpec::new(get_time_sec_f64()))
+        mm.alloc_write_type(VirtAddr::from(tp), &TimeSpec::new(get_time_sec_f64()))
             .map_err(|_| Errno::EFAULT)?;
 
         Ok(0)
@@ -30,11 +29,10 @@ impl SyscallTimer for SyscallImpl {
 
     fn gettimeofday(tv: usize) -> SyscallResult {
         let current = current_task().unwrap();
-        let mut current_mm = current.mm.lock();
+        let mut mm = current.mm.lock();
 
         // Get time specification from user address space.
-        current_mm
-            .alloc_write_type(VirtAddr::from(tv), &TimeVal::new(get_time_sec_f64()))
+        mm.alloc_write_type(VirtAddr::from(tv), &TimeVal::new(get_time_sec_f64()))
             .map_err(|_| Errno::EFAULT)?;
 
         Ok(0)

@@ -20,12 +20,12 @@ pub struct FDManager {
     recycled: Vec<usize>,
 
     /// Maximum file descriptor limit.
-    pub limit: usize,
+    limit: usize,
 
     /// The effective mode is modified by the process's umask in the usual
     /// way: in the absence of a default ACL, the mode of the created file
     /// is `(mode & ~umask)`.
-    pub umask: u32,
+    umask: u32,
 }
 
 impl FDManager {
@@ -91,6 +91,26 @@ impl FDManager {
         let fd = self.alloc()?;
         self.list[fd] = Some(file);
         Ok(fd)
+    }
+
+    /// Returns the number of file descriptors.
+    pub fn fd_count(&self) -> usize {
+        self.list.len() - self.recycled.len()
+    }
+
+    /// Returns the limit of number.
+    pub fn fd_limit(&self) -> usize {
+        self.limit
+    }
+
+    /// Returns true if the number of file descriptors exceeds the limit.
+    pub fn is_full(&self) -> bool {
+        self.fd_count() >= self.limit
+    }
+
+    /// Returns umask.
+    pub fn get_umask(&self) -> u32 {
+        self.umask
     }
 }
 

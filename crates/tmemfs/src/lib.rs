@@ -21,8 +21,8 @@ struct MemFileInner {
 
 impl MemFileInner {
     pub fn new(limit: usize) -> Self {
-        let mut frames = Vec::with_capacity(limit / PAGE_SIZE);
-        frames.fill_with(|| AllocatedFrame::new(false).unwrap());
+        let mut frames = Vec::new();
+        frames.resize_with(limit / PAGE_SIZE, || AllocatedFrame::new(false).unwrap());
         Self { frames, pos: 0 }
     }
 }

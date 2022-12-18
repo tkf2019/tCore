@@ -11,7 +11,7 @@ pub const GUARD_PAGE: usize = PAGE_SIZE;
 pub const TRAMPOLINE_VA: usize = MAX_VA - PAGE_SIZE + 1;
 
 /// CPUs
-pub const CPU_NUM: usize = 1;
+pub const CPU_NUM: usize = 4;
 
 /// Use cpu0 as main hart
 pub const MAIN_HART: usize = 0;
@@ -74,3 +74,6 @@ cfg_if::cfg_if! {
 
 /// Maximum virtual memory areas in an address space
 pub const MAX_MAP_COUNT: usize = 256;
+
+/// Maximum size of  pipe buffer.
+pub const MAX_PIPE_BUF: usize = PAGE_SIZE;
