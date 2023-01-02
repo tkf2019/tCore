@@ -7,7 +7,7 @@ use crate::task::current_task;
 use super::SyscallImpl;
 
 impl SyscallIO for SyscallImpl {
-    fn ioctl(fd: usize, request: usize, argp: *const usize) -> SyscallResult {
+    fn ioctl(fd: usize, _request: usize, argp: *const usize) -> SyscallResult {
         let current = current_task().unwrap();
 
         if current.fd_manager.lock().get(fd).is_err() {

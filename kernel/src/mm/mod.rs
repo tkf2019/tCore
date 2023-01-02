@@ -8,10 +8,10 @@ use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::{fmt, mem::size_of, slice};
 use log::warn;
 use spin::Mutex;
+use tbuffer::UserBuffer;
 use terrno::Errno;
 use tmm_rv::{Frame, PTEFlags, Page, PageRange, PageTable, PhysAddr, VirtAddr};
-use tsyscall::{IoVec, SyscallResult};
-use tbuffer::UserBuffer;
+use tsyscall::SyscallResult;
 
 use crate::{config::*, error::*, mm::pma::LazyPMA, trap::__trampoline};
 
@@ -244,7 +244,7 @@ impl MM {
     pub fn find_free_area(&self, hint: VirtAddr, len: usize) -> KernelResult<VirtAddr> {
         let mut last_end = VirtAddr::zero();
         let min_addr = self.mmap_min_addr();
-        for (start, index) in self.vma_map.range(hint..) {
+        for (_, index) in self.vma_map.range(hint..) {
             if let Some(vma) = &self.vma_list[*index] {
                 if (vma.start_va - last_end).value() >= len && vma.start_va - len >= min_addr {
                     return Ok(vma.start_va - len);
@@ -550,9 +550,8 @@ impl MM {
 impl MM {
     /// A page fault helper for [`crate::trap::user_trap_handler`].
     pub fn do_handle_page_fault(&mut self, va: VirtAddr, flags: VMFlags) -> KernelResult {
-        self.get_vma(va, |vma, pt, index| {
-            // trace!("{:?} {:?}", va, vma);
-            let (frame, alloc) = vma.alloc_frame(Page::from(va), pt)?;
+        self.get_vma(va, |vma, pt, _| {
+            let (_, alloc) = vma.alloc_frame(Page::from(va), pt)?;
             // Page fault cannot be handled.
             if !alloc || !vma.flags.contains(flags) {
                 return Err(KernelError::FatalPageFault);

@@ -263,6 +263,10 @@ struct QemuArgs {
     #[clap(flatten)]
     build: BuildArgs,
 
+    /// QEMU path
+    #[clap(long, default_value = "")]
+    qemu: Option<String>,
+
     /// Multiprocessing
     #[clap(long, default_value = "1")]
     smp: Option<String>,
@@ -288,7 +292,8 @@ impl QemuArgs {
             .expect("Failed to generate kernel binary file");
         // Run Qemu
         let mut cmd = Command::new(format!(
-            "qemu-system-{}",
+            "{}qemu-system-{}",
+            self.qemu.as_ref().unwrap().as_str(),
             self.build.arch.as_ref().unwrap().as_str()
         ));
         cmd.args(&["-machine", "virt"])

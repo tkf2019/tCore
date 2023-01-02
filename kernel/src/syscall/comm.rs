@@ -10,7 +10,7 @@ use crate::{fs::Pipe, task::current_task};
 use super::SyscallImpl;
 
 impl SyscallComm for SyscallImpl {
-    fn pipe(pipefd: *const u32, flags: usize) -> SyscallResult {
+    fn pipe(pipefd: *const u32, _flags: usize) -> SyscallResult {
         let current = current_task().unwrap();
 
         let mut fd_manager = current.fd_manager.lock();

@@ -2,7 +2,6 @@ use log::trace;
 use tsyscall::{
     IoVec, SyscallComm, SyscallFile, SyscallIO, SyscallNO, SyscallProc, SyscallResult, SyscallTimer,
 };
-use ttimer::TimeSpec;
 
 mod comm;
 mod file;

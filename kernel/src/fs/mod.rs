@@ -1,5 +1,4 @@
 use alloc::sync::Arc;
-use log::info;
 use spin::{Lazy, Mutex};
 use terrno::Errno;
 use tvfs::*;
@@ -45,7 +44,7 @@ pub static DISK_FS: Lazy<Mutex<FileSystem>> = Lazy::new(|| {
 /// 1. Check if the file exists in the [`MEM_FS`].
 /// 2. Check if the file exists in the [`DISK_FS`].
 pub fn open(path: Path, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
-    /// Root is always opened.
+    // Root is always opened.
     if path.is_root() {
         return Ok(Arc::new(FSDir::new(path)));
     }

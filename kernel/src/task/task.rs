@@ -19,7 +19,6 @@ use crate::{
     fs::{open, unlink, FDManager},
     loader::from_elf,
     mm::{pma::FixedPMA, BackendFile, MmapFlags, MmapProt, KERNEL_MM, MM},
-    println,
     task::{kstack_alloc, pid_alloc},
     trap::{user_trap_handler, user_trap_return, TrapFrame},
 };
@@ -410,7 +409,6 @@ impl Task {
         let size = size_of::<IoVec>();
         let mut mm = self.mm.lock();
         let buf = mm.get_buf_mut(iov, iovcnt * size)?;
-        let mut read_len = 0;
         for bytes in buf.into_iter().step_by(size) {
             let iov = unsafe { &*(bytes as *const IoVec) };
             if !op(iov.iov_base, iov.iov_len) {

@@ -1,5 +1,4 @@
 use alloc::sync::Arc;
-use log::trace;
 use spin::Mutex;
 use tbuffer::RingBuffer;
 use tmemfs::MemFile;

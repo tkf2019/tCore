@@ -150,7 +150,6 @@ impl SyscallFile for SyscallImpl {
             return Err(Errno::EINVAL);
         }
         let current = current_task().unwrap();
-        let size = size_of::<IoVec>();
         let mut mm = current.mm.lock();
         let buf = mm.get_buf_mut(iov, iovcnt * iov_size)?;
         drop(mm);

@@ -33,6 +33,7 @@ tmemfs = { path = "../crates/tmemfs" }
 tbuffer = { path = "../crates/tbuffer" }
 
 [features]
-default = ["oscomp", "test"]
+default = ["oscomp", "test", "uintr"]
 test = []
 oscomp = []
+uintr = []

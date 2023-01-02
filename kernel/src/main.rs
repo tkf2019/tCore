@@ -20,7 +20,7 @@ mod trap;
 
 extern crate alloc;
 
-use log::trace;
+use log::{trace, info};
 use riscv::asm::{sfence_vma, sfence_vma_all};
 use tmm_rv::{frame_init, Frame, PhysAddr, VirtAddr};
 
@@ -137,12 +137,12 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
     }
     // Initialize the first task.
     task::init();
-    trace!("Start executing tasks.");
+    info!("Start executing tasks.");
     // Wake up other harts.
     for cpu_id in 0..CPU_NUM {
         if cpu_id != hartid {
             let entry = __entry_others as usize;
-            trace!("Try to start hart {}", cpu_id);
+            info!("Try to start hart {}", cpu_id);
             start_hart(cpu_id, entry, 0);
         }
     }
@@ -156,7 +156,7 @@ pub extern "C" fn rust_main_others(_hartid: usize) -> ! {
     mm::init();
     // Set kernel trap entry.
     trap::set_kernel_trap();
-    trace!("(Secondary) Start executing tasks.");
+    info!("(Secondary) Start executing tasks.");
     // IDLE loop
     task::idle();
 }

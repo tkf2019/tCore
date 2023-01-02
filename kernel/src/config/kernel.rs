@@ -77,3 +77,12 @@ pub const MAX_MAP_COUNT: usize = 256;
 
 /// Maximum size of  pipe buffer.
 pub const MAX_PIPE_BUF: usize = PAGE_SIZE;
+
+/// User interrupt tests.
+cfg_if::cfg_if! {
+    if #[cfg(feature = "uintr")] {
+        pub const TEST_UINTR: bool = true;
+    } else {
+        pub const TEST_UINTR: bool = false;
+    }
+}

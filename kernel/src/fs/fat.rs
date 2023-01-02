@@ -2,7 +2,7 @@ use alloc::{sync::Arc, vec::Vec};
 use fatfs::{
     DefaultTimeProvider, FsOptions, IoBase, LossyOemCpConverter, Read, Seek, SeekFrom, Write,
 };
-use log::{trace, warn};
+use log::trace;
 use spin::{Lazy, Mutex, MutexGuard};
 use tcache::{BlockCache, CacheUnit, LRUBlockCache, BLOCK_SIZE};
 use terrno::Errno;
@@ -455,7 +455,7 @@ impl VFS for FileSystem {
 
         if flags.contains(OpenFlags::O_DIRECTORY | OpenFlags::O_DSYNC) || ori_path.is_dir() {
             match pdir.open_dir(name) {
-                Ok(dir) => Ok(Arc::new(FSDir::new(ori_path))),
+                Ok(_) => Ok(Arc::new(FSDir::new(ori_path))),
                 Err(err) => Err(from(err)),
             }
         } else {
