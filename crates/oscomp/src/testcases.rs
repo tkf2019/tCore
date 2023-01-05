@@ -87,7 +87,6 @@ pub const LIBC_STATIC_TESTCASES: &[&str] = &[
     "fdopen",
     "fnmatch",
     "fscanf",
-    /* 
     "iconv_open",
     "inet_pton",
     "mbc",
@@ -102,6 +101,7 @@ pub const LIBC_STATIC_TESTCASES: &[&str] = &[
     "search_insque",
     "search_lsearch",
     "search_tsearch",
+    /*
     "setjmp",
     "snprintf",
     "socket",

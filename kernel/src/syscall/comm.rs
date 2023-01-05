@@ -45,4 +45,16 @@ impl SyscallComm for SyscallImpl {
 
         Ok(0)
     }
+
+    fn sigaction(signum: usize, act: usize, oldact: usize) -> SyscallResult {
+        Ok(0)
+    }
+
+    fn sigpending(set: usize) -> SyscallResult {
+        Ok(0)
+    }
+
+    fn sigprocmask(how: usize, set: usize, oldset: usize, sigsetsize: usize) -> SyscallResult {
+        Ok(0)
+    }
 }

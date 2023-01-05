@@ -10,6 +10,7 @@ use spin::{mutex::Mutex, MutexGuard};
 use talloc::{IDAllocator, RecycleAllocator};
 use terrno::Errno;
 use tmm_rv::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE};
+use tsignal::{SigActions, SigInfo, SigPending, SigSet, NSIG};
 use tsyscall::{IoVec, SyscallResult, AT_FDCWD, AT_REMOVEDIR};
 use tvfs::{File, OpenFlags, Path, StatMode};
 
@@ -82,6 +83,12 @@ pub struct TaskInner {
 
     /// Current working directory.
     pub curr_dir: String,
+
+    /// Pending signals.
+    pub sig_pending: SigPending,
+
+    /// Blocked signals.
+    pub sig_blocked: SigSet,
 }
 
 unsafe impl Send for TaskInner {}
@@ -129,6 +136,9 @@ pub struct Task {
 
     /// File descriptor table.
     pub fd_manager: Arc<Mutex<FDManager>>,
+
+    /// Signal actions.
+    pub sig_actions: Arc<Mutex<SigActions>>,
 
     /// Name of this task.
     pub name: String,
@@ -191,11 +201,14 @@ impl Task {
                 set_child_tid: 0,
                 clear_child_tid: 0,
                 curr_dir: dir,
+                sig_pending: SigPending::new(),
+                sig_blocked: SigSet::new(),
             }),
             pid: Arc::new(PID(pid)),
             tid_allocator: Arc::new(Mutex::new(RecycleAllocator::new(MAIN_TASK + 1))),
             mm: Arc::new(Mutex::new(mm)),
             fd_manager: Arc::new(Mutex::new(fd_manager)),
+            sig_actions: Arc::new(Mutex::new(SigActions::new())),
             name,
         };
         Ok(task)
@@ -418,6 +431,7 @@ impl Task {
         Ok(())
     }
 
+    /// A helper for [`tsyscall::SyscallFile::unlinkat`].
     pub fn do_unlinkat(&self, dirfd: usize, pathname: *const u8, flags: usize) -> KernelResult {
         if flags == AT_REMOVEDIR {
             unimplemented!()
@@ -431,5 +445,17 @@ impl Task {
         } else {
             Err(KernelError::InvalidArgs)
         }
+    }
+}
+
+/* Signal Helpers */
+
+impl Task {
+    pub fn send_sig_info(sig: usize, info: &SigInfo) -> SyscallResult {
+        if (sig as isize) < 0 || sig > NSIG {
+            return Err(Errno::EINVAL);
+        }
+
+        Ok(0)
     }
 }

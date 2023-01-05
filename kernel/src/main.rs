@@ -20,7 +20,7 @@ mod trap;
 
 extern crate alloc;
 
-use log::{trace, info};
+use log::{info, trace};
 use riscv::asm::{sfence_vma, sfence_vma_all};
 use tmm_rv::{frame_init, Frame, PhysAddr, VirtAddr};
 
@@ -135,6 +135,7 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
     if IS_TEST_ENV {
         oscomp::init(oscomp::testcases::LIBC_STATIC_TESTCASES);
     }
+    unsafe { uintr::test::test_register() };
     // Initialize the first task.
     task::init();
     info!("Start executing tasks.");

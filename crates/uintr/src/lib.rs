@@ -6,5 +6,7 @@ extern crate alloc;
 
 mod instr;
 mod register;
-#[cfg(test)]
-mod test;
+pub mod test;
+
+pub use register::*;
+pub use instr::*;

@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 riscv = "0.10"
+bit_field = "0.10"
 
 terrno = { path = "../terrno" }
 tsyscall = { path = "../tsyscall" }

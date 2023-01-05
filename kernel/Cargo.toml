@@ -23,14 +23,16 @@ oscomp = { path = "../crates/oscomp" }
 
 # tCore crates (private)
 talloc = { path = "../crates/talloc" }
+tbuffer = { path = "../crates/tbuffer" }
 tcache = { path = "../crates/tcache" }
+terrno = { path = "../crates/terrno" }
+tmemfs = { path = "../crates/tmemfs" }
 tmm_rv = { path = "../crates/tmm_rv" }
+tsignal = { path = "../crates/tsignal" }
 tsyscall = { path = "../crates/tsyscall" }
 ttimer = { path = "../crates/ttimer" }
 tvfs = { path = "../crates/tvfs" }
-terrno = { path = "../crates/terrno" }
-tmemfs = { path = "../crates/tmemfs" }
-tbuffer = { path = "../crates/tbuffer" }
+uintr = { path = "../crates/uintr" }
 
 [features]
 default = ["oscomp", "test", "uintr"]
