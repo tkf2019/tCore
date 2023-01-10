@@ -34,9 +34,9 @@ numeric_enum! {
 /// CPU clock identification.
 ///
 /// Bit fields within a clock id:
-/// - [31:3] hold either a pid or a file descriptor
-/// - [2] indicates whether a cpu clock refers to a thread or a process
-/// - [1:0] give [`CPUClockType`]
+/// - \[31:3\] hold either a pid or a file descriptor
+/// - \[2\] indicates whether a cpu clock refers to a thread or a process
+/// - \[1:0\] give [`CPUClockType`]
 ///
 /// A clock id is invalid if bits 2, 1 and 0 are all set.
 pub struct ClockID(i32);

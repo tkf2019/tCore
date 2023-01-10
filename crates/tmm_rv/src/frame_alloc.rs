@@ -3,7 +3,7 @@ use core::{fmt, ops::Deref};
 use log::{info, trace};
 use spin::Lazy;
 
-use crate::{Frame, FrameRange, PageTable, PAGE_SIZE};
+use crate::{AllocatedPageRange, Frame, FrameRange, PageTable, PAGE_SIZE};
 
 /// Defines global frame allocator. This implementation is based on buddy system allocator.
 pub static GLOBAL_FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> =
@@ -28,7 +28,7 @@ pub fn frame_init(start: usize, end: usize) {
 /// A wrapper of allocated physical memory [`Frame`].
 ///
 /// The frame is not immediately accessible because they're not yet mapped by any virtual
-/// memory page. You must do that separately in order to create a [`AllocatedPages`] or
+/// memory page. You must do that separately in order to create a [`AllocatedPageRange`] or
 /// [`PageTable`] type, which can then be used to access the contents of these frames.
 ///
 /// This object represents ownership of the allocated physical frame.
@@ -39,7 +39,7 @@ pub struct AllocatedFrame {
 
 impl AllocatedFrame {
     /// Allocates a single frame.
-    /// Use global [`GLOBAL_FRAME_ALLOCATOR`] to track allocated frames.
+    /// Use global allocator to track allocated frames.
     pub fn new(flush: bool) -> Result<Self, &'static str> {
         if let Some(frame) = frame_alloc(1) {
             let frame = Frame::from(frame);
@@ -89,7 +89,7 @@ pub struct AllocatedFrameRange {
 
 impl AllocatedFrameRange {
     /// Allocates frames from start to end.
-    /// Use global [`GLOBAL_FRAME_ALLOCATOR`] to track allocated frames.
+    /// Use global allocator to track allocated frames.
     ///
     /// # Argument
     ///

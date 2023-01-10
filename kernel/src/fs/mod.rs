@@ -39,7 +39,7 @@ pub static DISK_FS: Lazy<Mutex<FileSystem>> = Lazy::new(|| {
 /// - `path`: Absolute path which must start with '/'.
 /// - `flags`: Standard [`OpenFlags`].
 ///
-/// See https://man7.org/linux/man-pages/man2/open.2.html.
+/// See `<https://man7.org/linux/man-pages/man2/open.2.html>`.
 ///
 /// 1. Check if the file exists in the [`MEM_FS`].
 /// 2. Check if the file exists in the [`DISK_FS`].

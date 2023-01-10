@@ -22,7 +22,7 @@ pub const VPN_BITS_SV39: usize = VA_BITS_SV39 - PAGE_SIZE_BITS;
 /// Virtual space can only use the highest and lowest 256 GB.
 pub const VA_MASK_SV39: usize = 0x0000_007F_FFFF_FFFF;
 
-/// Bits [63:39] must be set the same as bit 38.
+/// Bits \[63:39\] must be set the same as bit 38.
 pub const VA_38_SV39: usize = 0x0000_0040_0000_0000;
 
 /// The highest possible virtual address.

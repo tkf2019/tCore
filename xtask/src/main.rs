@@ -96,6 +96,10 @@ struct BuildArgs {
     /// Pack arguments.
     #[clap(flatten)]
     pack_args: PackArgs,
+
+    /// Build API docs.
+    #[clap(long)]
+    doc: bool,
 }
 
 /// Prepare cargo utils.
@@ -216,7 +220,11 @@ impl BuildArgs {
         } else {
             "--release"
         };
-        let (subcmd, options) = ("build", opt_level);
+        let (subcmd, options) = if self.doc {
+            ("doc", opt_level)
+        } else {
+            ("build", opt_level)
+        };
         let test = if self.test { "test" } else { "" };
         let oscomp = if self.oscomp { "oscomp" } else { "" };
 

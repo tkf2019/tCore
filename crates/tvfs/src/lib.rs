@@ -92,7 +92,7 @@ pub trait File: Send + Sync + AsAny {
     /// Moves the cursor with [`SeekWhence`] flags.
     ///
     ///
-    /// See https://man7.org/linux/man-pages/man2/lseek.2.html.
+    /// See `<https://man7.org/linux/man-pages/man2/lseek.2.html>`.
     fn seek(&self, offset: usize, whence: SeekWhence) -> Option<usize> {
         None
     }
@@ -149,7 +149,7 @@ pub trait VFS: Send + Sync {
     /// - `pdir`: Absolute path which must start with '/'.
     /// - `name`: the name of the new file.
     /// - `flags`: Standard [`OpenFlags`].
-    /// See https://man7.org/linux/man-pages/man2/open.2.html.
+    /// See `<https://man7.org/linux/man-pages/man2/open.2.html>`.
     fn open(&self, pdir: &Path, name: &str, flags: OpenFlags) -> Result<Arc<dyn File>, Errno>;
 
     /// Makes a directory.

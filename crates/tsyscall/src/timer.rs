@@ -1,4 +1,4 @@
-use ttimer::{ITimerVal, TimeSpec, TimeVal};
+use ttimer::{ITimerVal, TimeSpec, TimeVal, ITimerType};
 
 use crate::SyscallResult;
 

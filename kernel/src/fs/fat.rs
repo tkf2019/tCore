@@ -162,7 +162,7 @@ impl Seek for FatIO {
     }
 }
 
-/// Mutable data owned by [`Inode`].
+/// Mutable data owned by [`FSFile`].
 pub struct FSFileInner {
     /// Last access.
     pub atime: TimeSpec,

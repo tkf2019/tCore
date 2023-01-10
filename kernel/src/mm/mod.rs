@@ -27,9 +27,6 @@ pub struct MM {
     /// This object has the ownership of the page table. So the lifetime of [`PageTable`]
     /// depends on the [`MM`] tied to it. In `sys_vfork`, parent task will be blocked until
     /// the child task exits.
-    ///
-    /// Frames allocated in a page table will be dropped if the address space is
-    /// destroyed to release the resources. See [`AllocatedFrames`].
     pub page_table: PageTable,
 
     /// List of [`VMArea`]s.
@@ -63,7 +60,7 @@ impl MM {
     /// `Trampoline` is mapped to the same code section at first by default.
     /// `Trampoline` is not collected or recorded by VMAs, since this area cannot
     /// be unmapped or modified manually by user. We set the page table flags without
-    /// [`PTEFlags::USER`] so that malicious user cannot jump to this area.
+    /// [`PTEFlags::USER_ACCESSIBLE`] so that malicious user cannot jump to this area.
     pub fn new() -> KernelResult<Self> {
         match PageTable::new() {
             Ok(page_table) => {

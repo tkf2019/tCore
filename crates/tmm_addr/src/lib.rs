@@ -159,7 +159,7 @@ macro_rules! implement_page_frame {
     ) => {
         paste! {
 
-            #[doc = "A `" $TypeName "` is a chunk of **" $desc "** memory aligned to a[`PAGE_SIZE`] boundary."]
+            #[doc = "A `" $TypeName "` is a chunk of **" $desc "** memory aligned to a [`PAGE_SIZE`] boundary."]
             #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
             pub struct $TypeName {
                 number: usize,
@@ -311,7 +311,7 @@ macro_rules! implement_page_frame_range {
 
             impl $TypeName {
                 #[doc = "Creates a new range of [`" $chunk "`]s that spans from `start` to 
-                    `end`, both inclusive bounds."]
+                    `end`, both exclusive bounds."]
                 pub const fn new(start: $chunk, end: $chunk) -> $TypeName {
                     $TypeName {start, end }
                 }
@@ -355,7 +355,6 @@ macro_rules! implement_page_frame_range {
                     This is instant, because it doesn't need to iterate over each entry, \
                     unlike normal iterators."]
                 pub const fn [<size_in_ $chunk:lower s>](&self) -> usize {
-                    // add 1 because it's an inclusive range
                     self.end.number().saturating_sub(self.start.number())
                 }
 
@@ -417,7 +416,7 @@ macro_rules! implement_page_frame_range {
                     $TypeName::new(start.clone(), end.clone())
                 }
 
-                #[doc = "Returns an inclusive `" $TypeName "` representing the [`" $chunk "`]s \
+                #[doc = "Returns an exclusive `" $TypeName "` representing the [`" $chunk "`]s \
                     that overlap across this `" $TypeName "` and the given other \
                     `" $TypeName "`.\n\n \
                     If there is no overlap between the two ranges, `None` is returned."]
