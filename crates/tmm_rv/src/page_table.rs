@@ -183,18 +183,9 @@ impl PageTable {
         SATP_MODE_SV39 | self.root.number()
     }
 
-    /// Walk down this [`PageTable`], The virtual page number is given.
-    /// In SV39, `vpn` is splitted into 3 indexes, 9 bits each, which is to locate the
-    /// [`PageTableEntry`] among 512 entries in a 4KB page table frame.
-    /// We will allocate a new frame to create new entries and set the valid bit if the
-    /// `CREAT` bit is set in flags.
-    ///
-    /// This function cannot be used outside the page table. It checks the `valid` bit of the leaf.
-    pub fn walk(
-        &mut self,
-        page: Page,
-        flags: PTWalkerFlags,
-    ) -> Result<(PhysAddr, PageTableEntry), &'static str> {
+    /// Walks this [`PageTable`] with the given virtual page number. Throws error
+    /// whenever encountering an invalid page table entry.
+    pub fn walk(&self, page: Page) -> Result<(PhysAddr, PageTableEntry), &'static str> {
         let indexes = page.split_vpn();
         let mut link = self.root;
         let mut result: Option<(PhysAddr, PageTableEntry)> = None;
@@ -202,21 +193,39 @@ impl PageTable {
         for (j, index) in indexes.iter().enumerate() {
             let pa = PageTableEntry::from_index(&link, *index);
             let entry = &mut PageTableEntry::new(pa);
-            // No existing entry, create a new one.
+
             if !entry.flags().is_valid() {
-                if flags.intersects(PTWalkerFlags::CREAT) && j < 2 {
-                    let new_frame = AllocatedFrame::new(true)?;
-                    // Write new valid entry to the target frame.
-                    entry.set_flags(PTEFlags::VALID);
-                    entry.set_ppn(&new_frame);
-                    entry.write(pa);
-                    // Delegate the ownership to this page table.
-                    self.frames.push(new_frame);
-                } else if !flags.intersects(PTWalkerFlags::CREAT) {
-                    return Err("Encounter an invalid page table entry.");
-                }
+                return Err("Encounter an invalid page table entry.");
             }
-            // Reach the leaf page table frame.
+
+            result = Some((pa, entry.clone()));
+            link = entry.frame();
+        }
+
+        Ok(result.unwrap())
+    }
+
+    /// Walks this [`PageTable`] with the given virtual page number. Allocates new frames
+    /// whenever encountering an invalid page table entry. 
+    pub fn create(&mut self, page: Page) -> Result<(PhysAddr, PageTableEntry), &'static str> {
+        let indexes = page.split_vpn();
+        let mut link = self.root;
+        let mut result: Option<(PhysAddr, PageTableEntry)> = None;
+
+        for (j, index) in indexes.iter().enumerate() {
+            let pa = PageTableEntry::from_index(&link, *index);
+            let entry = &mut PageTableEntry::new(pa);
+
+            if !entry.flags().is_valid() && j < 2 {
+                let new_frame = AllocatedFrame::new(true)?;
+
+                entry.set_flags(PTEFlags::VALID);
+                entry.set_ppn(&new_frame);
+                entry.write(pa);
+
+                self.frames.push(new_frame);
+            }
+
             result = Some((pa, entry.clone()));
             link = entry.frame();
         }
@@ -227,32 +236,24 @@ impl PageTable {
     /// Virtual page will be mapped to physical frame. Caller must guarantee that the frame
     /// has been allocated and will not be used again by the `PageTableWalker`.
     pub fn map(&mut self, page: Page, frame: Frame, flags: PTEFlags) -> Result<(), &'static str> {
-        let (pa, mut pte) = self.walk(page, PTWalkerFlags::CREAT)?;
+        let (pa, mut pte) = self.create(page)?;
         pte.set_flags(flags);
         pte.set_ppn(&frame);
         pte.write(pa);
-        /* if page.number() != frame.number() {
-            trace!(
-                "[MAP] {:?} => {:?}",
-                page.start_address(),
-                frame.start_address()
-            );
-        } */
         Ok(())
     }
 
     /// Clears the page table entry found by the page.
     pub fn unmap(&mut self, page: Page) -> Result<(), &'static str> {
-        let (pa, _) = self.walk(page, PTWalkerFlags::empty())?;
+        let (pa, _) = self.walk(page)?;
         let pte = PageTableEntry::zero();
         pte.write(pa);
-        trace!("[UNMAP] {:?}", page.start_address(),);
         Ok(())
     }
 
     /// Translate virtual address into physical address.
     pub fn translate(&mut self, va: VirtAddr) -> Result<PhysAddr, &'static str> {
-        self.walk(Page::floor(va), PTWalkerFlags::empty())
+        self.walk(Page::floor(va))
             .map(|(_, pte)| {
                 let offset = va.page_offset();
                 let pa = pte.frame().start_address();

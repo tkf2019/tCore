@@ -11,7 +11,7 @@ pub const GUARD_PAGE: usize = PAGE_SIZE;
 pub const TRAMPOLINE_VA: usize = MAX_VA - PAGE_SIZE + 1;
 
 /// CPUs
-pub const CPU_NUM: usize = 1;
+pub const CPU_NUM: usize = 4;
 
 /// Use cpu0 as main hart
 pub const MAIN_HART: usize = 0;
@@ -40,9 +40,25 @@ pub const KERNEL_HEAP_ORDER: usize = 32;
 /// 256MB physical memory
 pub const PHYSICAL_MEMORY_END: usize = 0x9000_0000;
 
+/// UINTC base
+pub const UINTC_BASE: usize = 0xC000_0000;
+/// UINTC size
+pub const UINTC_SIZE: usize = 0x4000;
+
+/// VIRTIO base
+pub const VIRTIO0: usize = 0x1000_1000;
+/// VIRTIO size
+pub const VIRTIO_SIZE: usize = 0x1000;
+
+/// FLASH base
+pub const FLASH_BASE: usize = 0x2000_0000;
+/// FLASH size
+pub const FLASH_SIZE: usize = 0x400_0000;
+
 /// MMIO
 pub const MMIO: &[(usize, usize)] = &[
-    (0x1000_1000, 0x00_1000), // Virtio Block in virt machine
+    (VIRTIO0, VIRTIO_SIZE),   // Virtio Block in virt machine
+    (UINTC_BASE, UINTC_SIZE), // UINTC
 ];
 
 /// The number of block cache units for virtio.

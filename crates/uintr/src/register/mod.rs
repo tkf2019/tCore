@@ -5,5 +5,7 @@ mod macros;
 
 pub mod sedeleg;
 pub mod sideleg;
-pub mod suitt;
-pub mod upidaddr;
+pub mod suist;
+pub mod suirs;
+pub mod sip;
+pub mod uuirq;

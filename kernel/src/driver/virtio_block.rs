@@ -4,9 +4,10 @@ use spin::{Lazy, Mutex};
 use tmm_rv::{frame_alloc, frame_dealloc, Frame, PhysAddr, PAGE_SIZE_BITS};
 use virtio_drivers::{Hal, VirtIOBlk, VirtIOHeader};
 
-use crate::mm::KERNEL_MM;
-
-const VIRTIO0: usize = 0x10001000;
+use crate::{
+    config::VIRTIO0,
+    mm::KERNEL_MM
+};
 
 pub static BLOCK_DEVICE: Lazy<Arc<dyn BlockDevice>> = Lazy::new(|| {
     Arc::new(unsafe {
@@ -54,7 +55,6 @@ impl Hal for VirtioHal {
             .lock()
             .translate(vaddr.into())
             .expect("Failed to translate virtual address");
-        // debug!("virt_to_phys: {:#X} -> {:#?}", vaddr, pa);
         pa.into()
     }
 }

@@ -52,6 +52,7 @@ implement_page_frame_range!(PageRange, "virtual", virt, Page, VirtAddr, PAGE_SIZ
 implement_page_frame_range!(FrameRange, "physical", phys, Frame, PhysAddr, PAGE_SIZE);
 
 impl Page {
+    /// In SV39, `vpn` is splitted into 3 indexes, 9 bits each.
     pub fn split_vpn(&self) -> [usize; 3] {
         let mut vpn = self.number();
         let mut indexes = [0usize; 3];

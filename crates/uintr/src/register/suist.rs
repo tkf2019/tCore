@@ -1,12 +1,12 @@
-//! suitt register
+//! suist register
 
 use bit_field::BitField;
 
-pub struct Suitt {
+pub struct Suist {
     bits: usize,
 }
 
-impl Suitt {
+impl Suist {
     /// Returns the contents of the register as raw bits
     #[inline]
     pub fn bits(&self) -> usize {
@@ -16,7 +16,7 @@ impl Suitt {
     /// User-interrupt enabled.
     #[inline]
     pub fn enabled(&self) -> bool {
-        self.bits.get_bit(31)
+        self.bits.get_bit(63)
     }
 
     /// Physical page number.
@@ -25,11 +25,11 @@ impl Suitt {
         self.bits.get_bits(0..44)
     }
 
-    /// UITT size.
+    /// Table size.
     pub fn size(&self) -> usize {
         self.bits.get_bits(44..56)
     }
 }
 
-read_csr_as!(Suitt, 0x1C0);
-write_csr_as_usize!(0x1C0);
+read_csr_as!(Suist, 0x1B0);
+write_csr_as_usize!(0x1B0);

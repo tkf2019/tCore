@@ -23,9 +23,11 @@ extern crate alloc;
 use log::{info, trace};
 use riscv::asm::{sfence_vma, sfence_vma_all};
 use tmm_rv::{frame_init, Frame, PhysAddr, VirtAddr};
+use uintr::{uipi_send, uipi_activate};
 
 use crate::config::{
-    BOOT_STACK_SIZE, CPU_NUM, IS_TEST_ENV, PHYSICAL_MEMORY_END, TOTAL_BOOT_STACK_SIZE,
+    BOOT_STACK_SIZE, CPU_NUM, FLASH_BASE, IS_TEST_ENV, PHYSICAL_MEMORY_END, TOTAL_BOOT_STACK_SIZE,
+    UINTC_BASE, VIRTIO0,
 };
 
 // Initialize kernel stack in .bss section.
@@ -135,10 +137,10 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
     if IS_TEST_ENV {
         oscomp::init(oscomp::testcases::LIBC_STATIC_TESTCASES);
     }
-    unsafe { uintr::test::test_register() };
+    // unsafe { uintr::test::test_register() };
     // Initialize the first task.
     task::init();
-    info!("Start executing tasks.");
+
     // Wake up other harts.
     for cpu_id in 0..CPU_NUM {
         if cpu_id != hartid {
@@ -147,17 +149,49 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
             start_hart(cpu_id, entry, 0);
         }
     }
+
+    // let uipi_addr = UINTC_BASE;
+    // for i in 0..3 {
+    //     unsafe {
+    //         info!("Send uipi!");
+    //         *((uipi_addr + i * 0x20 + 8) as *mut u64) = 0x00010003;
+    //         *((uipi_addr + i * 0x20) as *mut u64) = 0x1;
+
+    //         loop {
+    //             if uintr::sip::read().usoft() {
+    //                 info!("Receive UINT!");
+    //                 uintr::sip::clear_usoft();
+    //                 break;
+    //             }
+    //         }
+    //     }
+    // }
+
     // IDLE loop
     task::idle();
 }
 
 #[no_mangle]
 pub extern "C" fn rust_main_others(_hartid: usize) -> ! {
-    // Activate kernel virtual address space.
-    mm::init();
     // Set kernel trap entry.
     trap::set_kernel_trap();
+    // Activate kernel virtual address space.
+    mm::init();
     info!("(Secondary) Start executing tasks.");
+
+    // loop {
+    //     if uintr::sip::read().usoft() {
+    //         info!("Receive UINT!");
+    //         unsafe { uintr::sip::clear_usoft() };
+
+    //         info!("Send uipi!");
+    //         unsafe {
+    //             *((UINTC_BASE + 3 * 0x20 + 8) as *mut u64) = 0x00000003;
+    //             *((UINTC_BASE + 3 * 0x20) as *mut u64) = 0x1;
+    //         }
+    //     }
+    // }
+
     // IDLE loop
     task::idle();
 }

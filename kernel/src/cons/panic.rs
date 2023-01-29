@@ -1,6 +1,11 @@
-use core::panic::PanicInfo;
+use core::{panic::PanicInfo, intrinsics::unreachable};
 use log::error;
 use sbi_rt::*;
+use spin::{Lazy, Mutex};
+
+use crate::{get_cpu_id, config::CPU_NUM};
+
+static PANIC_COUNT: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -14,6 +19,15 @@ fn panic(info: &PanicInfo) -> ! {
     } else {
         error!("Panicked at {}", info.message().unwrap());
     }
-    system_reset(Shutdown, SystemFailure);
+
+    let mut panic_count = PANIC_COUNT.lock();
+    *panic_count += 1;
+    if *panic_count == CPU_NUM {
+        error!("All CPU panicked! Shuttting down...");
+        system_reset(Shutdown, SystemFailure);
+    }
+    drop(panic_count);
+    
+    loop {}
     unreachable!()
 }

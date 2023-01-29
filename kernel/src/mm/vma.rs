@@ -133,12 +133,9 @@ impl VMArea {
 
     /// Allocates a frame for mapped page.
     ///
-    /// Returns if a new frame is really allocated.
+    /// Returns true if a new frame is really allocated.
     pub fn alloc_frame(&mut self, page: Page, pt: &mut PageTable) -> KernelResult<(Frame, bool)> {
-        let (pte_pa, mut pte) = pt
-            .walk(page, PTWalkerFlags::CREAT)
-            .map_err(|_| KernelError::PageTableInvalid)?;
-        // Allocate when the page table entry is invalid.
+        let (pte_pa, mut pte) = pt.create(page).map_err(|_| KernelError::PageTableInvalid)?;
         if !pte.flags().is_valid() {
             let mut pma = self.pma.lock();
             let index = page.number() - self.pages.start.number();
@@ -180,14 +177,12 @@ impl VMArea {
         start: VirtAddr,
         end: VirtAddr,
     ) -> KernelResult<(Option<VMArea>, Option<VMArea>)> {
-        info!("SPLIT");
         if end <= self.start_va
             || self.end_va <= start
             || start <= self.start_va && self.end_va <= end
         {
             Ok((None, None))
         } else if self.start_va < start && end < self.end_va {
-            // Into three pieces.
             let (mid_pma, right_pma) = self.pma.lock().split(
                 Some(page_index(self.start_va, start)),
                 Some(page_index(self.start_va, end)),
@@ -196,13 +191,11 @@ impl VMArea {
             let right_vma =
                 right_pma.and_then(|pma| Self::new(end, self.end_va, self.flags, pma).ok());
 
-            // Update this area.
             self.end_va = start;
             self.adjust();
 
             Ok((mid_vma, right_vma))
         } else if self.start_va < start && self.end_va < end {
-            // Split right.
             let (right_pma, _) = self
                 .pma
                 .lock()
@@ -210,13 +203,11 @@ impl VMArea {
             let right_vma =
                 right_pma.and_then(|pma| Self::new(start, self.end_va, self.flags, pma).ok());
 
-            // Update this area.
             self.end_va = start;
             self.adjust();
 
             Ok((right_vma, None))
         } else if start < self.start_va && end < self.end_va {
-            // Split left.
             let (left_pma, _) = self
                 .pma
                 .lock()
@@ -224,7 +215,6 @@ impl VMArea {
             let left_vma =
                 left_pma.and_then(|pma| Self::new(self.start_va, end, self.flags, pma).ok());
 
-            // Update this area.
             self.start_va = end;
             self.adjust();
 

@@ -219,7 +219,6 @@ impl MM {
             let start = self.find_free_area(start, len)?;
             (start, start + len)
         } else {
-            // Clear overlaps.
             self.do_munmap(start, len)?;
             (start, end)
         };
@@ -230,8 +229,8 @@ impl MM {
             flags,
             Arc::new(Mutex::new(LazyPMA::new(page_index(start, end), backend)?)),
         )?;
-        // There is no need to fllush TLB explicitly, because old maps
-        // have been cleaned.
+
+        // No need to fllush TLB explicitly; old maps have been cleaned.
         self.add_vma(vma)?;
 
         Ok(start)
@@ -269,7 +268,6 @@ impl MM {
         va: VirtAddr,
         mut op: impl FnMut(&mut VMArea, &mut PageTable, usize) -> KernelResult<T>,
     ) -> KernelResult<T> {
-        // Find it in cache.
         if let Some(index) = self.vma_cache {
             if let Some(area) = &mut self.vma_list[index] {
                 if area.contains(va) {
@@ -278,11 +276,9 @@ impl MM {
             }
         }
 
-        // Find it in map.
         if let Some((_, index)) = self.vma_map.range(..=va).last() {
             if let Some(area) = &mut self.vma_list[*index] {
                 if area.contains(va) {
-                    // Update cache
                     self.vma_cache = Some(*index);
                     return op(area, &mut self.page_table, *index);
                 }
@@ -435,15 +431,12 @@ pub fn page_index(start_va: VirtAddr, va: VirtAddr) -> usize {
 impl MM {
     /// A helper for [`tsyscall::SyscallProc::brk`].
     pub fn do_brk(&mut self, brk: VirtAddr) -> SyscallResult {
-        // Invalid brk
         if brk < self.start_brk {
             return Ok(self.brk.value());
         }
 
-        // brk page aligned
         let new_page = Page::from(brk);
         let old_page = Page::from(self.brk);
-        // No need to allocate new pages.
         if new_page == old_page {
             self.brk = brk;
             return Ok(brk.value());
@@ -451,7 +444,6 @@ impl MM {
 
         // Always allow shrinking brk.
         if brk < self.brk {
-            // Failed to unmap.
             if self
                 .do_munmap(
                     (new_page + 1).start_address(),
@@ -479,6 +471,7 @@ impl MM {
                 Arc::new(Mutex::new(LazyPMA::new(1, None)?)),
             )?)?;
         }
+
         self.get_vma(self.start_brk, |vma, _, _| unsafe { vma.extend(brk) })
             .unwrap();
         self.brk = brk;
@@ -493,13 +486,12 @@ impl MM {
         }
         let end = start + len;
 
-        // Find the target vma.
         let vma_range = self.get_vma_range(start, end)?;
         for index in vma_range {
             let mut need_remove = false;
             let vma = self.vma_list[index].as_mut().unwrap();
             let mut new_vma = None;
-            // Limit exceeded.
+            
             if start > vma.start_va && end < vma.end_va && self.vma_map.len() >= MAX_MAP_COUNT {
                 return Err(KernelError::Errno(Errno::ENOMEM));
             }
@@ -523,17 +515,15 @@ impl MM {
                 right.unwrap().unmap_all(&mut self.page_table)?;
             }
 
-            // Remove the area from this address space.
             if need_remove {
                 let vma = self.vma_list[index].take().unwrap();
                 self.vma_recycled.push(index);
                 self.vma_map.remove(&vma.start_va);
             }
 
-            // Clear cache to avoid crashes.
+            // Avoid crashes.
             self.vma_cache = None;
 
-            // A new area splitted from the original one.
             if let Some(new_vma) = new_vma {
                 self.add_vma(new_vma)?;
             }
@@ -549,7 +539,6 @@ impl MM {
     pub fn do_handle_page_fault(&mut self, va: VirtAddr, flags: VMFlags) -> KernelResult {
         self.get_vma(va, |vma, pt, _| {
             let (_, alloc) = vma.alloc_frame(Page::from(va), pt)?;
-            // Page fault cannot be handled.
             if !alloc || !vma.flags.contains(flags) {
                 return Err(KernelError::FatalPageFault);
             }
