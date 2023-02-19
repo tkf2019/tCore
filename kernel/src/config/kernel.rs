@@ -41,7 +41,7 @@ pub const KERNEL_HEAP_ORDER: usize = 32;
 pub const PHYSICAL_MEMORY_END: usize = 0x9000_0000;
 
 /// UINTC base
-pub const UINTC_BASE: usize = 0xC000_0000;
+pub const UINTC_BASE: usize = 0x2F1_0000;
 /// UINTC size
 pub const UINTC_SIZE: usize = 0x4000;
 

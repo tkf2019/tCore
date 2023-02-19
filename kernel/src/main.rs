@@ -22,12 +22,15 @@ extern crate alloc;
 
 use log::{info, trace};
 use riscv::asm::{sfence_vma, sfence_vma_all};
-use tmm_rv::{frame_init, Frame, PhysAddr, VirtAddr};
-use uintr::{uipi_send, uipi_activate};
+use tmm_rv::{frame_init, AllocatedFrame, Frame, PhysAddr, VirtAddr};
+use uintr::{suicfg, suirs, suist, uipi_activate, uipi_read, uipi_send, uipi_write, uret};
 
-use crate::config::{
-    BOOT_STACK_SIZE, CPU_NUM, FLASH_BASE, IS_TEST_ENV, PHYSICAL_MEMORY_END, TOTAL_BOOT_STACK_SIZE,
-    UINTC_BASE, VIRTIO0,
+use crate::{
+    config::{
+        BOOT_STACK_SIZE, CPU_NUM, FLASH_BASE, IS_TEST_ENV, PHYSICAL_MEMORY_END,
+        TOTAL_BOOT_STACK_SIZE, UINTC_BASE, VIRTIO0,
+    },
+    mm::KERNEL_MM,
 };
 
 // Initialize kernel stack in .bss section.
@@ -150,47 +153,75 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
         }
     }
 
-    // let uipi_addr = UINTC_BASE;
-    // for i in 0..3 {
-    //     unsafe {
-    //         info!("Send uipi!");
-    //         *((uipi_addr + i * 0x20 + 8) as *mut u64) = 0x00010003;
-    //         *((uipi_addr + i * 0x20) as *mut u64) = 0x1;
+    // Test UIPI
+    unsafe {
+        suicfg::write(UINTC_BASE);
+        assert_eq!(suicfg::read(), UINTC_BASE);
 
-    //         loop {
-    //             if uintr::sip::read().usoft() {
-    //                 info!("Receive UINT!");
-    //                 uintr::sip::clear_usoft();
-    //                 break;
-    //             }
-    //         }
-    //     }
-    // }
+        
+        // Enable receiver status.
+        let uirs_index = 2;
+        // Receiver on hart 3
+        *((UINTC_BASE + uirs_index * 0x20 + 8) as *mut u64) = ((3 << 16) as u64) | 3;
+        suirs::write((1 << 63) | uirs_index);
+        assert_eq!(suirs::read().bits(), (1 << 63) | uirs_index);
+        // Write to high bits
+        uipi_write(0x00010003);
+        assert!(uipi_read() == 0x00010003);
+        
+        // Enable sender status.
+        let frame = AllocatedFrame::new(true).unwrap();
+        suist::write((1 << 63) | (1 << 44) | frame.number());
+        assert_eq!(suist::read().bits(), (1 << 63) | (1 << 44) | frame.number());
+        // valid entry, uirs index = 2, sender vector = 3
+        *(frame.start_address().value() as *mut u64) = (2 << 48) | (3 << 16) | 1;
+        // Send uipi with first uist entry
+        info!("Send UIPI!");
+        uipi_send(0);
+
+        loop {
+            if uintr::sip::read().usoft() {
+                info!("Receive UINT!");
+                uintr::sip::clear_usoft();
+                break;
+            }
+        }
+    }
 
     // IDLE loop
     task::idle();
 }
 
 #[no_mangle]
-pub extern "C" fn rust_main_others(_hartid: usize) -> ! {
+pub extern "C" fn rust_main_others(hartid: usize) -> ! {
     // Set kernel trap entry.
     trap::set_kernel_trap();
     // Activate kernel virtual address space.
     mm::init();
     info!("(Secondary) Start executing tasks.");
 
-    // loop {
-    //     if uintr::sip::read().usoft() {
-    //         info!("Receive UINT!");
-    //         unsafe { uintr::sip::clear_usoft() };
-
-    //         info!("Send uipi!");
-    //         unsafe {
-    //             *((UINTC_BASE + 3 * 0x20 + 8) as *mut u64) = 0x00000003;
-    //             *((UINTC_BASE + 3 * 0x20) as *mut u64) = 0x1;
-    //         }
-    //     }
-    // }
+    // Test UIPI
+    unsafe {
+        suicfg::write(UINTC_BASE);
+        loop {
+            if uintr::sip::read().usoft() {
+                info!("Receive UINT!");
+                if (hartid == 3) {
+                    let uirs_index = 2;
+                    suirs::write((1 << 63) | uirs_index);
+                    assert_eq!(uipi_read(), 0x0001000b);
+                    uintr::sip::clear_usoft();
+    
+                    info!("Send UIPI!");
+                    for i in 0..3 {
+                        *((UINTC_BASE + (i + 3) * 0x20 + 8) as *mut u64) = ((i << 16) as u64) | 3;
+                        *((UINTC_BASE + (i + 3) * 0x20) as *mut u64) = 1;
+                    }
+                }
+                break;
+            }
+        }
+    }
 
     // IDLE loop
     task::idle();

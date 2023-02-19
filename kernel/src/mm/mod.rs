@@ -179,7 +179,7 @@ impl MM {
     ///
     /// Writes the data to the mapped physical areas without any check for overlaps.
     ///
-    /// This function may be used when we try to initialize a kernel or user address
+    /// This function may be only used when we try to initialize a kernel or user address
     /// space.
     pub fn alloc_write_vma(
         &mut self,

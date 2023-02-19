@@ -1,33 +1,37 @@
-use core::{panic::PanicInfo, intrinsics::unreachable};
-use log::error;
+use core::{intrinsics::unreachable, panic::PanicInfo};
 use sbi_rt::*;
 use spin::{Lazy, Mutex};
 
-use crate::{get_cpu_id, config::CPU_NUM};
+use crate::{config::CPU_NUM, get_cpu_id, println};
 
 static PANIC_COUNT: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     if let Some(location) = info.location() {
-        error!(
-            "Panicked at {}:{} {}",
+        println!(
+            "\u{1B}[31m[CPU{:>3}] Panicked at {}:{} {}\u{1B}[0m",
+            get_cpu_id(),
             location.file(),
             location.line(),
             info.message().unwrap()
         );
     } else {
-        error!("Panicked at {}", info.message().unwrap());
+        println!(
+            "\u{1B}[31m[CPU{:>3}] Panicked at {}\u{1B}[0m",
+            get_cpu_id(),
+            info.message().unwrap()
+        );
     }
 
     let mut panic_count = PANIC_COUNT.lock();
     *panic_count += 1;
     if *panic_count == CPU_NUM {
-        error!("All CPU panicked! Shuttting down...");
+        println!("All CPU panicked! Shuttting down...");
         system_reset(Shutdown, SystemFailure);
     }
     drop(panic_count);
-    
+
     loop {}
     unreachable!()
 }
