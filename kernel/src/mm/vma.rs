@@ -1,10 +1,8 @@
 use core::fmt;
-use log::info;
-use tmm_rv::*;
 
 use crate::{
+    arch::{flush_tlb, mm::*},
     error::{KernelError, KernelResult},
-    flush_tlb,
 };
 
 use super::{flags::*, page_index, pma::PMA};

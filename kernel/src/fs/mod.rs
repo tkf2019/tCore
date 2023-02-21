@@ -1,21 +1,15 @@
 use alloc::sync::Arc;
 use spin::{Lazy, Mutex};
-use terrno::Errno;
-use tvfs::*;
+use errno::Errno;
+use vfs::*;
 
 mod fat;
 mod fd;
 mod stdio;
 mod pipe;
-pub use fat::FileSystem;
+pub mod mem;
 
-// cfg_if::cfg_if! {
-//     if #[cfg(not(feature = "oscomp"))] {
-//         mod efs;
-//         pub use efs::FileSystem;
-//     } else {
-//     }
-// }
+pub use fat::FileSystem;
 pub use fd::*;
 pub use stdio::*;
 pub use pipe::*;

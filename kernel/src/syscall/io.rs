@@ -1,8 +1,7 @@
-use terrno::Errno;
-use tmm_rv::VirtAddr;
-use tsyscall::{SyscallIO, SyscallResult};
+use errno::Errno;
+use syscall_interface::{SyscallIO, SyscallResult};
 
-use crate::task::current_task;
+use crate::{arch::mm::VirtAddr, task::current_task};
 
 use super::SyscallImpl;
 

@@ -3,8 +3,7 @@ mod init;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use spin::Mutex;
-use tmm_rv::{PTEFlags, Page, VirtAddr, PAGE_SIZE};
-use tvfs::{OpenFlags, Path};
+use vfs::{OpenFlags, Path};
 use xmas_elf::{
     header,
     program::{self, SegmentData},
@@ -16,6 +15,7 @@ use crate::{
     error::{KernelError, KernelResult},
     fs::open,
     mm::{pma::FixedPMA, MM},
+    arch::mm::{PTEFlags, Page, VirtAddr, PAGE_SIZE},
     task::Task,
 };
 

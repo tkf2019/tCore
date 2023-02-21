@@ -1,13 +1,13 @@
 use alloc::{sync::Arc, vec::Vec};
+use device_cache::{BlockCache, CacheUnit, LRUBlockCache, BLOCK_SIZE};
+use errno::Errno;
 use fatfs::{
     DefaultTimeProvider, FsOptions, IoBase, LossyOemCpConverter, Read, Seek, SeekFrom, Write,
 };
 use log::trace;
 use spin::{Lazy, Mutex, MutexGuard};
-use tcache::{BlockCache, CacheUnit, LRUBlockCache, BLOCK_SIZE};
-use terrno::Errno;
-use ttimer::TimeSpec;
-use tvfs::*;
+use time_subsys::TimeSpec;
+use vfs::*;
 
 use crate::{
     config::{CACHE_SIZE, FS_IMG_SIZE},
@@ -343,24 +343,24 @@ impl File for FSFile {
             })
     }
 
-    fn get_stat(&self, stat: *mut Stat) -> bool {
+    fn get_stat(&self, stat_ptr: *mut Stat) -> bool {
         let mut file = self.file.lock();
-        let len = FSFile::get_len(&mut file);
-        let nlink = get_nlink(&self.path);
-        let mode =
+        let mut stat = Stat::default();
+        stat.st_mode =
             (StatMode::S_IFREG | StatMode::S_IRWXU | StatMode::S_IRWXG | StatMode::S_IRWXO).bits();
+        stat.st_nlink = get_nlink(&self.path) as u32;
+        stat.st_size = FSFile::get_len(&mut file) as u64;
+        drop(file);
         let inner = self.inner.lock();
-        unsafe {
-            *stat = Stat::new(
-                mode,
-                nlink as u32,
-                len as u64,
-                inner.atime,
-                inner.mtime,
-                inner.ctime,
-                BLOCK_SIZE as u32,
-            );
-        }
+        stat.st_blksize = BLOCK_SIZE as u32;
+        stat.st_blocks = (stat.st_size + stat.st_blksize as u64 - 1) / stat.st_blksize as u64;
+        stat.st_atime_sec = inner.atime.tv_sec;
+        stat.st_atime_sec = inner.atime.tv_nsec;
+        stat.st_mtime_sec = inner.mtime.tv_sec;
+        stat.st_mtime_sec = inner.mtime.tv_nsec;
+        stat.st_ctime_sec = inner.ctime.tv_sec;
+        stat.st_ctime_sec = inner.ctime.tv_nsec;
+        unsafe { *stat_ptr = stat };
         true
     }
 

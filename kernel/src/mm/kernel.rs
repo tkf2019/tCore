@@ -1,12 +1,11 @@
 use alloc::sync::Arc;
 use log::info;
 use spin::{Lazy, Mutex};
-use tmm_rv::PTEFlags;
 
 use crate::{
+    arch::mm::PTEFlags,
     config::{MMIO, PHYSICAL_MEMORY_END},
     error::KernelResult,
-    flush_tlb,
     mm::pma::IdenticalPMA,
 };
 
@@ -107,13 +106,16 @@ fn new_kernel() -> KernelResult<MM> {
         )?;
         info!("{:>10} [{:#x}, {:#x})", "mmio", base, base + len);
     }
+    for (base, len) in crate::arch::MMIO {
+        mm.alloc_write_vma(
+            None,
+            (*base).into(),
+            (*base + *len).into(),
+            PTEFlags::READABLE | PTEFlags::WRITABLE,
+            Arc::new(Mutex::new(IdenticalPMA)),
+        )?;
+        info!("{:>10} [{:#x}, {:#x})", "arch mmio", base, base + len);
+    }
 
     Ok(mm)
-}
-
-/// Activate virtual address translation and protectiong using kernel page table.
-pub fn init() {
-    let satp = KERNEL_MM.lock().page_table.satp();
-    riscv::register::satp::write(satp);
-    flush_tlb(None);
 }

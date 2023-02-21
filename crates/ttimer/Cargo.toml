@@ -1,7 +1,0 @@
-[package]
-name = "ttimer"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-numeric-enum-macro = "0.2.0"

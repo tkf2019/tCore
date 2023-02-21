@@ -7,7 +7,7 @@
 - `kernel-sync`: Interrupt-safe Mutex in zCore
 - `rust-fatfs`: A third-party fatfs implementation, modified for thread-safety.
 - `easy-fs`: Filesystem in `rCore-tutorial`
-- `tcache`:
+- `device_cache`:
   - `trait CacheUnit`
   - `LRUBlockCache`
 - `tmm_addr`:
@@ -18,10 +18,10 @@
   - `PTE`
   - `PageTable`
   - `frame_alloc` and `frame_dealloc` using `buddy system`
-- `tsyscall`: Syscall interfaces and types
-- `talloc`: `RecycleAllocator`
-- `ttimer`: `TimeSpec` and `TimeVal`
-- `tvfs`: `trait File`, `Path` to handle
-- `terrno`: `errno` constants
+- `syscall_interface`: Syscall interfaces and types
+- `id_alloc`: `RecycleAllocator`
+- `time_subsys`: `TimeSpec` and `TimeVal`
+- `vfs`: `trait File`, `Path` to handle
+- `errno`: `errno` constants
 - `tmemfs`: `MemFile`, `NullFile`, `ZeroFile`
 - `tbuffer`: `UserBuffer` for translation, `RingBuffer` for `sys_pipe2`

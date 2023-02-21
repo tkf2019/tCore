@@ -1,9 +1,9 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::fmt;
 use spin::Mutex;
-use tmm_rv::{AllocatedFrame, Frame, PAGE_SIZE};
 
 use crate::{
+    arch::mm::{AllocatedFrame, Frame, PAGE_SIZE},
     config::USER_MAX_PAGES,
     error::{KernelError, KernelResult},
 };

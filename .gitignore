@@ -20,5 +20,3 @@ Cargo.lock
 *.img
 
 *.log
-
-.vscode/

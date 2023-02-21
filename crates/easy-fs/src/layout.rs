@@ -2,7 +2,7 @@ use super::{get_block_cache, BLOCK_SZ};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt::{Debug, Formatter, Result};
-use tcache::{BlockDevice, CacheUnit};
+use device_cache::{BlockDevice, CacheUnit};
 
 /// Magic number for sanity check
 const EFS_MAGIC: u32 = 0x3b800001;

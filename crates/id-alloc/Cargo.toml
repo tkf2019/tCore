@@ -1,0 +1,7 @@
+[package]
+name = "id-alloc"
+version = "0.1.0"
+edition = "2021"
+authors = ["TKF <kaifu6821@qq.com>"]
+
+[dependencies]

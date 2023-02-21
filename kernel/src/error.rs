@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use terrno::Errno;
+use errno::Errno;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KernelError {

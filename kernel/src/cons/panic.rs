@@ -1,8 +1,8 @@
-use core::{intrinsics::unreachable, panic::PanicInfo};
+use core::panic::PanicInfo;
 use sbi_rt::*;
 use spin::{Lazy, Mutex};
 
-use crate::{config::CPU_NUM, get_cpu_id, println};
+use crate::{config::CPU_NUM, arch::get_cpu_id, println};
 
 static PANIC_COUNT: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
 
@@ -31,7 +31,5 @@ fn panic(info: &PanicInfo) -> ! {
         system_reset(Shutdown, SystemFailure);
     }
     drop(panic_count);
-
     loop {}
-    unreachable!()
 }

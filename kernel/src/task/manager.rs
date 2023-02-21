@@ -1,17 +1,19 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
+use id_alloc::{IDAllocator, RecycleAllocator};
 use log::{error, trace};
 use oscomp::{fetch_test, finish_test};
 use spin::{Lazy, Mutex};
-use talloc::{IDAllocator, RecycleAllocator};
-use tmm_rv::{PTEFlags, PAGE_SIZE};
 
 use crate::{
+    arch::{
+        get_cpu_id,
+        mm::{PTEFlags, PAGE_SIZE},
+    },
     config::{
         ADDR_ALIGN, CPU_NUM, INIT_TASK_PATH, IS_TEST_ENV, KERNEL_STACK_PAGES, KERNEL_STACK_SIZE,
         MAIN_TASK, ROOT_DIR, TRAMPOLINE_VA,
     },
     error::KernelResult,
-    get_cpu_id,
     loader::from_args,
     mm::{pma::FixedPMA, KERNEL_MM},
 };

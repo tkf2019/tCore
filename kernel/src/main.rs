@@ -15,96 +15,16 @@ mod loader;
 mod mm;
 mod syscall;
 mod task;
-mod timer;
-mod trap;
+
+#[cfg(target_arch = "riscv64")]
+#[path = "arch/riscv64/mod.rs"]
+mod arch;
 
 extern crate alloc;
 
-use log::{info, trace};
-use riscv::asm::{sfence_vma, sfence_vma_all};
-use tmm_rv::{frame_init, AllocatedFrame, Frame, PhysAddr, VirtAddr};
-use uintr::{suicfg, suirs, suist, uipi_activate, uipi_read, uipi_send, uipi_write, uret};
+use log::info;
 
-use crate::{
-    config::{
-        BOOT_STACK_SIZE, CPU_NUM, FLASH_BASE, IS_TEST_ENV, PHYSICAL_MEMORY_END,
-        TOTAL_BOOT_STACK_SIZE, UINTC_BASE, VIRTIO0,
-    },
-    mm::KERNEL_MM,
-};
-
-// Initialize kernel stack in .bss section.
-#[link_section = ".bss.stack"]
-static mut STACK: [u8; TOTAL_BOOT_STACK_SIZE] = [0u8; TOTAL_BOOT_STACK_SIZE];
-
-/// Entry for the first kernel.
-#[naked]
-#[no_mangle]
-#[link_section = ".text.entry"]
-unsafe extern "C" fn __entry(hartid: usize) -> ! {
-    core::arch::asm!(
-        // Use tp to save hartid
-        "mv tp, a0",
-        // Set stack pointer to the kernel stack.
-        "la sp, {stack} + {stack_size}",
-        // Jump to the main function.
-        "j  {main}",
-        stack_size = const TOTAL_BOOT_STACK_SIZE,
-        stack      =   sym STACK,
-        main       =   sym rust_main,
-        options(noreturn),
-    )
-}
-
-/// Entry for other kernels.
-#[naked]
-#[no_mangle]
-pub unsafe extern "C" fn __entry_others(hartid: usize) -> ! {
-    core::arch::asm!(
-        // Use tp to save hartid
-        "mv tp, a0",
-        // Set stack pointer to the kernel stack.
-        "
-        la a1, {stack}
-        li t0, {total_stack_size}
-        li t1, {stack_size}
-        mul sp, a0, t1
-        sub sp, t0, sp
-        add sp, a1, sp
-        ",
-        // Jump to the main function.
-        "j  {main}",
-        total_stack_size = const TOTAL_BOOT_STACK_SIZE,
-        stack_size       = const BOOT_STACK_SIZE,
-        stack            =   sym STACK,
-        main             =   sym rust_main_others,
-        options(noreturn),
-    )
-}
-
-/// Get cpu id.
-#[inline]
-pub fn get_cpu_id() -> usize {
-    let cpu_id;
-    unsafe { core::arch::asm!("mv {0}, tp", out(reg) cpu_id) };
-    cpu_id
-}
-
-/// Start other harts
-#[inline]
-pub fn start_hart(hartid: usize, entry: usize, opaque: usize) {
-    let ret = sbi_rt::hart_start(hartid, entry, opaque);
-    assert!(ret.is_ok(), "Failed to shart hart {}", hartid);
-}
-
-/// Flush tlb
-pub fn flush_tlb(va: Option<VirtAddr>) {
-    if let Some(va) = va {
-        unsafe { sfence_vma(0, va.value()) };
-    } else {
-        unsafe { sfence_vma_all() };
-    }
-}
+use crate::config::{CPU_NUM, IS_TEST_ENV};
 
 /// Clear .bss
 fn clear_bss() {
@@ -124,105 +44,31 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
     cons::init();
     // Initialize global heap allocator.
     heap::init();
-    // Initialize global frame allocator.
-    extern "C" {
-        fn ekernel();
-    }
-    frame_init(
-        Frame::ceil(PhysAddr::from(ekernel as usize)).into(),
-        Frame::floor(PhysAddr::from(PHYSICAL_MEMORY_END)).into(),
-    );
-    // Set kernel trap entry.
-    trap::set_kernel_trap();
-    // Activate kernel virtual address space.
-    mm::init();
+    // Other initializations
+    arch::init(hartid, true);
     // Initialize oscomp testcases, which will be loaded from disk.
     if IS_TEST_ENV {
         oscomp::init(oscomp::testcases::LIBC_STATIC_TESTCASES);
     }
-    // unsafe { uintr::test::test_register() };
     // Initialize the first task.
     task::init();
-
     // Wake up other harts.
     for cpu_id in 0..CPU_NUM {
         if cpu_id != hartid {
-            let entry = __entry_others as usize;
+            let entry = arch::__entry_others as usize;
             info!("Try to start hart {}", cpu_id);
-            start_hart(cpu_id, entry, 0);
+            arch::start_hart(cpu_id, entry, 0);
         }
     }
-
-    // Test UIPI
-    unsafe {
-        suicfg::write(UINTC_BASE);
-        assert_eq!(suicfg::read(), UINTC_BASE);
-
-        
-        // Enable receiver status.
-        let uirs_index = 2;
-        // Receiver on hart 3
-        *((UINTC_BASE + uirs_index * 0x20 + 8) as *mut u64) = ((3 << 16) as u64) | 3;
-        suirs::write((1 << 63) | uirs_index);
-        assert_eq!(suirs::read().bits(), (1 << 63) | uirs_index);
-        // Write to high bits
-        uipi_write(0x00010003);
-        assert!(uipi_read() == 0x00010003);
-        
-        // Enable sender status.
-        let frame = AllocatedFrame::new(true).unwrap();
-        suist::write((1 << 63) | (1 << 44) | frame.number());
-        assert_eq!(suist::read().bits(), (1 << 63) | (1 << 44) | frame.number());
-        // valid entry, uirs index = 2, sender vector = 3
-        *(frame.start_address().value() as *mut u64) = (2 << 48) | (3 << 16) | 1;
-        // Send uipi with first uist entry
-        info!("Send UIPI!");
-        uipi_send(0);
-
-        loop {
-            if uintr::sip::read().usoft() {
-                info!("Receive UINT!");
-                uintr::sip::clear_usoft();
-                break;
-            }
-        }
-    }
-
     // IDLE loop
     task::idle();
 }
 
 #[no_mangle]
 pub extern "C" fn rust_main_others(hartid: usize) -> ! {
-    // Set kernel trap entry.
-    trap::set_kernel_trap();
-    // Activate kernel virtual address space.
-    mm::init();
+    // Other initializations.
+    arch::init(hartid, false);
     info!("(Secondary) Start executing tasks.");
-
-    // Test UIPI
-    unsafe {
-        suicfg::write(UINTC_BASE);
-        loop {
-            if uintr::sip::read().usoft() {
-                info!("Receive UINT!");
-                if (hartid == 3) {
-                    let uirs_index = 2;
-                    suirs::write((1 << 63) | uirs_index);
-                    assert_eq!(uipi_read(), 0x0001000b);
-                    uintr::sip::clear_usoft();
-    
-                    info!("Send UIPI!");
-                    for i in 0..3 {
-                        *((UINTC_BASE + (i + 3) * 0x20 + 8) as *mut u64) = ((i << 16) as u64) | 3;
-                        *((UINTC_BASE + (i + 3) * 0x20) as *mut u64) = 1;
-                    }
-                }
-                break;
-            }
-        }
-    }
-
     // IDLE loop
     task::idle();
 }

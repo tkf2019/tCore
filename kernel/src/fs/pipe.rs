@@ -1,10 +1,8 @@
 use alloc::sync::Arc;
 use spin::Mutex;
-use tbuffer::RingBuffer;
-use tmemfs::MemFile;
-use tvfs::File;
+use vfs::{ring_buf::RingBuffer, File};
 
-use crate::{config::MAX_PIPE_BUF, task::do_yield};
+use crate::{config::MAX_PIPE_BUF, fs::mem::MemFile, task::do_yield};
 
 pub struct Pipe {
     /// If this is a read end of pipe.

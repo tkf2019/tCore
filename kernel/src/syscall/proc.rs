@@ -1,10 +1,10 @@
-use terrno::Errno;
-use tmm_rv::VirtAddr;
-use tsyscall::*;
+use errno::Errno;
+use syscall_interface::*;
 
 use crate::{
     mm::{MmapFlags, MmapProt},
     task::{current_task, do_exit},
+    arch::mm::VirtAddr,
 };
 
 use super::SyscallImpl;

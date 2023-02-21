@@ -1,9 +1,11 @@
-use terrno::Errno;
-use tmm_rv::VirtAddr;
-use tsyscall::*;
-use ttimer::{TimeSpec, TimeVal};
+use errno::Errno;
+use syscall_interface::*;
+use time_subsys::{TimeSpec, TimeVal};
 
-use crate::{task::manager::current_task, timer::get_time_sec_f64};
+use crate::{
+    arch::{mm::VirtAddr, timer::get_time_sec_f64},
+    task::manager::current_task,
+};
 
 use super::SyscallImpl;
 

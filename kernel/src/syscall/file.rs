@@ -1,11 +1,9 @@
 use core::mem::size_of;
+use errno::Errno;
+use syscall_interface::*;
+use vfs::{OpenFlags, SeekWhence, StatMode};
 
-use terrno::Errno;
-use tmm_rv::VirtAddr;
-use tsyscall::*;
-use tvfs::{OpenFlags, SeekWhence, StatMode};
-
-use crate::task::current_task;
+use crate::{task::current_task, arch::mm::VirtAddr};
 
 use super::SyscallImpl;
 
@@ -44,7 +42,8 @@ impl SyscallFile for SyscallImpl {
         let mut mm = current.mm.lock();
 
         // Get the real buffer translated into physical address.
-        let buf = unsafe { mm.get_buf_mut(VirtAddr::from(buf as usize), count) }
+        let buf = mm
+            .get_buf_mut(VirtAddr::from(buf as usize), count)
             .map_err(|_| Errno::EFAULT)?;
         drop(mm);
 
@@ -103,7 +102,7 @@ impl SyscallFile for SyscallImpl {
                 .lock()
                 .get(fd)
                 .map_err(|_| Errno::EBADF)?;
-            
+
             if usize::MAX - file.get_off() < off {
                 return Err(Errno::EINVAL);
             }
@@ -146,7 +145,7 @@ impl SyscallFile for SyscallImpl {
     fn writev(fd: usize, iov: *const IoVec, iovcnt: usize) -> SyscallResult {
         let iov_size = size_of::<IoVec>();
         let iov = VirtAddr::from(iov as usize);
-        if iov.value() & (iov_size- 1) != 0 {
+        if iov.value() & (iov_size - 1) != 0 {
             return Err(Errno::EINVAL);
         }
         let current = current_task().unwrap();

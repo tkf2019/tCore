@@ -1,4 +1,4 @@
-use tmm_rv::PTEFlags;
+use crate::arch::mm::PTEFlags;
 
 bitflags::bitflags! {
     /// Flags in [`VMArea`].

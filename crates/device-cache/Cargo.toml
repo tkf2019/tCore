@@ -1,0 +1,13 @@
+[package]
+name = "device-cache"
+categories = [
+    "os",
+    "cache",
+]
+version = "0.1.0"
+edition = "2021"
+authors = ["TKF <kaifu6821@qq.com>"]
+description = "Cache in memory for device data and metadata"
+
+[dependencies]
+spin = "0.9"

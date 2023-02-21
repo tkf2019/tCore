@@ -1,0 +1,9 @@
+[package]
+name = "mm-addr"
+version = "0.1.0"
+edition = "2021"
+authors = ["TKF <kaifu6821@qq.com>"]
+
+[dependencies]
+paste = "1.0.9"
+derive_more = "0.99.0"

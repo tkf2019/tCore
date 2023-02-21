@@ -1,9 +1,8 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::{fmt, ops::Deref};
 use spin::Mutex;
-use tmm_rv::{AllocatedFrameRange, Frame};
 
-use crate::error::{KernelError, KernelResult};
+use crate::{arch::mm::{AllocatedFrameRange, Frame}, error::{KernelError, KernelResult}};
 
 use super::{PMArea, PMA};
 

@@ -4,14 +4,14 @@
 //!
 //! See `http://articles.manugarg.com/aboutelfauxiliaryvectors.html`.
 
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::{
     mem::{align_of, size_of},
     ops::{Deref, DerefMut},
     ptr::null,
 };
 
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
-use tmm_rv::{PhysAddr, VirtAddr};
+use crate::arch::mm::{PhysAddr, VirtAddr};
 
 use super::flags::AuxType;
 

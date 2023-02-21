@@ -6,7 +6,7 @@
 //! - 1: Standard output (STDOUT)
 //! - 2: Standard error (STDERR)
 
-use tvfs::File;
+use vfs::File;
 
 use crate::{cons::getchar, eprint, print, task::do_yield};
 

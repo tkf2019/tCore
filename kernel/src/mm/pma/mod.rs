@@ -5,9 +5,11 @@ mod lazy;
 use alloc::{sync::Arc, vec::Vec};
 use core::fmt;
 use spin::Mutex;
-use tmm_rv::Frame;
 
-use crate::error::{KernelError, KernelResult};
+use crate::{
+    arch::mm::Frame,
+    error::{KernelError, KernelResult},
+};
 
 use super::file::BackendFile;
 pub use fixed::*;

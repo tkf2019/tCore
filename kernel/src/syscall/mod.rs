@@ -1,5 +1,5 @@
 use log::trace;
-use tsyscall::{
+use syscall_interface::{
     IoVec, SyscallComm, SyscallFile, SyscallIO, SyscallNO, SyscallProc, SyscallResult, SyscallTimer,
 };
 

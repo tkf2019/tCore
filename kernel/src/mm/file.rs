@@ -1,5 +1,5 @@
 use alloc::sync::Arc;
-use tvfs::File;
+use vfs::File;
 
 /// Memory mapped file.
 #[derive(Clone)]

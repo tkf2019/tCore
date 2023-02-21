@@ -1,11 +1,9 @@
-use core::mem::size_of;
-
 use alloc::sync::Arc;
-use terrno::Errno;
-use tmm_rv::VirtAddr;
-use tsyscall::{SyscallComm, SyscallResult};
+use core::mem::size_of;
+use errno::Errno;
+use syscall_interface::{SyscallComm, SyscallResult};
 
-use crate::{fs::Pipe, task::current_task};
+use crate::{fs::Pipe, task::current_task, arch::mm::VirtAddr};
 
 use super::SyscallImpl;
 

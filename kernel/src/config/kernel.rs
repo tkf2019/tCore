@@ -1,5 +1,5 @@
-use tmm_rv::PAGE_SIZE_BITS;
-pub use tmm_rv::{LOW_MAX_VA, MAX_VA, PAGE_SIZE};
+use mm_rv::PAGE_SIZE_BITS;
+pub use mm_rv::{LOW_MAX_VA, MAX_VA, PAGE_SIZE};
 
 /// Address alignment
 pub const ADDR_ALIGN: usize = core::mem::size_of::<usize>();
@@ -40,25 +40,14 @@ pub const KERNEL_HEAP_ORDER: usize = 32;
 /// 256MB physical memory
 pub const PHYSICAL_MEMORY_END: usize = 0x9000_0000;
 
-/// UINTC base
-pub const UINTC_BASE: usize = 0x2F1_0000;
-/// UINTC size
-pub const UINTC_SIZE: usize = 0x4000;
-
 /// VIRTIO base
 pub const VIRTIO0: usize = 0x1000_1000;
 /// VIRTIO size
 pub const VIRTIO_SIZE: usize = 0x1000;
 
-/// FLASH base
-pub const FLASH_BASE: usize = 0x2000_0000;
-/// FLASH size
-pub const FLASH_SIZE: usize = 0x400_0000;
-
 /// MMIO
 pub const MMIO: &[(usize, usize)] = &[
     (VIRTIO0, VIRTIO_SIZE),   // Virtio Block in virt machine
-    (UINTC_BASE, UINTC_SIZE), // UINTC
 ];
 
 /// The number of block cache units for virtio.

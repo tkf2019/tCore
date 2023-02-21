@@ -4,24 +4,25 @@ use alloc::{
     vec::Vec,
 };
 use core::{fmt, mem::size_of};
+use errno::Errno;
+use id_alloc::{IDAllocator, RecycleAllocator};
 use log::trace;
-use riscv::register::sstatus::{self, set_spp, SPP};
+use signal_defs::{SigActions, SigInfo, SigPending, SigSet, NSIG};
 use spin::{mutex::Mutex, MutexGuard};
-use talloc::{IDAllocator, RecycleAllocator};
-use terrno::Errno;
-use tmm_rv::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE};
-use tsignal::{SigActions, SigInfo, SigPending, SigSet, NSIG};
-use tsyscall::{IoVec, SyscallResult, AT_FDCWD, AT_REMOVEDIR};
-use tvfs::{File, OpenFlags, Path, StatMode};
+use syscall_interface::{IoVec, SyscallResult, AT_FDCWD, AT_REMOVEDIR};
+use vfs::{File, OpenFlags, Path, StatMode};
 
 use crate::{
+    arch::{
+        mm::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE},
+        trap::{user_trap_handler, user_trap_return, TrapFrame},
+    },
     config::*,
     error::{KernelError, KernelResult},
     fs::{open, unlink, FDManager},
     loader::from_elf,
     mm::{pma::FixedPMA, BackendFile, MmapFlags, MmapProt, KERNEL_MM, MM},
     task::{kstack_alloc, pid_alloc},
-    trap::{user_trap_handler, user_trap_return, TrapFrame},
 };
 
 use super::{
@@ -173,13 +174,11 @@ impl Task {
         )?;
         let trapframe_pa = mm.translate(trapframe_base)?;
         let trapframe = TrapFrame::from(trapframe_pa);
-        unsafe { set_spp(SPP::User) };
         *trapframe = TrapFrame::new(
             KERNEL_MM.lock().page_table.satp(),
             kstack_base,
             user_trap_handler as usize,
             mm.entry.value(),
-            sstatus::read(),
             sp.into(),
             // CPU id will be saved when the user task is restored.
             usize::MAX,
@@ -277,7 +276,7 @@ pub fn ustack_layout(tid: usize) -> (usize, usize) {
 /* Syscall helpers */
 
 impl Task {
-    /// A helper for [`tsyscall::SyscallProc::mmap`].
+    /// A helper for [`syscall_interface::SyscallProc::mmap`].
     ///
     /// TODO: MAP_SHARED and MAP_PRIVATE
     pub fn do_mmap(
@@ -334,7 +333,7 @@ impl Task {
             if !file.is_reg() || !file.read_ready() {
                 return Err(Errno::EACCES);
             }
-            if let Some(_) = file.seek(off, tvfs::SeekWhence::Set) {
+            if let Some(_) = file.seek(off, vfs::SeekWhence::Set) {
                 let backend = BackendFile::new(file, off);
                 if let Ok(start) =
                     mm.alloc_vma(hint, hint + len, prot.into(), anywhere, Some(backend))
@@ -388,7 +387,7 @@ impl Task {
         }
     }
 
-    /// A helper for [`tsyscall::SyscallFile::openat`].
+    /// A helper for [`syscall_interface::SyscallFile::openat`].
     pub fn do_open(
         &self,
         dirfd: usize,
@@ -412,7 +411,7 @@ impl Task {
             .push(open(path, flags).map_err(|errno| KernelError::Errno(errno))?)
     }
 
-    /// A helper for [`tsyscall::SyscallFile::readv`] and [`tsyscall::SyscallFile::writev`].
+    /// A helper for [`syscall_interface::SyscallFile::readv`] and [`syscall_interface::SyscallFile::writev`].
     pub fn for_each_iov(
         &self,
         iov: VirtAddr,
@@ -431,7 +430,7 @@ impl Task {
         Ok(())
     }
 
-    /// A helper for [`tsyscall::SyscallFile::unlinkat`].
+    /// A helper for [`syscall_interface::SyscallFile::unlinkat`].
     pub fn do_unlinkat(&self, dirfd: usize, pathname: *const u8, flags: usize) -> KernelResult {
         if flags == AT_REMOVEDIR {
             unimplemented!()

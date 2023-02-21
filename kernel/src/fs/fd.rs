@@ -1,5 +1,5 @@
 use alloc::{fmt, sync::Arc, vec::Vec};
-use tvfs::File;
+use vfs::File;
 
 use crate::{
     config::DEFAULT_FD_LIMIT,

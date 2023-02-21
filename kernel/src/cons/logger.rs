@@ -1,6 +1,6 @@
 use log::{info, Level, LevelFilter, Log, Metadata, Record};
 
-use crate::{get_cpu_id, println};
+use crate::{arch::get_cpu_id, println};
 
 struct Logger;
 

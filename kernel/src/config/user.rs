@@ -1,4 +1,4 @@
-use tmm_rv::{LOW_MAX_VA, PAGE_SIZE_BITS};
+use crate::arch::mm::{LOW_MAX_VA, PAGE_SIZE_BITS};
 
 /// User maximum pages
 pub const USER_MAX_PAGES: usize = (LOW_MAX_VA + 1) >> PAGE_SIZE_BITS;

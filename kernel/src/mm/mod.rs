@@ -2,23 +2,31 @@ mod file;
 mod flags;
 mod kernel;
 pub mod pma;
+mod user_buf;
 pub mod vma;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::{fmt, mem::size_of, slice};
+use errno::Errno;
 use log::warn;
 use spin::Mutex;
-use tbuffer::UserBuffer;
-use terrno::Errno;
-use tmm_rv::{Frame, PTEFlags, Page, PageRange, PageTable, PhysAddr, VirtAddr};
-use tsyscall::SyscallResult;
+use syscall_interface::SyscallResult;
 
-use crate::{config::*, error::*, mm::pma::LazyPMA, trap::__trampoline};
+use crate::{
+    arch::{
+        mm::{Frame, PTEFlags, Page, PageRange, PageTable, PhysAddr, VirtAddr},
+        trap::__trampoline,
+    },
+    config::*,
+    error::*,
+    mm::{pma::LazyPMA, UserBuffer},
+};
 
 pub use file::BackendFile;
 pub use flags::*;
-pub use kernel::{init, KERNEL_MM};
+pub use kernel::KERNEL_MM;
 use pma::PMArea;
+pub use user_buf::*;
 use vma::VMArea;
 
 pub struct MM {
@@ -429,7 +437,7 @@ pub fn page_index(start_va: VirtAddr, va: VirtAddr) -> usize {
 }
 
 impl MM {
-    /// A helper for [`tsyscall::SyscallProc::brk`].
+    /// A helper for [`syscall_interface::SyscallProc::brk`].
     pub fn do_brk(&mut self, brk: VirtAddr) -> SyscallResult {
         if brk < self.start_brk {
             return Ok(self.brk.value());
@@ -478,7 +486,7 @@ impl MM {
         Ok(brk.value())
     }
 
-    /// A helper for [`tsyscall::SyscallProc::munmap`].
+    /// A helper for [`syscall_interface::SyscallProc::munmap`].
     pub fn do_munmap(&mut self, start: VirtAddr, len: usize) -> KernelResult {
         let len = page_align(len);
         if !start.is_aligned() || len == 0 {
@@ -491,7 +499,7 @@ impl MM {
             let mut need_remove = false;
             let vma = self.vma_list[index].as_mut().unwrap();
             let mut new_vma = None;
-            
+
             if start > vma.start_va && end < vma.end_va && self.vma_map.len() >= MAX_MAP_COUNT {
                 return Err(KernelError::Errno(Errno::ENOMEM));
             }

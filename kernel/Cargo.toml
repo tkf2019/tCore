@@ -10,8 +10,6 @@ buddy_system_allocator = "0.8"
 cfg-if = "1.0"
 log = "0.4"
 numeric-enum-macro = "0.2.0"
-riscv = "0.10"
-sbi-rt = { version = "0.0.2", features = ["legacy"] }
 spin = "0.9"
 virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers", rev = "4ee80e5" }
 xmas-elf = "0.8"
@@ -22,16 +20,19 @@ fatfs = { path = "../crates/rust-fatfs", version = "0.4", default-features = fal
 oscomp = { path = "../crates/oscomp" }
 
 # tCore crates (private)
-talloc = { path = "../crates/talloc" }
-tbuffer = { path = "../crates/tbuffer" }
-tcache = { path = "../crates/tcache" }
-terrno = { path = "../crates/terrno" }
-tmemfs = { path = "../crates/tmemfs" }
-tmm_rv = { path = "../crates/tmm_rv" }
-tsignal = { path = "../crates/tsignal" }
-tsyscall = { path = "../crates/tsyscall" }
-ttimer = { path = "../crates/ttimer" }
-tvfs = { path = "../crates/tvfs" }
+id-alloc = { path = "../crates/id-alloc" }
+device-cache = { path = "../crates/device-cache" }
+errno = { path = "../crates/errno" }
+signal-defs = { path = "../crates/signal-defs" }
+syscall-interface = { path = "../crates/syscall" }
+time-subsys = { path = "../crates/time-subsys" }
+vfs = { path = "../crates/vfs" }
+
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+riscv = "0.10"
+sbi-rt = { version = "0.0.2", features = ["legacy"] }
+
+mm-rv = { path = "../crates/mm-rv" }
 uintr = { path = "../crates/uintr" }
 
 [features]

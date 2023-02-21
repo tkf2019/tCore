@@ -15,5 +15,5 @@ use block_cache::{block_cache_sync_all, get_block_cache};
 pub use efs::EasyFileSystem;
 pub use file::*;
 use layout::*;
-pub use tcache::BlockDevice;
+pub use device_cache::BlockDevice;
 pub use vfs::Inode;
