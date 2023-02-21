@@ -1,7 +1,7 @@
 use log::info;
 pub use uintr::*;
 
-use crate::{arch::mm::AllocatedFrame, println};
+use crate::arch::mm::AllocatedFrame;
 
 /// UINTC base
 pub const UINTC_BASE: usize = 0x2F1_0000;

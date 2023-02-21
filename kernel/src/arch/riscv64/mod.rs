@@ -112,12 +112,12 @@ pub fn init(hartid: usize, is_main: bool) {
     // Set kernel trap entry.
     trap::set_kernel_trap();
 
-
     // Activate virtual address translation and protectiong using kernel page table.
     let satp = KERNEL_MM.lock().page_table.satp();
     riscv::register::satp::write(satp);
     flush_tlb(None);
 
     // Test user interrupt supports.
+    #[cfg(feature = "uintr")]
     unsafe { test_uintr(hartid) };
 }

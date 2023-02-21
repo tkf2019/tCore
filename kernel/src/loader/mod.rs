@@ -2,6 +2,7 @@ pub mod flags;
 mod init;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
+use log::info;
 use spin::Mutex;
 use vfs::{OpenFlags, Path};
 use xmas_elf::{
@@ -32,6 +33,7 @@ pub fn from_args(dir: String, args: Vec<String>) -> KernelResult<Arc<Task>> {
     let name = args[0].as_str();
     let path = dir.clone() + "/" + name;
     let file = unsafe {
+        info!("{:X?}", &path);
         open(Path::from(path), OpenFlags::O_RDONLY)
             .map_err(|errno| KernelError::Errno(errno))?
             .read_all()

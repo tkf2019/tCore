@@ -107,7 +107,7 @@ pub struct SigAction {
 impl Default for SigAction {
     fn default() -> Self {
         Self {
-            handler: 0,
+            handler: SIG_DFL,
             flags: SigActionFlags::empty(),
             restorer: 0,
             mask: SigSet::default(),
@@ -175,9 +175,16 @@ impl SigActions {
         Self([None; NSIG])
     }
 
-    /// Gets the `SigAction` by `signum`.
-    pub fn get_ref(&self, signum: usize) -> Option<&SigAction> {
-        self.0[signum - 1].as_ref()
+    /// Gets an immutable reference of the `SigAction` by `signum`.
+    pub fn get_ref(&mut self, signum: usize) -> &SigAction {
+        self.0[signum - 1] = Some(SigAction::new());
+        self.0[signum - 1].as_ref().unwrap()
+    }
+
+    /// Gets a mutable reference of the `SigAction` by `signum`.
+    pub fn get_mut(&mut self, signum: usize) -> &mut SigAction {
+        self.0[signum - 1] = Some(SigAction::new());
+        self.0[signum - 1].as_mut().unwrap()
     }
 
     /// Gets the programmer defined signal handler.
@@ -187,14 +194,5 @@ impl SigActions {
         self.0[signum - 1]
             .as_ref()
             .and_then(|action| action.get_handler())
-    }
-
-    /// Sets the signal action to another one.
-    pub fn set_action(&mut self, signum: usize, other: &SigAction) {
-        if let Some(action) = self.0[signum - 1].as_mut() {
-            action.clone_from(other)
-        } else {
-            self.0[signum - 1] = Some(other.clone())
-        }
     }
 }

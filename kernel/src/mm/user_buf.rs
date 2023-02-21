@@ -5,6 +5,7 @@ pub struct UserBuffer {
 }
 
 impl UserBuffer {
+    /// Creates a new buffer with inner data.
     pub fn new(buffers: Vec<&'static mut [u8]>) -> Self {
         Self { inner: buffers }
     }
@@ -44,4 +45,18 @@ impl Iterator for UserBufferIterator {
             Some(r)
         }
     }
+}
+
+#[macro_export]
+macro_rules! user_buf_next {
+    ($iter:expr, $ty:ty) => {
+        unsafe { &*($iter.next().unwrap() as *const $ty) }
+    };
+}
+
+#[macro_export]
+macro_rules! user_buf_next_mut {
+    ($iter:expr, $ty:ty) => {
+        unsafe { &mut *($iter.next().unwrap() as *mut $ty) }
+    };
 }

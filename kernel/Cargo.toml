@@ -16,7 +16,7 @@ xmas-elf = "0.8"
 
 # Third party crates (modified)
 easy-fs = { path = "../crates/easy-fs" }
-fatfs = { path = "../crates/rust-fatfs", version = "0.4", default-features = false, features = ["alloc", "lfn"] }
+fatfs = { path = "../crates/rust-fatfs", version = "0.4", default-features = false, features = ["alloc", "lfn", "log_level_info"] }
 oscomp = { path = "../crates/oscomp" }
 
 # tCore crates (private)
@@ -36,7 +36,7 @@ mm-rv = { path = "../crates/mm-rv" }
 uintr = { path = "../crates/uintr" }
 
 [features]
-default = ["oscomp", "test", "uintr"]
+default = ["oscomp", "test"]
 test = []
 oscomp = []
 uintr = []

@@ -100,6 +100,10 @@ struct BuildArgs {
     /// Build API docs.
     #[clap(long)]
     doc: bool,
+
+    /// Other features
+    #[clap(long)]
+    other_features: Option<String>,
 }
 
 /// Prepare cargo utils.
@@ -238,12 +242,25 @@ impl BuildArgs {
             .join(self.plat.as_ref().unwrap())
             .join("linker.ld");
 
+        let mut features = format!("{} {} ", test, oscomp);
+        if self.other_features.is_some() {
+            self.other_features
+                .as_ref()
+                .unwrap()
+                .split(',')
+                .for_each(|f| {
+                    features.push_str(f);
+                    features.push(' ');
+                });
+        }
+        println!("Features {}", features);
+
         // Run cargo build command
         Command::new("cargo")
             .arg(subcmd)
             .args(&["--package", self.kernel.as_ref().unwrap().as_str()])
             .args(&["--target", target])
-            .args(&["--features", format!("{} {}", test, oscomp).as_str()])
+            .args(&["--features", features.as_str()])
             .arg(options)
             .env("LOG", self.log.as_ref().unwrap().as_str())
             .env(

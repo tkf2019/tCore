@@ -82,6 +82,7 @@ fn split_argv(s: &[u8]) -> Vec<String> {
     let mut argv: Vec<String> = Vec::new();
     let mut in_quotation = false;
     let mut start = 0;
+    assert!(s.len() > 0);
     for pos in 0..s.len() {
         if s[pos] == '\"' as u8 {
             in_quotation = !in_quotation;

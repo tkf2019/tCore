@@ -850,7 +850,7 @@ impl<B, S: IoBase> Seek for DiskSlice<B, S> {
         };
         if let Some(new_offset) = new_offset_opt {
             if new_offset > self.size {
-                error!("Seek beyond the end of the file");
+                error!("Seek beyond the end of the file {:x} > {:x}", new_offset, self.size);
                 Err(Error::InvalidInput)
             } else {
                 self.offset = new_offset;
