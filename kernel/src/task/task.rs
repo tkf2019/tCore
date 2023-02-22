@@ -319,7 +319,6 @@ impl Task {
         if flags.contains(MmapFlags::MAP_ANONYMOUS) {
             if fd as isize == -1 && off == 0 {
                 if let Ok(start) = mm.alloc_vma(hint, hint + len, prot.into(), anywhere, None) {
-                    trace!("{:#?}", mm);
                     return Ok(start.value());
                 } else {
                     return Err(Errno::ENOMEM);

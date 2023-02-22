@@ -2,9 +2,9 @@ use errno::Errno;
 use syscall_interface::*;
 
 use crate::{
+    arch::mm::VirtAddr,
     mm::{MmapFlags, MmapProt},
     task::{current_task, do_exit},
-    arch::mm::VirtAddr,
 };
 
 use super::SyscallImpl;
@@ -75,5 +75,15 @@ impl SyscallProc for SyscallImpl {
             fd,
             off,
         )
+    }
+
+    fn mprotect(addr: usize, len: usize, prot: usize) -> SyscallResult {
+        let prot = MmapProt::from_bits(prot);
+        if prot.is_none() {
+            return Err(Errno::EINVAL);
+        }
+
+        
+        Ok(0)
     }
 }

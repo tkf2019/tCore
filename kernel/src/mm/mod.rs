@@ -538,6 +538,12 @@ impl MM {
         }
         Ok(())
     }
+
+    /// A helper for [`syscall_interface::SyscallProc::mprotect`].
+    pub fn do_mprotect(&mut self, start: VirtAddr, len: usize, prot: MmapProt) -> SyscallResult {
+        
+        Ok(0)
+    }
 }
 
 /* Trap helpers */

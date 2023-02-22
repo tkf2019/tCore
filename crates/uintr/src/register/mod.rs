@@ -8,5 +8,4 @@ pub mod sideleg;
 pub mod suist;
 pub mod suirs;
 pub mod sip;
-pub mod uuirq;
 pub mod suicfg;

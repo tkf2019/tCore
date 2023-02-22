@@ -4,7 +4,7 @@ use errno::Errno;
 use fatfs::{
     DefaultTimeProvider, FsOptions, IoBase, LossyOemCpConverter, Read, Seek, SeekFrom, Write,
 };
-use log::{trace, info};
+use log::trace;
 use spin::{Lazy, Mutex, MutexGuard};
 use time_subsys::TimeSpec;
 use vfs::*;

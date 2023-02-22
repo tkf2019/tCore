@@ -121,4 +121,25 @@ pub trait SyscallProc {
     ) -> SyscallResult {
         Ok(0)
     }
+
+    /// Changes the access protections for the calling process's memory pages containing any part
+    /// of the address range in the interval `[addr, addr+len-1]`.  addr must be aligned to a page boundary.
+    /// 
+    /// If the calling process tries to access memory in a manner that violates the protections, then the
+    /// kernel generates a `SIGSEGV` signal for the process.
+    /// 
+    /// # Error
+    /// - `EACCESS`: The memory cannot be given the specified access. This can happen, for example, if you mmap
+    /// (2) a file to which you have read-only access, then ask mprotect() to mark it PROT_WRITE.
+    /// - `EINVAL`: Addr is not a valid pointer, or not a multiple of the system page size. Invalid flags 
+    /// specified in prot.
+    /// - `ENOMEM`: 
+    ///   - Internal kernel structures could not be allocated.
+    ///   - Addresses in the range `[addr, addr+len-1]` are invalid for the address space of the process, or 
+    /// specify one or more pages that are not mapped.
+    ///   - Changing the protection of a memory region would result in the total number of mappings with 
+    /// distinct attributes (e.g., read versus read/write protection) exceeding the allowed maximum.
+    fn mprotect(addr: usize, len: usize, prot: usize) -> SyscallResult {
+        Ok(0)
+    }
 }

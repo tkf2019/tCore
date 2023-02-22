@@ -37,6 +37,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
         SyscallNO::BRK => SyscallImpl::brk(args[0]),
         SyscallNO::MUNMAP => SyscallImpl::munmap(args[0], args[1]),
         SyscallNO::MMAP => SyscallImpl::mmap(args[0], args[1], args[2], args[3], args[4], args[5]),
+        SyscallNO::MPROTECT => SyscallImpl::mprotect(args[0], args[1], args[2]),
         SyscallNO::PIPE => SyscallImpl::pipe(args[0] as *const u32, args[1]),
         SyscallNO::SIGACTION => SyscallImpl::sigaction(args[0], args[1], args[2]),
         SyscallNO::SIGPROCMASK => SyscallImpl::sigprocmask(args[0], args[1], args[2], args[3]),

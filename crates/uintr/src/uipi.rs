@@ -1,7 +1,3 @@
-use alloc::format;
-
-use crate::uuirq;
-
 pub unsafe fn uipi_send(index: usize) {
     core::arch::asm!(".insn i 0b1111011, 0b010, x0, {}, 0x0", in(reg) index);
 }
