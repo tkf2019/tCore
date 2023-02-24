@@ -97,7 +97,7 @@ pub const MMIO: &[(usize, usize)] = &[
 /// Architecture based tests and initialization.
 pub fn init(hartid: usize, is_main: bool) {
     assert_eq!(get_cpu_id(), hartid);
-    
+
     // Initialize global frame allocator once.
     if is_main {
         extern "C" {
@@ -119,5 +119,7 @@ pub fn init(hartid: usize, is_main: bool) {
 
     // Test user interrupt supports.
     #[cfg(feature = "uintr")]
-    unsafe { test_uintr(hartid) };
+    unsafe {
+        test_uintr(hartid)
+    };
 }

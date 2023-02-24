@@ -4,7 +4,7 @@ mod lazy;
 
 use alloc::{sync::Arc, vec::Vec};
 use core::fmt;
-use spin::Mutex;
+use kernel_sync::Mutex;
 
 use crate::{
     arch::mm::Frame,

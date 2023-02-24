@@ -20,13 +20,15 @@ fatfs = { path = "../crates/rust-fatfs", version = "0.4", default-features = fal
 oscomp = { path = "../crates/oscomp" }
 
 # tCore crates (private)
-id-alloc = { path = "../crates/id-alloc" }
 device-cache = { path = "../crates/device-cache" }
 errno = { path = "../crates/errno" }
+id-alloc = { path = "../crates/id-alloc" }
+kernel-sync = { path = "../crates/kernel-sync" }
 signal-defs = { path = "../crates/signal-defs" }
 syscall-interface = { path = "../crates/syscall" }
 time-subsys = { path = "../crates/time-subsys" }
 vfs = { path = "../crates/vfs" }
+
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 riscv = "0.10"

@@ -2,8 +2,9 @@ mod logger;
 mod panic;
 
 use core::fmt::{Arguments, Write};
+use kernel_sync::Mutex;
 pub use logger::init;
-use spin::{Lazy, Mutex};
+use spin::Lazy;
 
 struct Stdin;
 

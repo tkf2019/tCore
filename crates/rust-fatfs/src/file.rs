@@ -25,6 +25,17 @@ pub struct File<'a, IO: ReadWriteSeek, TP, OCC> {
     fs: &'a FileSystem<IO, TP, OCC>,
 }
 
+/// An extent containing a file's data on disk.
+///
+/// This is created by the `extents` method on `File`, and represents
+/// a byte range on the disk that contains a file's data. All values
+/// are in bytes.
+#[derive(Clone, Debug)]
+pub struct Extent {
+    pub offset: u64,
+    pub size: u32,
+}
+
 impl<'a, IO: ReadWriteSeek, TP, OCC> File<'a, IO, TP, OCC> {
     pub(crate) fn new(
         first_cluster: Option<u32>,
@@ -72,6 +83,41 @@ impl<'a, IO: ReadWriteSeek, TP, OCC> File<'a, IO, TP, OCC> {
             }
             Ok(())
         }
+    }
+
+    /// Get the extents of a file on disk.
+    ///
+    /// This returns an iterator over the byte ranges on-disk occupied by
+    /// this file.
+    pub fn extents(&mut self) -> impl Iterator<Item = Result<Extent, Error<IO::Error>>> + 'a {
+        let fs = self.fs;
+        let cluster_size = fs.cluster_size();
+        let mut bytes_left = match self.size() {
+            Some(s) => s,
+            None => return None.into_iter().flatten(),
+        };
+        let first = match self.first_cluster {
+            Some(f) => f,
+            None => return None.into_iter().flatten(),
+        };
+
+        Some(
+            core::iter::once(Ok(first))
+                .chain(fs.cluster_iter(first))
+                .map(move |cluster_err| match cluster_err {
+                    Ok(cluster) => {
+                        let size = cluster_size.min(bytes_left);
+                        bytes_left -= size;
+                        Ok(Extent {
+                            offset: fs.offset_from_cluster(cluster),
+                            size,
+                        })
+                    }
+                    Err(e) => Err(e),
+                }),
+        )
+        .into_iter()
+        .flatten()
     }
 
     pub(crate) fn abs_pos(&self) -> Option<u64> {
@@ -167,7 +213,7 @@ impl<'a, IO: ReadWriteSeek, TP, OCC> File<'a, IO, TP, OCC> {
 
     fn flush(&mut self) -> Result<(), Error<IO::Error>> {
         self.flush_dir_entry()?;
-        let mut disk = self.fs.disk.lock();
+        let mut disk = self.fs.disk.borrow_mut();
         disk.flush()?;
         Ok(())
     }
@@ -186,6 +232,7 @@ impl<IO: ReadWriteSeek, TP: TimeProvider, OCC> File<'_, IO, TP, OCC> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<IO: ReadWriteSeek, TP, OCC> Drop for File<'_, IO, TP, OCC> {
     fn drop(&mut self) {
         if let Err(err) = self.flush() {
@@ -245,7 +292,7 @@ impl<IO: ReadWriteSeek, TP: TimeProvider, OCC> Read for File<'_, IO, TP, OCC> {
         trace!("read {} bytes in cluster {}", read_size, current_cluster);
         let offset_in_fs = self.fs.offset_from_cluster(current_cluster) + u64::from(offset_in_cluster);
         let read_bytes = {
-            let mut disk = self.fs.disk.lock();
+            let mut disk = self.fs.disk.borrow_mut();
             disk.seek(SeekFrom::Start(offset_in_fs))?;
             disk.read(&mut buf[..read_size])?
         };
@@ -309,7 +356,7 @@ impl<IO: ReadWriteSeek, TP: TimeProvider, OCC> Write for File<'_, IO, TP, OCC> {
             } else {
                 // end of chain reached - allocate new cluster
                 let new_cluster = self.fs.alloc_cluster(self.current_cluster, self.is_dir())?;
-                trace!("allocated cluser {}", new_cluster);
+                trace!("allocated cluster {}", new_cluster);
                 if self.first_cluster.is_none() {
                     self.set_first_cluster(new_cluster);
                 }
@@ -325,7 +372,7 @@ impl<IO: ReadWriteSeek, TP: TimeProvider, OCC> Write for File<'_, IO, TP, OCC> {
         trace!("write {} bytes in cluster {}", write_size, current_cluster);
         let offset_in_fs = self.fs.offset_from_cluster(current_cluster) + u64::from(offset_in_cluster);
         let written_bytes = {
-            let mut disk = self.fs.disk.lock();
+            let mut disk = self.fs.disk.borrow_mut();
             disk.seek(SeekFrom::Start(offset_in_fs))?;
             disk.write(&buf[..write_size])?
         };

@@ -2,7 +2,7 @@ pub mod flags;
 mod init;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
-use spin::Mutex;
+use kernel_sync::Mutex;
 use vfs::{OpenFlags, Path};
 use xmas_elf::{
     header,

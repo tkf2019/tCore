@@ -96,7 +96,7 @@ fn split_path(path: &str) -> (&str, Option<&str>) {
     })
 }
 
-pub enum DirEntryOrShortName<'a, IO: ReadWriteSeek, TP, OCC> {
+enum DirEntryOrShortName<'a, IO: ReadWriteSeek, TP, OCC> {
     DirEntry(DirEntry<'a, IO, TP, OCC>),
     ShortName([u8; SFN_SIZE]),
 }
@@ -117,6 +117,7 @@ impl<'a, IO: ReadWriteSeek, TP, OCC> Dir<'a, IO, TP, OCC> {
 
     /// Creates directory entries iterator.
     #[must_use]
+    #[allow(clippy::iter_not_returning_iterator)]
     pub fn iter(&self) -> DirIter<'a, IO, TP, OCC> {
         DirIter::new(self.stream.clone(), self.fs, true)
     }
@@ -163,7 +164,7 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
         Ok(None)
     }
 
-    pub fn check_for_existence(
+    fn check_for_existence(
         &self,
         name: &str,
         is_dir: Option<bool>,
@@ -600,7 +601,7 @@ impl<'a, IO: ReadWriteSeek, TP, OCC> DirIter<'a, IO, TP, OCC> {
 }
 
 impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC> DirIter<'a, IO, TP, OCC> {
-    fn should_ship_entry(&self, raw_entry: &DirEntryData) -> bool {
+    fn should_skip_entry(&self, raw_entry: &DirEntryData) -> bool {
         if raw_entry.is_deleted() {
             return true;
         }
@@ -624,7 +625,7 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC> DirIter<'a, IO, TP, OCC> {
                 return Ok(None);
             }
             // Check if this is deleted or volume ID entry
-            if self.should_ship_entry(&raw_entry) {
+            if self.should_skip_entry(&raw_entry) {
                 trace!("skip entry");
                 lfn_builder.clear();
                 begin_offset = offset;

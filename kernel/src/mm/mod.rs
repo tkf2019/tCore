@@ -9,7 +9,7 @@ use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::{fmt, mem::size_of, slice};
 use errno::Errno;
 use log::warn;
-use spin::Mutex;
+use kernel_sync::Mutex;
 use syscall_interface::SyscallResult;
 
 use crate::{
@@ -490,7 +490,7 @@ impl MM {
     pub fn do_munmap(&mut self, start: VirtAddr, len: usize) -> KernelResult {
         let len = page_align(len);
         if !start.is_aligned() || len == 0 {
-            return Err(KernelError::Errno(Errno::EINVAL));
+            return Err(KernelError::InvalidArgs);
         }
         let end = start + len;
 
@@ -501,7 +501,7 @@ impl MM {
             let mut new_vma = None;
 
             if start > vma.start_va && end < vma.end_va && self.vma_map.len() >= MAX_MAP_COUNT {
-                return Err(KernelError::Errno(Errno::ENOMEM));
+                return Err(KernelError::VMAAllocFailed);
             }
 
             // Handle intersection cases.
@@ -540,9 +540,19 @@ impl MM {
     }
 
     /// A helper for [`syscall_interface::SyscallProc::mprotect`].
-    pub fn do_mprotect(&mut self, start: VirtAddr, len: usize, prot: MmapProt) -> SyscallResult {
-        
-        Ok(0)
+    pub fn do_mprotect(&mut self, start: VirtAddr, len: usize, prot: MmapProt) -> KernelResult {
+        let len = page_align(len);
+        if !start.is_aligned() || len == 0 {
+            return Err(KernelError::InvalidArgs);
+        }
+        let end = start + len;
+
+        self.get_vma(start, |vma, _, _| {
+            if vma.end_va < end {
+                return Err(KernelError::VMANotFound);
+            }
+            Ok(())
+        })
     }
 }
 

@@ -6,9 +6,9 @@ use alloc::{
 use core::{fmt, mem::size_of};
 use errno::Errno;
 use id_alloc::{IDAllocator, RecycleAllocator};
+use kernel_sync::{Mutex, MutexGuard};
 use log::trace;
 use signal_defs::{SigActions, SigInfo, SigPending, SigSet, NSIG};
-use spin::{mutex::Mutex, MutexGuard};
 use syscall_interface::{IoVec, SyscallResult, AT_FDCWD, AT_REMOVEDIR};
 use vfs::{File, OpenFlags, Path, StatMode};
 

@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use spin::Mutex;
+use kernel_sync::Mutex;
 use vfs::{File, SeekWhence};
 
 use crate::arch::mm::{AllocatedFrame, PAGE_SIZE};

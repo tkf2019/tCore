@@ -1,5 +1,6 @@
+///
 #[derive(Debug, Default, Clone, Copy)]
-pub struct SigSet(usize);
+pub struct SigSet(u64);
 
 impl SigSet {
     /// Creates a new `SigSet`.
@@ -48,8 +49,8 @@ impl SigSet {
     }
 }
 
-impl From<usize> for SigSet {
-    fn from(value: usize) -> Self {
+impl From<u64> for SigSet {
+    fn from(value: u64) -> Self {
         Self(value)
     }
 }

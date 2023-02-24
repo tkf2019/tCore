@@ -5,7 +5,7 @@ use super::{
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use spin::{Mutex, MutexGuard};
+use kernel_sync::{Mutex, MutexGuard};
 use device_cache::{BlockDevice, CacheUnit};
 /// Virtual filesystem layer over easy-fs
 pub struct Inode {

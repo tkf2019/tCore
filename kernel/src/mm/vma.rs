@@ -61,6 +61,10 @@ impl VMArea {
         self.start_va <= start_va && self.end_va > end_va && start_va < end_va
     }
 
+    pub fn backend_flags() {
+        
+    }
+
     /// Extends an area with new end.
     ///
     /// This function does not check if current area overlaps with an old area, thus  

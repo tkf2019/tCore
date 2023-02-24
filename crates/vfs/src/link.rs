@@ -1,5 +1,6 @@
 use alloc::collections::BTreeMap;
-use spin::{Lazy, Mutex};
+use kernel_sync::Mutex;
+use spin::Lazy;
 
 use super::path::Path;
 

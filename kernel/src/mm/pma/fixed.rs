@@ -1,6 +1,6 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::{fmt, ops::Deref};
-use spin::Mutex;
+use kernel_sync::Mutex;
 
 use crate::{arch::mm::{AllocatedFrameRange, Frame}, error::{KernelError, KernelResult}};
 

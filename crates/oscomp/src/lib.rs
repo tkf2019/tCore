@@ -10,7 +10,8 @@ use alloc::{
 };
 use core::{fmt, slice::Iter};
 use log::{debug, info, trace, warn};
-use spin::{Lazy, Mutex};
+use spin::{Lazy};
+use kernel_sync::Mutex;
 
 pub mod testcases;
 

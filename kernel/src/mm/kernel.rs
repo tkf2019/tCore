@@ -1,6 +1,7 @@
 use alloc::sync::Arc;
+use kernel_sync::Mutex;
 use log::info;
-use spin::{Lazy, Mutex};
+use spin::Lazy;
 
 use crate::{
     arch::mm::PTEFlags,

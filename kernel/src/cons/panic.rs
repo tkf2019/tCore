@@ -1,8 +1,14 @@
 use core::panic::PanicInfo;
+use kernel_sync::Mutex;
 use sbi_rt::*;
-use spin::{Lazy, Mutex};
+use spin::Lazy;
 
-use crate::{config::CPU_NUM, arch::get_cpu_id, println};
+use crate::{
+    arch::get_cpu_id,
+    config::CPU_NUM,
+    println,
+    task::{current_task, kstack_layout},
+};
 
 static PANIC_COUNT: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
 

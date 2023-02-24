@@ -15,7 +15,7 @@ impl SyscallTimer for SyscallImpl {
         let mut mm = current.mm.lock();
 
         // Get time specification from user address space.
-        mm.alloc_write_type(VirtAddr::from(tp), &TimeSpec::new(get_time_sec_f64()))
+        mm.alloc_write_type(tp.into(), &TimeSpec::new(get_time_sec_f64()))
             .map_err(|_| Errno::EFAULT)?;
 
         Ok(0)

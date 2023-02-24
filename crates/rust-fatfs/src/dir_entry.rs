@@ -522,7 +522,7 @@ impl DirEntryEditor {
     }
 
     fn write<IO: ReadWriteSeek, TP, OCC>(&self, fs: &FileSystem<IO, TP, OCC>) -> Result<(), IO::Error> {
-        let mut disk = fs.disk.lock();
+        let mut disk = fs.disk.borrow_mut();
         disk.seek(io::SeekFrom::Start(self.pos))?;
         self.data.serialize(&mut *disk)
     }
@@ -698,7 +698,7 @@ impl<'a, IO: ReadWriteSeek, TP, OCC: OemCpConverter> DirEntry<'a, IO, TP, OCC> {
                 }
             }
             // both iterators should be at the end here
-            other_uppercase_iter.next() == None
+            other_uppercase_iter.next().is_none()
         } else {
             // entry has no long name
             false

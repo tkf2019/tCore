@@ -10,4 +10,4 @@ authors = ["TKF <kaifu6821@qq.com>"]
 description = "Cache in memory for device data and metadata"
 
 [dependencies]
-spin = "0.9"
+kernel-sync = { path = "../kernel-sync" }

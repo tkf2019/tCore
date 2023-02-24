@@ -4,6 +4,7 @@
 #![feature(panic_info_message)]
 #![feature(alloc_error_handler)]
 #![feature(core_intrinsics)]
+#![feature(sync_unsafe_cell)]
 
 mod config;
 mod cons;

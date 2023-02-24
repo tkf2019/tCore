@@ -1,6 +1,7 @@
 use alloc::sync::Arc;
-use spin::{Lazy, Mutex};
 use device_cache::{BlockCache, BlockCacheUnit, BlockDevice, FIFOBlockCache};
+use kernel_sync::Mutex;
+use spin::Lazy;
 
 const CACHE_SIZE: usize = 16;
 

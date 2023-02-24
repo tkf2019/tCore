@@ -3,7 +3,7 @@ use super::{
 };
 use crate::BLOCK_SZ;
 use alloc::sync::Arc;
-use spin::Mutex;
+use kernel_sync::Mutex;
 use device_cache::{BlockDevice, CacheUnit};
 ///An easy file system on block
 pub struct EasyFileSystem {

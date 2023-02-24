@@ -2,7 +2,6 @@ use errno::Errno;
 use syscall_interface::*;
 
 use crate::{
-    arch::mm::VirtAddr,
     mm::{MmapFlags, MmapProt},
     task::{current_task, do_exit},
 };
@@ -40,14 +39,14 @@ impl SyscallProc for SyscallImpl {
     fn brk(brk: usize) -> SyscallResult {
         let current = current_task().unwrap();
         let mut current_mm = current.mm.lock();
-        current_mm.do_brk(VirtAddr::from(brk))
+        current_mm.do_brk(brk.into())
     }
 
     fn munmap(addr: usize, len: usize) -> SyscallResult {
         let current = current_task().unwrap();
         let mut current_mm = current.mm.lock();
         current_mm
-            .do_munmap(VirtAddr::from(addr), len)
+            .do_munmap(addr.into(), len)
             .map(|_| 0)
             .map_err(|err| err.into())
     }
@@ -67,14 +66,7 @@ impl SyscallProc for SyscallImpl {
         }
 
         let current = current_task().unwrap();
-        current.do_mmap(
-            VirtAddr::from(addr),
-            len,
-            prot.unwrap(),
-            flags.unwrap(),
-            fd,
-            off,
-        )
+        current.do_mmap(addr.into(), len, prot.unwrap(), flags.unwrap(), fd, off)
     }
 
     fn mprotect(addr: usize, len: usize, prot: usize) -> SyscallResult {
@@ -83,7 +75,11 @@ impl SyscallProc for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        
-        Ok(0)
+        let current = current_task().unwrap();
+        let mut current_mm = current.mm.lock();
+        current_mm
+            .do_mprotect(addr.into(), len, prot.unwrap())
+            .map(|_| 0)
+            .map_err(|err| err.into())
     }
 }

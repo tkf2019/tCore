@@ -1,5 +1,5 @@
 use alloc::sync::Arc;
-use spin::Mutex;
+use kernel_sync::Mutex;
 use vfs::{ring_buf::RingBuffer, File};
 
 use crate::{config::MAX_PIPE_BUF, fs::mem::MemFile, task::do_yield};

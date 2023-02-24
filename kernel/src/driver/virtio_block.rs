@@ -1,12 +1,13 @@
 use alloc::sync::Arc;
 use easy_fs::BlockDevice;
-use spin::{Lazy, Mutex};
+use kernel_sync::Mutex;
+use spin::Lazy;
 use virtio_drivers::{Hal, VirtIOBlk, VirtIOHeader};
 
 use crate::{
+    arch::mm::{frame_alloc, frame_dealloc, Frame, PhysAddr, PAGE_SIZE_BITS},
     config::VIRTIO0,
     mm::KERNEL_MM,
-    arch::mm::{frame_alloc, frame_dealloc, Frame, PhysAddr, PAGE_SIZE_BITS}
 };
 
 pub static BLOCK_DEVICE: Lazy<Arc<dyn BlockDevice>> = Lazy::new(|| {

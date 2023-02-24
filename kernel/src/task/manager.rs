@@ -1,8 +1,9 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 use id_alloc::{IDAllocator, RecycleAllocator};
+use kernel_sync::Mutex;
 use log::{error, trace};
 use oscomp::{fetch_test, finish_test};
-use spin::{Lazy, Mutex};
+use spin::Lazy;
 
 use crate::{
     arch::{

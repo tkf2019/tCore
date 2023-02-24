@@ -1,11 +1,16 @@
 use alloc::{sync::Arc, vec::Vec};
+use core::{
+    cell::SyncUnsafeCell,
+    ops::{Deref, DerefMut},
+};
 use device_cache::{BlockCache, CacheUnit, LRUBlockCache, BLOCK_SIZE};
 use errno::Errno;
 use fatfs::{
     DefaultTimeProvider, FsOptions, IoBase, LossyOemCpConverter, Read, Seek, SeekFrom, Write,
 };
-use log::trace;
-use spin::{Lazy, Mutex, MutexGuard};
+use kernel_sync::{Mutex, MutexGuard};
+use log::{debug, info, trace, warn};
+use spin::Lazy;
 use time_subsys::TimeSpec;
 use vfs::*;
 
@@ -13,6 +18,7 @@ use crate::{
     config::{CACHE_SIZE, FS_IMG_SIZE},
     driver::virtio_block::BLOCK_DEVICE,
     error::KernelError,
+    println,
 };
 
 type FatTP = DefaultTimeProvider;
@@ -197,7 +203,7 @@ pub struct FSFile {
     pub inner: Mutex<FSFileInner>,
 
     /// Real file in fat.
-    pub file: Arc<Mutex<FatFile>>,
+    pub file: SyncUnsafeCell<FatFile>,
 }
 
 impl FSFile {
@@ -218,31 +224,39 @@ impl FSFile {
                 ctime: TimeSpec::default(),
                 cloexec: flags.contains(OpenFlags::O_CLOEXEC),
             }),
-            file: Arc::new(Mutex::new(file)),
+            file: SyncUnsafeCell::new(file),
         }
     }
 
-    /// Get the length of inner fat file with lock already acquired.
-    ///
-    /// The cursor will be moved back to current position.
-    pub fn get_len(locked: &mut MutexGuard<FatFile>) -> usize {
-        let curr_pos = locked.seek(SeekFrom::Current(0)).unwrap();
-        let len = locked.seek(SeekFrom::End(0)).unwrap();
-        locked.seek(SeekFrom::Start(curr_pos)).unwrap();
-        len as usize
+    /// Gets the raw mutable reference to inner file without any borrow check.
+    pub fn file(&self) -> &'static mut FatFile {
+        unsafe { &mut *self.file.get() }
+    }
+}
+
+impl Drop for FSFile {
+    fn drop(&mut self) {
+        trace!("Drop FSfile");
+        // Flush the file to disk manually.
+        let _guard = GLOBAL_FS.lock();
+        if let Err(err) = self.file().flush() {
+            warn!("flush failed {:?}", err);
+        }
+        drop(_guard);
     }
 }
 
 impl File for FSFile {
     fn read(&self, buf: &mut [u8]) -> Option<usize> {
+        trace!("FSFile::read");
         if !self.readable {
             return None;
         }
-        let mut file = self.file.lock();
         let len = buf.len();
         let mut pos = 0;
         while pos < len {
-            match file.read(&mut buf[pos..]) {
+            let _guard = GLOBAL_FS.lock();
+            match self.file().read(&mut buf[pos..]) {
                 Ok(read_len) => {
                     if read_len == 0 {
                         break;
@@ -258,19 +272,21 @@ impl File for FSFile {
                     }
                 }
             }
+            drop(_guard);
         }
         Some(pos)
     }
 
     fn write(&self, buf: &[u8]) -> Option<usize> {
+        trace!("FSFile::write");
         if !self.writable {
             return None;
         }
-        let mut file = self.file.lock();
         let len = buf.len();
         let mut pos = 0;
         while pos < len {
-            match file.write(&buf[pos..]) {
+            let _guard = GLOBAL_FS.lock();
+            match self.file().write(&buf[pos..]) {
                 Ok(write_len) => {
                     if write_len == 0 {
                         break;
@@ -286,6 +302,7 @@ impl File for FSFile {
                     }
                 }
             }
+            drop(_guard);
         }
         Some(pos)
     }
@@ -298,41 +315,46 @@ impl File for FSFile {
         self.writable
     }
 
+    #[no_mangle]
     fn clear(&self) {
-        let mut file = self.file.lock();
-        file.seek(SeekFrom::Start(0)).unwrap();
-        file.truncate().unwrap();
+        trace!("FSFile::clear");
+        let _guard = GLOBAL_FS.lock();
+        self.file().seek(SeekFrom::Start(0)).unwrap();
+        self.file().truncate().unwrap();
+        drop(_guard);
     }
 
     fn seek(&self, offset: usize, whence: SeekWhence) -> Option<usize> {
-        let mut file = self.file.lock();
         let seek_from = match whence {
             SeekWhence::Current => SeekFrom::Current(offset as i64),
             SeekWhence::Set => SeekFrom::Start(offset as u64),
             SeekWhence::End => SeekFrom::End(offset as i64),
         };
-        let curr_pos = file.seek(SeekFrom::Current(0)).unwrap();
-        file.seek(seek_from)
+        let _guard = GLOBAL_FS.lock();
+        let curr_pos = self.file().seek(SeekFrom::Current(0)).unwrap();
+        let result = self
+            .file()
+            .seek(seek_from)
             .map(|pos| match seek_from {
                 SeekFrom::Start(offset) => {
-                    let len = file.seek(SeekFrom::End(0)).unwrap();
+                    let len = self.file().seek(SeekFrom::End(0)).unwrap();
                     if len < offset && offset <= FS_IMG_SIZE as u64 {
                         let mut buf: Vec<u8> = Vec::new();
                         buf.resize(offset as usize - len as usize, 0);
-                        file.write(buf.as_slice()).unwrap();
+                        self.file().write(buf.as_slice()).unwrap();
                     }
-                    file.seek(SeekFrom::Start(offset)).unwrap();
+                    self.file().seek(SeekFrom::Start(offset)).unwrap();
                     Some(offset as usize)
                 }
                 SeekFrom::Current(offset) => {
-                    let len = file.seek(SeekFrom::End(0)).unwrap();
+                    let len = self.file().seek(SeekFrom::End(0)).unwrap();
                     let now = (curr_pos as i64 + offset) as u64;
                     if len < now && now <= FS_IMG_SIZE as u64 {
                         let mut buf: Vec<u8> = Vec::new();
                         buf.resize(now as usize - len as usize, 0);
-                        file.write(buf.as_slice()).unwrap();
+                        self.file().write(buf.as_slice()).unwrap();
                     }
-                    file.seek(SeekFrom::Start(now)).unwrap();
+                    self.file().seek(SeekFrom::Start(now)).unwrap();
                     Some(now as usize)
                 }
                 SeekFrom::End(_) => Some(pos as usize),
@@ -340,17 +362,21 @@ impl File for FSFile {
             .unwrap_or_else(|_| {
                 trace!("Seek {:?}", seek_from);
                 None
-            })
+            });
+        drop(_guard);
+        result
     }
 
     fn get_stat(&self, stat_ptr: *mut Stat) -> bool {
-        let mut file = self.file.lock();
         let mut stat = Stat::default();
         stat.st_mode =
             (StatMode::S_IFREG | StatMode::S_IRWXU | StatMode::S_IRWXG | StatMode::S_IRWXO).bits();
         stat.st_nlink = get_nlink(&self.path) as u32;
-        stat.st_size = FSFile::get_len(&mut file) as u64;
-        drop(file);
+
+        let _guard = GLOBAL_FS.lock();
+        stat.st_size = self.get_size().unwrap() as u64;
+        drop(_guard);
+
         let inner = self.inner.lock();
         stat.st_blksize = BLOCK_SIZE as u32;
         stat.st_blocks = (stat.st_size + stat.st_blksize as u64 - 1) / stat.st_blksize as u64;
@@ -365,15 +391,17 @@ impl File for FSFile {
     }
 
     unsafe fn read_all(&self) -> Vec<u8> {
-        let mut file = self.file.lock();
-        let len = FSFile::get_len(&mut file);
+        let _guard = GLOBAL_FS.lock();
+        let len = self.get_size().unwrap();
+        trace!("FSFile::read_all 0x{:x}", len);
         let mut buf: Vec<u8> = Vec::new();
         buf.resize(len, 0);
         let mut pos = 0;
         while pos < len {
-            let read_len = file.read(&mut buf[pos..]).unwrap();
+            let read_len = self.file().read(&mut buf[pos..]).unwrap();
             pos += read_len;
         }
+        drop(_guard);
         buf
     }
 
@@ -381,10 +409,11 @@ impl File for FSFile {
         if !self.readable {
             return false;
         }
-        let mut file = self.file.lock();
-        let curr_pos = file.seek(SeekFrom::Current(0)).unwrap();
-        let len = file.seek(SeekFrom::End(0)).unwrap();
-        file.seek(SeekFrom::Start(curr_pos)).unwrap();
+        let _guard = GLOBAL_FS.lock();
+        let curr_pos = self.file().seek(SeekFrom::Current(0)).unwrap();
+        let len = self.file().seek(SeekFrom::End(0)).unwrap();
+        self.file().seek(SeekFrom::Start(curr_pos)).unwrap();
+        drop(_guard);
         curr_pos < len
     }
 
@@ -392,10 +421,11 @@ impl File for FSFile {
         if !self.writable {
             return false;
         }
-        let mut file = self.file.lock();
-        let curr_pos = file.seek(SeekFrom::Current(0)).unwrap();
-        let len = file.seek(SeekFrom::End(0)).unwrap();
-        file.seek(SeekFrom::Start(curr_pos)).unwrap();
+        let _guard = GLOBAL_FS.lock();
+        let curr_pos = self.file().seek(SeekFrom::Current(0)).unwrap();
+        let len = self.file().seek(SeekFrom::End(0)).unwrap();
+        self.file().seek(SeekFrom::Start(curr_pos)).unwrap();
+        drop(_guard);
         curr_pos < len
     }
 
@@ -405,6 +435,13 @@ impl File for FSFile {
 
     fn get_path(&self) -> Option<Path> {
         Some(self.path.clone())
+    }
+
+    fn get_size(&self) -> Option<usize> {
+        let curr_pos = self.file().seek(SeekFrom::Current(0)).unwrap();
+        let len = self.file().seek(SeekFrom::End(0)).unwrap();
+        self.file().seek(SeekFrom::Start(curr_pos)).unwrap();
+        Some(len as usize)
     }
 }
 
@@ -433,6 +470,30 @@ impl File for FSDir {
 /// A wrapper for VFS implementation and configured compilation.
 pub struct FileSystem;
 
+impl Drop for FileSystem {
+    fn drop(&mut self) {
+        let _guard = GLOBAL_FS.lock();
+        if let Err(err) = FAT_FS.unmount_internal() {
+            warn!("unmount failed {:?}", err);
+        }
+        drop(_guard);
+    }
+}
+
+/// Global disk filesystem.
+///
+/// TODO: A big lock on the filesystem!
+pub static GLOBAL_FS: Lazy<Mutex<FileSystem>> = Lazy::new(|| {
+    let fs = FileSystem;
+
+    let root = Path::root();
+    fs.mkdir(&root, "dev").unwrap();
+    fs.mkdir(&root, "lib").unwrap();
+    fs.mkdir(&root, "tmp").unwrap();
+
+    Mutex::new(fs)
+});
+
 /// Global static instance of fat filesystem.
 static FAT_FS: Lazy<fatfs::FileSystem<FatIO, FatTP, FatOCC>> = Lazy::new(|| {
     fatfs::FileSystem::new(FatIO::new(), FsOptions::new().update_accessed_date(true)).unwrap()
@@ -442,9 +503,9 @@ impl VFS for FileSystem {
     fn open(&self, pdir: &Path, name: &str, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
         let mut ori_path = pdir.clone();
         ori_path.extend(name);
+        trace!("FileSystem::open {:x?}", ori_path);
 
         let (readable, writable) = flags.read_write();
-
         let root = FAT_FS.root_dir();
         // Find in the root directory
         let pdir = if pdir.is_root() {

@@ -1,8 +1,8 @@
-extern crate std;
 extern crate alloc;
+extern crate std;
 
 use alloc::sync::Arc;
-use spin::Mutex;
+use kernel_sync::Mutex;
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},

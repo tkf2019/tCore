@@ -3,7 +3,7 @@ use alloc::{
     sync::Arc,
 };
 use core::{any::Any, fmt};
-use spin::Mutex;
+use kernel_sync::Mutex;
 
 use crate::CacheUnit;
 
