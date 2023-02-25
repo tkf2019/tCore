@@ -8,8 +8,8 @@ pub mod vma;
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::{fmt, mem::size_of, slice};
 use errno::Errno;
+use kernel_sync::SpinLock;
 use log::warn;
-use kernel_sync::Mutex;
 use syscall_interface::SyscallResult;
 
 use crate::{
@@ -195,7 +195,7 @@ impl MM {
         start_va: VirtAddr,
         end_va: VirtAddr,
         flags: PTEFlags,
-        pma: Arc<Mutex<dyn PMArea>>,
+        pma: Arc<SpinLock<dyn PMArea>>,
     ) -> KernelResult {
         let vma = VMArea::new(start_va, end_va, flags.into(), pma)?;
         vma.map_all(&mut self.page_table, flags)?;
@@ -235,7 +235,10 @@ impl MM {
             start,
             end,
             flags,
-            Arc::new(Mutex::new(LazyPMA::new(page_index(start, end), backend)?)),
+            Arc::new(SpinLock::new(LazyPMA::new(
+                page_index(start, end),
+                backend,
+            )?)),
         )?;
 
         // No need to fllush TLB explicitly; old maps have been cleaned.
@@ -476,7 +479,7 @@ impl MM {
                 self.start_brk,
                 self.start_brk + PAGE_SIZE,
                 VMFlags::USER | VMFlags::READ | VMFlags::WRITE,
-                Arc::new(Mutex::new(LazyPMA::new(1, None)?)),
+                Arc::new(SpinLock::new(LazyPMA::new(1, None)?)),
             )?)?;
         }
 

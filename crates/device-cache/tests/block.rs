@@ -2,7 +2,7 @@ extern crate alloc;
 extern crate std;
 
 use alloc::sync::Arc;
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
@@ -11,7 +11,7 @@ use std::{
 
 use device_cache::*;
 
-struct BlockFile(Mutex<File>);
+struct BlockFile(SpinLock<File>);
 
 impl BlockDevice for BlockFile {
     fn read_block(&self, block_id: usize, buf: &mut [u8]) {
@@ -43,7 +43,7 @@ fn test() {
         .open("test.txt")
         .unwrap();
     f.set_len(16 * 2048 * 512).unwrap();
-    let block_file = Arc::new(BlockFile(Mutex::new(f)));
+    let block_file = Arc::new(BlockFile(SpinLock::new(f)));
     let mut cache = LRUBlockCache::new(4);
 
     let block = cache.get_block(1, block_file.clone());

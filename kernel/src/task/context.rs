@@ -24,7 +24,7 @@ impl TaskContext {
     }
 
     /// A zero task context
-    pub fn zero() -> Self {
+    pub const fn zero() -> Self {
         Self {
             ra: 0,
             sp: 0,

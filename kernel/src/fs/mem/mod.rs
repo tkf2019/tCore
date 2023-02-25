@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 use vfs::{File, SeekWhence};
 
 use crate::arch::mm::{AllocatedFrame, PAGE_SIZE};
@@ -28,7 +28,7 @@ impl MemFileInner {
 ///
 /// The file size must be multiple of PAGE_SIZE.
 pub struct MemFile {
-    inner: Mutex<MemFileInner>,
+    inner: SpinLock<MemFileInner>,
 
     /// Max size of this file.
     max_size: usize,
@@ -38,7 +38,7 @@ impl MemFile {
     /// Creates an empty memory file.
     pub fn new(limit: usize) -> Self {
         Self {
-            inner: Mutex::new(MemFileInner::new(limit)),
+            inner: SpinLock::new(MemFileInner::new(limit)),
             max_size: limit,
         }
     }

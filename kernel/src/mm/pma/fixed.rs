@@ -1,8 +1,11 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::{fmt, ops::Deref};
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 
-use crate::{arch::mm::{AllocatedFrameRange, Frame}, error::{KernelError, KernelResult}};
+use crate::{
+    arch::mm::{AllocatedFrameRange, Frame},
+    error::{KernelError, KernelResult},
+};
 
 use super::{PMArea, PMA};
 
@@ -77,7 +80,7 @@ impl PMArea for FixedPMA {
             }
 
             let right = self.frames.split_at(start, false).unwrap();
-            Ok((Some(Arc::new(Mutex::new(Self { frames: right }))), None))
+            Ok((Some(Arc::new(SpinLock::new(Self { frames: right }))), None))
         } else if start.is_none() {
             let end = self.frames.start + end.unwrap();
 
@@ -86,7 +89,7 @@ impl PMArea for FixedPMA {
             }
 
             let left = self.frames.split_at(end, true).unwrap();
-            Ok((Some(Arc::new(Mutex::new(Self { frames: left }))), None))
+            Ok((Some(Arc::new(SpinLock::new(Self { frames: left }))), None))
         } else {
             let start = self.frames.start + start.unwrap();
             let end = self.frames.end + end.unwrap();
@@ -104,9 +107,9 @@ impl PMArea for FixedPMA {
             }
 
             let right = self.frames.split_at(end, false).unwrap();
-            let right = Arc::new(Mutex::new(Self { frames: right }));
+            let right = Arc::new(SpinLock::new(Self { frames: right }));
             let mid = self.frames.split_at(start, false).unwrap();
-            let mid = Arc::new(Mutex::new(Self { frames: mid }));
+            let mid = Arc::new(SpinLock::new(Self { frames: mid }));
             Ok((Some(mid), Some(right)))
         }
     }

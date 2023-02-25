@@ -14,6 +14,7 @@ use crate::{
     rust_main, rust_main_others,
 };
 
+#[cfg(feature = "uintr")]
 use self::uintr::{test_uintr, UINTC_BASE, UINTC_SIZE};
 
 /// Initialize kernel stack in .bss section.
@@ -91,6 +92,7 @@ pub fn start_hart(hartid: usize, entry: usize, opaque: usize) {
 
 /// Architecture based MMIO.
 pub const MMIO: &[(usize, usize)] = &[
+    #[cfg(feature = "uintr")]
     (UINTC_BASE, UINTC_SIZE), // User interrupt controller
 ];
 

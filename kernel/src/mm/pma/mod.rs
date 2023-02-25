@@ -4,7 +4,7 @@ mod lazy;
 
 use alloc::{sync::Arc, vec::Vec};
 use core::fmt;
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 
 use crate::{
     arch::mm::Frame,
@@ -16,7 +16,7 @@ pub use fixed::*;
 pub use identical::*;
 pub use lazy::*;
 
-pub type PMA = Arc<Mutex<dyn PMArea>>;
+pub type PMA = Arc<SpinLock<dyn PMArea>>;
 
 pub trait PMArea: fmt::Debug + Send + Sync {
     /// Returns true if this area is mapped.

@@ -1,5 +1,5 @@
 use alloc::sync::Arc;
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 use log::info;
 use spin::Lazy;
 
@@ -12,7 +12,7 @@ use crate::{
 
 use super::MM;
 
-pub static KERNEL_MM: Lazy<Mutex<MM>> = Lazy::new(|| Mutex::new(new_kernel().unwrap()));
+pub static KERNEL_MM: Lazy<SpinLock<MM>> = Lazy::new(|| SpinLock::new(new_kernel().unwrap()));
 
 /// Create new kernel address space
 fn new_kernel() -> KernelResult<MM> {
@@ -37,7 +37,7 @@ fn new_kernel() -> KernelResult<MM> {
         (stext as usize).into(),
         (etext as usize).into(),
         PTEFlags::READABLE | PTEFlags::EXECUTABLE,
-        Arc::new(Mutex::new(IdenticalPMA)),
+        Arc::new(SpinLock::new(IdenticalPMA)),
     )?;
     info!(
         "{:>10} [{:#x}, {:#x})",
@@ -50,7 +50,7 @@ fn new_kernel() -> KernelResult<MM> {
         (srodata as usize).into(),
         (erodata as usize).into(),
         PTEFlags::READABLE,
-        Arc::new(Mutex::new(IdenticalPMA)),
+        Arc::new(SpinLock::new(IdenticalPMA)),
     )?;
     info!(
         "{:>10} [{:#x}, {:#x})",
@@ -63,7 +63,7 @@ fn new_kernel() -> KernelResult<MM> {
         (sdata as usize).into(),
         (edata as usize).into(),
         PTEFlags::READABLE | PTEFlags::WRITABLE,
-        Arc::new(Mutex::new(IdenticalPMA)),
+        Arc::new(SpinLock::new(IdenticalPMA)),
     )?;
     info!(
         "{:>10} [{:#x}, {:#x})",
@@ -76,7 +76,7 @@ fn new_kernel() -> KernelResult<MM> {
         (sbss_with_stack as usize).into(),
         (ebss as usize).into(),
         PTEFlags::READABLE | PTEFlags::WRITABLE,
-        Arc::new(Mutex::new(IdenticalPMA)),
+        Arc::new(SpinLock::new(IdenticalPMA)),
     )?;
     info!(
         "{:>10} [{:#x}, {:#x})",
@@ -89,7 +89,7 @@ fn new_kernel() -> KernelResult<MM> {
         (ekernel as usize).into(),
         PHYSICAL_MEMORY_END.into(),
         PTEFlags::READABLE | PTEFlags::WRITABLE,
-        Arc::new(Mutex::new(IdenticalPMA)),
+        Arc::new(SpinLock::new(IdenticalPMA)),
     )?;
     info!(
         "{:>10} [{:#x}, {:#x})",
@@ -103,7 +103,7 @@ fn new_kernel() -> KernelResult<MM> {
             (*base).into(),
             (*base + *len).into(),
             PTEFlags::READABLE | PTEFlags::WRITABLE,
-            Arc::new(Mutex::new(IdenticalPMA)),
+            Arc::new(SpinLock::new(IdenticalPMA)),
         )?;
         info!("{:>10} [{:#x}, {:#x})", "mmio", base, base + len);
     }
@@ -113,7 +113,7 @@ fn new_kernel() -> KernelResult<MM> {
             (*base).into(),
             (*base + *len).into(),
             PTEFlags::READABLE | PTEFlags::WRITABLE,
-            Arc::new(Mutex::new(IdenticalPMA)),
+            Arc::new(SpinLock::new(IdenticalPMA)),
         )?;
         info!("{:>10} [{:#x}, {:#x})", "arch mmio", base, base + len);
     }

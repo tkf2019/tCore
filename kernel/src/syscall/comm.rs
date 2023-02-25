@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use core::mem::size_of;
 use errno::Errno;
-use signal_defs::{SigAction, SigActionFlags, SigSet, SignalNo, NSIG, SIG_DFL};
+use signal_defs::{SigAction, SigActionFlags, SigSet, SignalNo, NSIG};
 use syscall_interface::{SyscallComm, SyscallResult};
 
 use crate::{arch::mm::VirtAddr, fs::Pipe, task::current_task, user_buf_next, user_buf_next_mut};

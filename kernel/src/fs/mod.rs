@@ -1,7 +1,5 @@
 use alloc::sync::Arc;
 use errno::Errno;
-use kernel_sync::Mutex;
-use spin::Lazy;
 use vfs::*;
 
 mod fat;

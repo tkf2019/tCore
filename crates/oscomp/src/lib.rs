@@ -9,9 +9,9 @@ use alloc::{
     vec::Vec,
 };
 use core::{fmt, slice::Iter};
+use kernel_sync::SpinLock;
 use log::{debug, info, trace, warn};
-use spin::{Lazy};
-use kernel_sync::Mutex;
+use spin::Lazy;
 
 pub mod testcases;
 
@@ -100,9 +100,9 @@ fn split_argv(s: &[u8]) -> Vec<String> {
     argv
 }
 
-static TEST_MANAGER: Lazy<Mutex<TestManger>> = Lazy::new(|| Mutex::new(TestManger::new()));
-static TEST_ITER: Lazy<Mutex<core::slice::Iter<&str>>> =
-    Lazy::new(|| Mutex::new(TEST_MANAGER.lock().cases.unwrap().into_iter()));
+static TEST_MANAGER: Lazy<SpinLock<TestManger>> = Lazy::new(|| SpinLock::new(TestManger::new()));
+static TEST_ITER: Lazy<SpinLock<core::slice::Iter<&str>>> =
+    Lazy::new(|| SpinLock::new(TEST_MANAGER.lock().cases.unwrap().into_iter()));
 
 pub fn init(cases: &'static [&'static str]) {
     TEST_MANAGER.lock().init(cases);

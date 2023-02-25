@@ -6,7 +6,7 @@ use alloc::{
 use core::{fmt, mem::size_of};
 use errno::Errno;
 use id_alloc::{IDAllocator, RecycleAllocator};
-use kernel_sync::{Mutex, MutexGuard};
+use kernel_sync::{SpinLock, SpinLockGuard};
 use log::trace;
 use signal_defs::{SigActions, SigInfo, SigPending, SigSet, NSIG};
 use syscall_interface::{IoVec, SyscallResult, AT_FDCWD, AT_REMOVEDIR};
@@ -102,9 +102,9 @@ unsafe impl Send for TaskInner {}
 ///
 /// We use four types of regions to maintain the task metadata:
 /// - Shared and immutable: uses [`Arc<T>`]
-/// - Shared and mutable: uses [`Arc<Mutex<T>>`]
+/// - Shared and mutable: uses [`Arc<SpinLock<T>>`]
 /// - Local and immutable: data initialized once when task created
-/// - Local and mutable: uses [`Mutex<TaskInner>`] to wrap the data together
+/// - Local and mutable: uses [`SpinLock<TaskInner>`] to wrap the data together
 pub struct Task {
     /* Local and immutable */
     /// Kernel stack identification.
@@ -117,8 +117,8 @@ pub struct Task {
     pub trapframe_pa: PhysAddr,
 
     /* Local and mutable */
-    /// Inner data wrapped by [`Mutex`].
-    inner: Mutex<TaskInner>,
+    /// Inner data wrapped by [`SpinLock`].
+    inner: SpinLock<TaskInner>,
 
     /* Shared and immutable */
     /// Process identification.
@@ -130,16 +130,16 @@ pub struct Task {
 
     /* Shared and mutable */
     /// Task identification allocator.
-    pub tid_allocator: Arc<Mutex<RecycleAllocator>>,
+    pub tid_allocator: Arc<SpinLock<RecycleAllocator>>,
 
     /// Address space metadata.
-    pub mm: Arc<Mutex<MM>>,
+    pub mm: Arc<SpinLock<MM>>,
 
     /// File descriptor table.
-    pub fd_manager: Arc<Mutex<FDManager>>,
+    pub fd_manager: Arc<SpinLock<FDManager>>,
 
     /// Signal actions.
-    pub sig_actions: Arc<Mutex<SigActions>>,
+    pub sig_actions: Arc<SpinLock<SigActions>>,
 
     /// Name of this task.
     pub name: String,
@@ -170,7 +170,7 @@ impl Task {
             trapframe_base,
             trapframe_base + PAGE_SIZE,
             PTEFlags::READABLE | PTEFlags::WRITABLE,
-            Arc::new(Mutex::new(FixedPMA::new(1)?)),
+            Arc::new(SpinLock::new(FixedPMA::new(1)?)),
         )?;
         let trapframe_pa = mm.translate(trapframe_base)?;
         let trapframe = TrapFrame::from(trapframe_pa);
@@ -191,7 +191,7 @@ impl Task {
             kstack,
             tid: MAIN_TASK,
             trapframe_pa,
-            inner: Mutex::new(TaskInner {
+            inner: SpinLock::new(TaskInner {
                 exit_code: 0,
                 ctx: TaskContext::new(user_trap_return as usize, kstack_base),
                 state: TaskState::Runnable,
@@ -204,10 +204,10 @@ impl Task {
                 sig_blocked: SigSet::new(),
             }),
             pid: Arc::new(PID(pid)),
-            tid_allocator: Arc::new(Mutex::new(RecycleAllocator::new(MAIN_TASK + 1))),
-            mm: Arc::new(Mutex::new(mm)),
-            fd_manager: Arc::new(Mutex::new(fd_manager)),
-            sig_actions: Arc::new(Mutex::new(SigActions::new())),
+            tid_allocator: Arc::new(SpinLock::new(RecycleAllocator::new(MAIN_TASK + 1))),
+            mm: Arc::new(SpinLock::new(mm)),
+            fd_manager: Arc::new(SpinLock::new(fd_manager)),
+            sig_actions: Arc::new(SpinLock::new(SigActions::new())),
             name,
         };
         Ok(task)
@@ -219,12 +219,12 @@ impl Task {
     }
 
     /// Acquire inner lock to modify the metadata in [`TaskInner`].
-    pub fn inner_lock(&self) -> MutexGuard<TaskInner> {
+    pub fn inner_lock(&self) -> SpinLockGuard<TaskInner> {
         self.inner.lock()
     }
 
     /// Try to acquire inner lock to modify the metadata in [`TaskInner`]
-    pub fn inner_try_lock(&self) -> Option<MutexGuard<TaskInner>> {
+    pub fn inner_try_lock(&self) -> Option<SpinLockGuard<TaskInner>> {
         self.inner.try_lock()
     }
 

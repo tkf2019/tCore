@@ -1,6 +1,6 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::fmt;
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 
 use crate::{
     arch::mm::{AllocatedFrame, Frame, PAGE_SIZE},
@@ -135,7 +135,7 @@ impl PMArea for LazyPMA {
             }
 
             Ok((
-                Some(Arc::new(Mutex::new(Self::new_with_frames(
+                Some(Arc::new(SpinLock::new(Self::new_with_frames(
                     self.frames.drain(start..).collect(),
                     self.file.as_ref().map(|file| file.split(start * PAGE_SIZE)),
                 )?))),
@@ -154,7 +154,7 @@ impl PMArea for LazyPMA {
             };
 
             Ok((
-                Some(Arc::new(Mutex::new(Self::new_with_frames(
+                Some(Arc::new(SpinLock::new(Self::new_with_frames(
                     self.frames.drain(..end).collect(),
                     self.file.as_ref().map(|file| file.split(0)),
                 )?))),
@@ -176,11 +176,11 @@ impl PMArea for LazyPMA {
                 return Err(KernelError::PMAOutOfRange);
             }
 
-            let right_pma = Arc::new(Mutex::new(Self::new_with_frames(
+            let right_pma = Arc::new(SpinLock::new(Self::new_with_frames(
                 self.frames.drain(end..).collect(),
                 self.file.as_ref().map(|file| file.split(end * PAGE_SIZE)),
             )?));
-            let mid_pma = Arc::new(Mutex::new(Self::new_with_frames(
+            let mid_pma = Arc::new(SpinLock::new(Self::new_with_frames(
                 self.frames.drain(start..).collect(),
                 self.file.as_ref().map(|file| file.split(start * PAGE_SIZE)),
             )?));

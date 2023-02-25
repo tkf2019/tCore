@@ -2,7 +2,7 @@ mod logger;
 mod panic;
 
 use core::fmt::{Arguments, Write};
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 pub use logger::init;
 use spin::Lazy;
 
@@ -35,9 +35,9 @@ impl Write for Stdout {
     }
 }
 
-static STDIN: Lazy<Mutex<Stdin>> = Lazy::new(|| Mutex::new(Stdin));
-static STDOUT: Lazy<Mutex<Stdout>> = Lazy::new(|| Mutex::new(Stdout));
-static STDERR: Lazy<Mutex<Stdout>> = Lazy::new(|| Mutex::new(Stdout));
+static STDIN: Lazy<SpinLock<Stdin>> = Lazy::new(|| SpinLock::new(Stdin));
+static STDOUT: Lazy<SpinLock<Stdout>> = Lazy::new(|| SpinLock::new(Stdout));
+static STDERR: Lazy<SpinLock<Stdout>> = Lazy::new(|| SpinLock::new(Stdout));
 
 #[inline]
 pub fn getchar() -> u8 {

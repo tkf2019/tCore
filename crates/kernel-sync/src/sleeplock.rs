@@ -19,55 +19,41 @@ use spin::Lazy;
 
 use crate::{
     arch::{cpu_id, intr_get},
-    spin::{SpinMutex, SpinMutexGuard},
+    spinlock::{SpinLock, SpinLockGuard},
     CPUs,
 };
 
+/// Threads should implement this trait to support sleep lock.
 pub trait Sched {
-    /// Locks current thread and returns the guard that permits inner access to the thread.
-    ///
-    /// This function requires manual unlocking before exiting the scope.
-    fn lock(thread: &SpinMutex<Self>) -> *mut Self {
-        unsafe {
-            core::mem::forget(thread.lock());
-            thread.as_mut_ptr()
-        }
-    }
-
-    /// Unlocks current thread.
-    fn unlock(thread: &SpinMutex<Self>) {
-        unsafe { thread.force_unlock() };
-    }
-
     /// Thread state is changed to `SLEEPING`.
-    fn sleep(thread: *mut Self);
+    fn sleep(thread: &mut Self);
 
     /// Wakeup all threads sleeping on this lock.
     fn wakeup(id: usize);
 
-    /// Threads acquiring this [`SleepMutex`] is grouped by the id.
-    fn set_id(thread: *mut Self, id: Option<usize>);
+    /// Threads acquiring this [`SleepLock`] is grouped by the id.
+    fn set_id(thread: &mut Self, id: Option<usize>);
 
     /// Switch to scheduler.
     unsafe fn sched();
 }
 
-static SleepMutexIDAllocator: Lazy<SpinMutex<RecycleAllocator>> =
-    Lazy::new(|| SpinMutex::new(RecycleAllocator::new(0)));
+static SleepLockIDAllocator: Lazy<SpinLock<RecycleAllocator>> =
+    Lazy::new(|| SpinLock::new(RecycleAllocator::new(0)));
 
 /// A sleep lock providing mutually exclusive access to data and yielding the CPU when locked.
-pub struct SleepMutex<T: ?Sized, S: Sched> {
+pub struct SleepLock<T: ?Sized, S: Sched> {
     phantom: PhantomData<S>,
 
-    /// [`SpinMutex`] protecting this [`SleepMutex`].
-    inner: SpinMutex<SleepMutexInner<T, S>>,
+    /// [`SpinLock`] protecting this [`SleepLock`].
+    inner: SpinLock<SleepLockInner<T, S>>,
 }
 
 /// Inner info protected by lock.
-pub struct SleepMutexInner<T: ?Sized, S: Sched> {
+pub struct SleepLockInner<T: ?Sized, S: Sched> {
     phantom: PhantomData<S>,
 
-    /// A unique identifier of this [`SleepMutex`].
+    /// A unique identifier of this [`SleepLock`].
     id: usize,
 
     /// If this mutex is locked and holds the inner data.
@@ -80,31 +66,31 @@ pub struct SleepMutexInner<T: ?Sized, S: Sched> {
 /// A guard that provides mutable data access.
 ///
 /// When the guard falls out of scope it will release the lock.
-pub struct SleepMutexGuard<'a, T: ?Sized + 'a, S: Sched> {
+pub struct SleepLockGuard<'a, T: ?Sized + 'a, S: Sched> {
     phantom: PhantomData<S>,
-    lock: &'a SpinMutex<SleepMutexInner<T, S>>,
+    lock: &'a SpinLock<SleepLockInner<T, S>>,
     data: &'a mut T,
 }
 
 // unsafe thread-safe impls
-unsafe impl<T: ?Sized + Send, S: Sched> Sync for SleepMutex<T, S> {}
-unsafe impl<T: ?Sized + Send, S: Sched> Send for SleepMutex<T, S> {}
+unsafe impl<T: ?Sized + Send, S: Sched> Sync for SleepLock<T, S> {}
+unsafe impl<T: ?Sized + Send, S: Sched> Send for SleepLock<T, S> {}
 
-impl<T, S: Sched> SleepMutex<T, S> {
-    /// Creates a new [`SleepMutex`] wrapping the supplied data.
+impl<T, S: Sched> SleepLock<T, S> {
+    /// Creates a new [`SleepLock`] wrapping the supplied data.
     #[inline(always)]
     pub fn new(data: T) -> Self {
-        SleepMutex {
+        SleepLock {
             phantom: PhantomData,
-            inner: SpinMutex::new(SleepMutexInner::new(data)),
+            inner: SpinLock::new(SleepLockInner::new(data)),
         }
     }
 
-    /// Consumes this [`SleepMutex`] and unwraps the underlying data.
+    /// Consumes this [`SleepLock`] and unwraps the underlying data.
     pub fn into_inner(self) -> T {
         // We know statically that there are no outstanding references to
         // `self` so there's no need to lock.
-        let SleepMutex { inner, .. } = self;
+        let SleepLock { inner, .. } = self;
         inner.into_inner().into_inner()
     }
 
@@ -118,23 +104,23 @@ impl<T, S: Sched> SleepMutex<T, S> {
     }
 }
 
-impl<T, S: Sched> SleepMutexInner<T, S> {
-    /// Creates a new [`SleepMutexInner`].
+impl<T, S: Sched> SleepLockInner<T, S> {
+    /// Creates a new [`SleepLockInner`].
     #[inline(always)]
     pub fn new(data: T) -> Self {
-        SleepMutexInner {
+        SleepLockInner {
             phantom: PhantomData,
-            id: SleepMutexIDAllocator.lock().alloc(),
+            id: SleepLockIDAllocator.lock().alloc(),
             locked: false,
             data: UnsafeCell::new(data),
         }
     }
 
-    /// Consumes this [`SleepMutexInner`] and unwraps the underlying data.
+    /// Consumes this [`SleepLockInner`] and unwraps the underlying data.
     pub fn into_inner(self) -> T {
         // We know statically that there are no outstanding references to
         // `self` so there's no need to lock.
-        let SleepMutexInner { data, .. } = self;
+        let SleepLockInner { data, .. } = self;
         data.into_inner()
     }
 
@@ -148,25 +134,25 @@ impl<T, S: Sched> SleepMutexInner<T, S> {
     }
 }
 
-impl<T: ?Sized, S: Sched> SleepMutex<T, S> {
-    /// Locks the [`SleepMutex`], returning a guard that permits access to the inner data.
+impl<T: ?Sized, S: Sched> SleepLock<T, S> {
+    /// Locks the [`SleepLock`], returning a guard that permits access to the inner data.
     ///
     /// The returned value may be dereferenced for data access
     /// and the lock will be dropped when the guard falls out of scope.
     #[inline(always)]
-    pub fn lock(&self, thread: &SpinMutex<S>) -> SleepMutexGuard<T, S> {
+    pub fn lock(&self, thread: &SpinLock<S>) -> SleepLockGuard<T, S> {
         let mut inner = self.inner.lock();
         let lock_id = inner.id;
 
         // Automatically release the lock and sleep on chan.
         while inner.locked {
             // Must acquire thread lock in order to change thread state and then call sched().
-            let thread_ptr = S::lock(thread);
+            let mut guard = thread.lock();
             drop(inner);
 
             // Go to sleep
-            S::sleep(thread_ptr);
-            S::set_id(thread_ptr, Some(lock_id));
+            S::sleep(&mut guard);
+            S::set_id(&mut guard, Some(lock_id));
 
             unsafe {
                 // Interrupt cannot be nesting or set before scheduler.
@@ -178,15 +164,15 @@ impl<T: ?Sized, S: Sched> SleepMutex<T, S> {
             }
 
             // Tidy up
-            S::set_id(thread_ptr, None);
+            S::set_id(&mut guard, None);
 
             // Reacquire original lock
-            S::unlock(thread);
+            drop(guard);
             inner = self.inner.lock();
         }
         inner.locked = true;
 
-        SleepMutexGuard {
+        SleepLockGuard {
             phantom: PhantomData,
             lock: &self.inner,
             data: unsafe { &mut *inner.data.get() },
@@ -199,7 +185,7 @@ impl<T: ?Sized, S: Sched> SleepMutex<T, S> {
         self.inner.lock().locked
     }
 
-    /// Force unlock this [`SleepMutex`].
+    /// Force unlock this [`SleepLock`].
     #[inline(always)]
     pub unsafe fn force_unlock(&self) {
         let mut inner = self.inner.lock();
@@ -207,13 +193,13 @@ impl<T: ?Sized, S: Sched> SleepMutex<T, S> {
         S::wakeup(inner.id);
     }
 
-    /// Tries to lock this [`SleepMutex`], returning a guard if successful.
+    /// Tries to lock this [`SleepLock`], returning a guard if successful.
     #[inline(always)]
-    pub fn try_lock(&self) -> Option<SleepMutexGuard<T, S>> {
+    pub fn try_lock(&self) -> Option<SleepLockGuard<T, S>> {
         let mut inner = self.inner.lock();
         if !inner.locked {
             inner.locked = true;
-            Some(SleepMutexGuard {
+            Some(SleepLockGuard {
                 phantom: PhantomData,
                 lock: &self.inner,
                 data: unsafe { &mut *inner.data.get() },
@@ -224,33 +210,33 @@ impl<T: ?Sized, S: Sched> SleepMutex<T, S> {
     }
 }
 
-impl<T: ?Sized + fmt::Debug, S: Sched> fmt::Debug for SleepMutex<T, S> {
+impl<T: ?Sized + fmt::Debug, S: Sched> fmt::Debug for SleepLock<T, S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.try_lock() {
-            Some(guard) => write!(f, "SleepMutex {{ data: ")
+            Some(guard) => write!(f, "SleepLock {{ data: ")
                 .and_then(|()| (&*guard).fmt(f))
                 .and_then(|()| write!(f, "}}")),
-            None => write!(f, "SleepMutex {{ <locked> }}"),
+            None => write!(f, "SleepLock {{ <locked> }}"),
         }
     }
 }
 
-impl<T: ?Sized + Default, S: Sched> Default for SleepMutex<T, S> {
+impl<T: ?Sized + Default, S: Sched> Default for SleepLock<T, S> {
     fn default() -> Self {
         Self::new(Default::default())
     }
 }
 
-impl<T, S: Sched> From<T> for SleepMutex<T, S> {
+impl<T, S: Sched> From<T> for SleepLock<T, S> {
     fn from(data: T) -> Self {
         Self::new(data)
     }
 }
 
-impl<T: ?Sized, S: Sched> SleepMutexInner<T, S> {
+impl<T: ?Sized, S: Sched> SleepLockInner<T, S> {
     /// Returns a mutable reference to the underlying data.
     ///
-    /// Since this call borrows the [`SleepMutexInner`] mutably, and a mutable reference is guaranteed to be exclusive in Rust,
+    /// Since this call borrows the [`SleepLockInner`] mutably, and a mutable reference is guaranteed to be exclusive in Rust,
     /// no actual locking needs to take place -- the mutable borrow statically guarantees no locks exist. As such,
     /// this is a 'zero-cost' operation.
     #[inline(always)]
@@ -261,26 +247,26 @@ impl<T: ?Sized, S: Sched> SleepMutexInner<T, S> {
     }
 }
 
-impl<'a, T: ?Sized + fmt::Debug, S: Sched> fmt::Debug for SleepMutexGuard<'a, T, S> {
+impl<'a, T: ?Sized + fmt::Debug, S: Sched> fmt::Debug for SleepLockGuard<'a, T, S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
-impl<'a, T: ?Sized, S: Sched> Deref for SleepMutexGuard<'a, T, S> {
+impl<'a, T: ?Sized, S: Sched> Deref for SleepLockGuard<'a, T, S> {
     type Target = T;
     fn deref(&self) -> &T {
         self.data
     }
 }
 
-impl<'a, T: ?Sized, S: Sched> DerefMut for SleepMutexGuard<'a, T, S> {
+impl<'a, T: ?Sized, S: Sched> DerefMut for SleepLockGuard<'a, T, S> {
     fn deref_mut(&mut self) -> &mut T {
         self.data
     }
 }
 
-impl<'a, T: ?Sized, S: Sched> Drop for SleepMutexGuard<'a, T, S> {
+impl<'a, T: ?Sized, S: Sched> Drop for SleepLockGuard<'a, T, S> {
     /// The dropping of the MutexGuard will release the lock it was created from.
     fn drop(&mut self) {
         let mut inner = self.lock.lock();

@@ -5,6 +5,7 @@
 #![feature(alloc_error_handler)]
 #![feature(core_intrinsics)]
 #![feature(sync_unsafe_cell)]
+#![allow(dead_code)]
 
 mod config;
 mod cons;

@@ -3,7 +3,7 @@ use alloc::{
     sync::Arc,
 };
 use core::{any::Any, fmt};
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 
 use crate::CacheUnit;
 
@@ -93,7 +93,7 @@ pub trait BlockCache {
         &mut self,
         block_id: usize,
         block_dev: Arc<dyn BlockDevice>,
-    ) -> Arc<Mutex<BlockCacheUnit>>;
+    ) -> Arc<SpinLock<BlockCacheUnit>>;
 
     /// Synchronize all block cache units to block device.
     fn sync_all(&self);
@@ -101,7 +101,7 @@ pub trait BlockCache {
 
 pub struct FIFOBlockCache {
     max_size: usize,
-    inner: VecDeque<(usize, Arc<Mutex<BlockCacheUnit>>)>,
+    inner: VecDeque<(usize, Arc<SpinLock<BlockCacheUnit>>)>,
 }
 
 impl FIFOBlockCache {
@@ -122,7 +122,7 @@ impl BlockCache for FIFOBlockCache {
         &mut self,
         block_id: usize,
         block_dev: Arc<dyn BlockDevice>,
-    ) -> Arc<Mutex<BlockCacheUnit>> {
+    ) -> Arc<SpinLock<BlockCacheUnit>> {
         if let Some(pair) = self.inner.iter().find(|pair| pair.0 == block_id) {
             Arc::clone(&pair.1)
         } else {
@@ -141,7 +141,7 @@ impl BlockCache for FIFOBlockCache {
                 }
             }
             // load block into mem and push back
-            let block_cache = Arc::new(Mutex::new(BlockCacheUnit::new(
+            let block_cache = Arc::new(SpinLock::new(BlockCacheUnit::new(
                 block_id,
                 Arc::clone(&block_dev),
             )));
@@ -170,7 +170,7 @@ impl fmt::Debug for FIFOBlockCache {
 
 pub struct LRUBlockCache {
     max_size: usize,
-    inner: LinkedList<(usize, Arc<Mutex<BlockCacheUnit>>)>,
+    inner: LinkedList<(usize, Arc<SpinLock<BlockCacheUnit>>)>,
 }
 
 impl LRUBlockCache {
@@ -190,7 +190,7 @@ impl BlockCache for LRUBlockCache {
         &mut self,
         block_id: usize,
         block_dev: Arc<dyn BlockDevice>,
-    ) -> Arc<Mutex<BlockCacheUnit>> {
+    ) -> Arc<SpinLock<BlockCacheUnit>> {
         let inner = &mut self.inner;
         let result = inner
             .iter_mut()
@@ -215,7 +215,7 @@ impl BlockCache for LRUBlockCache {
                     panic!("Run out of queue cache. Consider increase the size of this cache");
                 }
             }
-            let unit = Arc::new(Mutex::new(BlockCacheUnit::new(block_id, block_dev)));
+            let unit = Arc::new(SpinLock::new(BlockCacheUnit::new(block_id, block_dev)));
             inner.push_back((block_id, unit.clone()));
             unit
         }

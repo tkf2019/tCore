@@ -3,8 +3,8 @@ use super::{
 };
 use crate::BLOCK_SZ;
 use alloc::sync::Arc;
-use kernel_sync::Mutex;
 use device_cache::{BlockDevice, CacheUnit};
+use kernel_sync::SpinLock;
 ///An easy file system on block
 pub struct EasyFileSystem {
     ///Real device
@@ -25,7 +25,7 @@ impl EasyFileSystem {
         block_device: Arc<dyn BlockDevice>,
         total_blocks: u32,
         inode_bitmap_blocks: u32,
-    ) -> Arc<Mutex<Self>> {
+    ) -> Arc<SpinLock<Self>> {
         // calculate block size of areas & create bitmaps
         let inode_bitmap = Bitmap::new(1, inode_bitmap_blocks as usize);
         let inode_num = inode_bitmap.maximum();
@@ -79,10 +79,10 @@ impl EasyFileSystem {
                 disk_inode.initialize(DiskInodeType::Directory);
             });
         block_cache_sync_all();
-        Arc::new(Mutex::new(efs))
+        Arc::new(SpinLock::new(efs))
     }
     /// Open a block device as a filesystem
-    pub fn open(block_device: Arc<dyn BlockDevice>) -> Arc<Mutex<Self>> {
+    pub fn open(block_device: Arc<dyn BlockDevice>) -> Arc<SpinLock<Self>> {
         // read SuperBlock
         get_block_cache(0, Arc::clone(&block_device))
             .lock()
@@ -100,11 +100,11 @@ impl EasyFileSystem {
                     inode_area_start_block: 1 + super_block.inode_bitmap_blocks,
                     data_area_start_block: 1 + inode_total_blocks + super_block.data_bitmap_blocks,
                 };
-                Arc::new(Mutex::new(efs))
+                Arc::new(SpinLock::new(efs))
             })
     }
     /// Get the root inode of the filesystem
-    pub fn root_inode(efs: &Arc<Mutex<Self>>) -> Inode {
+    pub fn root_inode(efs: &Arc<SpinLock<Self>>) -> Inode {
         let block_device = Arc::clone(&efs.lock().block_device);
         // acquire efs lock temporarily
         let (block_id, block_offset) = efs.lock().get_disk_inode_pos(0);

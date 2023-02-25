@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 use easy_fs::BlockDevice;
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 use spin::Lazy;
 use virtio_drivers::{Hal, VirtIOBlk, VirtIOHeader};
 
@@ -12,13 +12,13 @@ use crate::{
 
 pub static BLOCK_DEVICE: Lazy<Arc<dyn BlockDevice>> = Lazy::new(|| {
     Arc::new(unsafe {
-        VirtIOBlock(Mutex::new(
+        VirtIOBlock(SpinLock::new(
             VirtIOBlk::new(&mut *(VIRTIO0 as *mut VirtIOHeader)).unwrap(),
         ))
     })
 });
 
-pub struct VirtIOBlock(Mutex<VirtIOBlk<'static, VirtioHal>>);
+pub struct VirtIOBlock(SpinLock<VirtIOBlk<'static, VirtioHal>>);
 
 impl BlockDevice for VirtIOBlock {
     fn read_block(&self, block_id: usize, buf: &mut [u8]) {

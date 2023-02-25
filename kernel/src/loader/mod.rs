@@ -2,7 +2,7 @@ pub mod flags;
 mod init;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 use vfs::{OpenFlags, Path};
 use xmas_elf::{
     header,
@@ -11,11 +11,11 @@ use xmas_elf::{
 };
 
 use crate::{
+    arch::mm::{PTEFlags, Page, VirtAddr, PAGE_SIZE},
     config::{ADDR_ALIGN, ELF_BASE_RELOCATE, USER_STACK_BASE, USER_STACK_PAGES, USER_STACK_SIZE},
     error::{KernelError, KernelResult},
     fs::open,
     mm::{pma::FixedPMA, MM},
-    arch::mm::{PTEFlags, Page, VirtAddr, PAGE_SIZE},
     task::Task,
 };
 
@@ -110,7 +110,7 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
                     start_va + dyn_base,
                     end_va + dyn_base,
                     map_flags,
-                    Arc::new(Mutex::new(FixedPMA::new(count.number())?)),
+                    Arc::new(SpinLock::new(FixedPMA::new(count.number())?)),
                 )?;
             }
             program::Type::Interp => {
@@ -143,7 +143,7 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
         ustack_top.into(),
         ustack_base.into(),
         PTEFlags::READABLE | PTEFlags::WRITABLE | PTEFlags::USER_ACCESSIBLE,
-        Arc::new(Mutex::new(FixedPMA::new(USER_STACK_PAGES)?)),
+        Arc::new(SpinLock::new(FixedPMA::new(USER_STACK_PAGES)?)),
     )?;
     let mut vsp = VirtAddr::from(ustack_base);
     let sp = mm.translate(vsp)?;

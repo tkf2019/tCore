@@ -1,5 +1,5 @@
 use core::panic::PanicInfo;
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 use sbi_rt::*;
 use spin::Lazy;
 
@@ -7,10 +7,9 @@ use crate::{
     arch::get_cpu_id,
     config::CPU_NUM,
     println,
-    task::{current_task, kstack_layout},
 };
 
-static PANIC_COUNT: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
+static PANIC_COUNT: Lazy<SpinLock<usize>> = Lazy::new(|| SpinLock::new(0));
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {

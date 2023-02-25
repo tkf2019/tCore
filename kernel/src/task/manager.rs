@@ -1,6 +1,7 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
+use core::cell::SyncUnsafeCell;
 use id_alloc::{IDAllocator, RecycleAllocator};
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 use log::{error, trace};
 use oscomp::{fetch_test, finish_test};
 use spin::Lazy;
@@ -27,8 +28,8 @@ use super::{
 };
 
 /// Global process identification allocator.
-static PID_ALLOCATOR: Lazy<Mutex<RecycleAllocator>> =
-    Lazy::new(|| Mutex::new(RecycleAllocator::new(0)));
+static PID_ALLOCATOR: Lazy<SpinLock<RecycleAllocator>> =
+    Lazy::new(|| SpinLock::new(RecycleAllocator::new(0)));
 
 /// Only provides [`pid_alloc()`] interface.
 pub fn pid_alloc() -> usize {
@@ -45,8 +46,8 @@ impl Drop for PID {
 }
 
 /// Global kernal stack allocator.
-static KSTACK_ALLOCATOR: Lazy<Mutex<RecycleAllocator>> =
-    Lazy::new(|| Mutex::new(RecycleAllocator::new(0)));
+static KSTACK_ALLOCATOR: Lazy<SpinLock<RecycleAllocator>> =
+    Lazy::new(|| SpinLock::new(RecycleAllocator::new(0)));
 
 /// Allocate new kernel stack identification.
 pub fn kstack_alloc() -> usize {
@@ -77,7 +78,7 @@ pub fn kstack_vm_alloc(kstack: usize) -> KernelResult<usize> {
         kstack_top.into(),
         kstack_base.into(),
         PTEFlags::READABLE | PTEFlags::WRITABLE,
-        Arc::new(Mutex::new(FixedPMA::new(KERNEL_STACK_PAGES)?)),
+        Arc::new(SpinLock::new(FixedPMA::new(KERNEL_STACK_PAGES)?)),
     )?;
     Ok(kstack_base)
 }
@@ -101,47 +102,32 @@ impl CPUContext {
     }
 }
 
-pub struct TaskManager {
-    /// Task scheduler
-    pub sched: QueueScheduler,
-
-    /// CPU contexts mapped by hartid.
-    pub cpus: Vec<CPUContext>,
-}
-
-impl TaskManager {
-    /// Create a new task manager.
-    pub fn new() -> Self {
-        Self {
-            sched: QueueScheduler::new(),
-            cpus: Vec::new(),
-        }
-    }
-}
-
 /// Global task manager shared by CPUs.
-pub static TASK_MANAGER: Lazy<Mutex<TaskManager>> = Lazy::new(|| {
-    let mut task_manager = TaskManager::new();
-    // Initialize CPU contexts.
+pub static TASK_MANAGER: Lazy<SpinLock<QueueScheduler>> =
+    Lazy::new(|| SpinLock::new(QueueScheduler::new()));
+
+/// Global cpu local states.
+pub static CPU_LIST: Lazy<SyncUnsafeCell<Vec<CPUContext>>> = Lazy::new(|| {
+    let mut cpu_list = Vec::new();
     for cpu_id in 0..CPU_NUM {
-        task_manager.cpus.push(CPUContext::new());
+        cpu_list.push(CPUContext::new());
     }
-    Mutex::new(task_manager)
+    SyncUnsafeCell::new(cpu_list)
 });
+
+/// Returns this cpu context.
+pub fn cpu() -> &'static mut CPUContext {
+    unsafe { &mut (*CPU_LIST.get())[get_cpu_id()] }
+}
 
 /// Gets current task running on this CPU.
 pub fn current_task() -> Option<Arc<Task>> {
-    let cpu_id = get_cpu_id();
-    let task_manager = TASK_MANAGER.lock();
-    let cpu_ctx = &task_manager.cpus[cpu_id];
-    cpu_ctx.current.as_ref().map(Arc::clone)
+    cpu().current.as_ref().map(Arc::clone)
 }
 
 /// IDLE task context on this CPU.
 pub fn idle_ctx() -> *const TaskContext {
-    let cpu_id = get_cpu_id();
-    let task_manager = TASK_MANAGER.lock();
-    &task_manager.cpus[cpu_id].idle_ctx as _
+    &cpu().idle_ctx as _
 }
 
 pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
@@ -153,9 +139,8 @@ pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
     };
     let init_task = from_args(String::from(ROOT_DIR), args).unwrap();
     // Update task manager
-    let mut task_manager = TASK_MANAGER.lock();
-    task_manager.cpus[get_cpu_id()].current = Some(init_task.clone());
-    task_manager.sched.add(init_task.clone());
+    cpu().current = Some(init_task.clone());
+    TASK_MANAGER.lock().add(init_task.clone());
     init_task
 });
 
@@ -173,7 +158,7 @@ pub fn init() {
 pub fn idle() -> ! {
     loop {
         let mut task_manager = TASK_MANAGER.lock();
-        let mut task = task_manager.sched.fetch();
+        let mut task = task_manager.fetch();
         if IS_TEST_ENV && task.is_none() {
             // Task path.
             if let Some(args) = fetch_test() {
@@ -184,8 +169,7 @@ pub fn idle() -> ! {
         }
 
         if let Some(task) = task {
-            let cpu_id = get_cpu_id();
-            let cpu_ctx = &mut task_manager.cpus[cpu_id];
+            let cpu_ctx = cpu();
             let idle_ctx = &cpu_ctx.idle_ctx as *const TaskContext;
             let next_ctx = {
                 let mut task_inner = task.inner_lock();
@@ -203,8 +187,7 @@ pub fn idle() -> ! {
             let current = current_task().take().expect("From IDLE task");
             match current.get_state() {
                 TaskState::Runnable => {
-                    let mut task_manager = TASK_MANAGER.lock();
-                    task_manager.sched.add(current);
+                    TASK_MANAGER.lock().add(current);
                 }
                 TaskState::Zombie => {
                     if !IS_TEST_ENV && current.pid.0 == 0 {

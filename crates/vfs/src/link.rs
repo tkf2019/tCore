@@ -1,15 +1,16 @@
 use alloc::collections::BTreeMap;
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 use spin::Lazy;
 
 use super::path::Path;
 
 /// Virtual path mapped to real path.
-static LINK_PATH_MAP: Lazy<Mutex<BTreeMap<Path, Path>>> = Lazy::new(|| Mutex::new(BTreeMap::new()));
+static LINK_PATH_MAP: Lazy<SpinLock<BTreeMap<Path, Path>>> =
+    Lazy::new(|| SpinLock::new(BTreeMap::new()));
 
 /// Real path mapped to hard link count.
-static LINK_COUNT_MAP: Lazy<Mutex<BTreeMap<Path, usize>>> =
-    Lazy::new(|| Mutex::new(BTreeMap::new()));
+static LINK_COUNT_MAP: Lazy<SpinLock<BTreeMap<Path, usize>>> =
+    Lazy::new(|| SpinLock::new(BTreeMap::new()));
 
 /// Gets the real path of a given path.
 ///

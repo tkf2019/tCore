@@ -1,15 +1,12 @@
 use alloc::{sync::Arc, vec::Vec};
-use core::{
-    cell::SyncUnsafeCell,
-    ops::{Deref, DerefMut},
-};
+use core::cell::SyncUnsafeCell;
 use device_cache::{BlockCache, CacheUnit, LRUBlockCache, BLOCK_SIZE};
 use errno::Errno;
 use fatfs::{
     DefaultTimeProvider, FsOptions, IoBase, LossyOemCpConverter, Read, Seek, SeekFrom, Write,
 };
-use kernel_sync::{Mutex, MutexGuard};
-use log::{debug, info, trace, warn};
+use kernel_sync::SpinLock;
+use log::{trace, warn};
 use spin::Lazy;
 use time_subsys::TimeSpec;
 use vfs::*;
@@ -18,7 +15,6 @@ use crate::{
     config::{CACHE_SIZE, FS_IMG_SIZE},
     driver::virtio_block::BLOCK_DEVICE,
     error::KernelError,
-    println,
 };
 
 type FatTP = DefaultTimeProvider;
@@ -187,8 +183,8 @@ pub struct FSFileInner {
 ///
 /// We use three types of regions to maintain the task metadata:
 /// - Local and immutable: data initialized once when task created.
-/// - Shared and mutable: uses [`Arc<Mutex<T>>`].
-/// - Local and mutable: uses [`Mutex<TaskInner>`] to wrap the data together.
+/// - Shared and mutable: uses [`Arc<SpinLock<T>>`].
+/// - Local and mutable: uses [`SpinLock<TaskInner>`] to wrap the data together.
 pub struct FSFile {
     /// Able to read.
     pub readable: bool,
@@ -200,7 +196,7 @@ pub struct FSFile {
     pub path: Path,
 
     /// Local and mutable data.
-    pub inner: Mutex<FSFileInner>,
+    pub inner: SpinLock<FSFileInner>,
 
     /// Real file in fat.
     pub file: SyncUnsafeCell<FatFile>,
@@ -218,7 +214,7 @@ impl FSFile {
             readable,
             writable,
             path,
-            inner: Mutex::new(FSFileInner {
+            inner: SpinLock::new(FSFileInner {
                 atime: TimeSpec::default(),
                 mtime: TimeSpec::default(),
                 ctime: TimeSpec::default(),
@@ -483,7 +479,7 @@ impl Drop for FileSystem {
 /// Global disk filesystem.
 ///
 /// TODO: A big lock on the filesystem!
-pub static GLOBAL_FS: Lazy<Mutex<FileSystem>> = Lazy::new(|| {
+pub static GLOBAL_FS: Lazy<SpinLock<FileSystem>> = Lazy::new(|| {
     let fs = FileSystem;
 
     let root = Path::root();
@@ -491,7 +487,7 @@ pub static GLOBAL_FS: Lazy<Mutex<FileSystem>> = Lazy::new(|| {
     fs.mkdir(&root, "lib").unwrap();
     fs.mkdir(&root, "tmp").unwrap();
 
-    Mutex::new(fs)
+    SpinLock::new(fs)
 });
 
 /// Global static instance of fat filesystem.

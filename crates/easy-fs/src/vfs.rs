@@ -5,13 +5,13 @@ use super::{
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use kernel_sync::{Mutex, MutexGuard};
 use device_cache::{BlockDevice, CacheUnit};
+use kernel_sync::{SpinLock, SpinLockGuard};
 /// Virtual filesystem layer over easy-fs
 pub struct Inode {
     block_id: usize,
     block_offset: usize,
-    fs: Arc<Mutex<EasyFileSystem>>,
+    fs: Arc<SpinLock<EasyFileSystem>>,
     block_device: Arc<dyn BlockDevice>,
 }
 
@@ -20,7 +20,7 @@ impl Inode {
     pub fn new(
         block_id: u32,
         block_offset: usize,
-        fs: Arc<Mutex<EasyFileSystem>>,
+        fs: Arc<SpinLock<EasyFileSystem>>,
         block_device: Arc<dyn BlockDevice>,
     ) -> Self {
         Self {
@@ -84,7 +84,7 @@ impl Inode {
         &self,
         new_size: u32,
         disk_inode: &mut DiskInode,
-        fs: &mut MutexGuard<EasyFileSystem>,
+        fs: &mut SpinLockGuard<EasyFileSystem>,
     ) {
         if new_size < disk_inode.size {
             return;

@@ -1,5 +1,5 @@
 use alloc::sync::Arc;
-use kernel_sync::Mutex;
+use kernel_sync::SpinLock;
 use vfs::{ring_buf::RingBuffer, File};
 
 use crate::{config::MAX_PIPE_BUF, fs::mem::MemFile, task::do_yield};
@@ -9,13 +9,13 @@ pub struct Pipe {
     is_read: bool,
 
     /// Inner data in a ring buffer.
-    buf: Arc<Mutex<RingBuffer<MemFile>>>,
+    buf: Arc<SpinLock<RingBuffer<MemFile>>>,
 }
 
 impl Pipe {
     /// Creates a read end and a wirte end of a pipe at the smae time.
     pub fn new() -> (Self, Self) {
-        let buf = Arc::new(Mutex::new(RingBuffer::new(
+        let buf = Arc::new(SpinLock::new(RingBuffer::new(
             MAX_PIPE_BUF,
             MemFile::new(MAX_PIPE_BUF),
         )));
