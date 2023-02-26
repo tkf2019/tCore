@@ -3,11 +3,11 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
-use core::{fmt, mem::size_of};
+use core::{cell::SyncUnsafeCell, fmt, mem::size_of};
 use errno::Errno;
 use id_alloc::{IDAllocator, RecycleAllocator};
-use kernel_sync::{SpinLock, SpinLockGuard};
-use log::trace;
+use kernel_sync::{SleepLockSched, SpinLock, SpinLockGuard};
+use log::{debug, trace};
 use signal_defs::{SigActions, SigInfo, SigPending, SigSet, NSIG};
 use syscall_interface::{IoVec, SyscallResult, AT_FDCWD, AT_REMOVEDIR};
 use vfs::{File, OpenFlags, Path, StatMode};
@@ -22,35 +22,46 @@ use crate::{
     fs::{open, unlink, FDManager},
     loader::from_elf,
     mm::{pma::FixedPMA, BackendFile, MmapFlags, MmapProt, KERNEL_MM, MM},
-    task::{kstack_alloc, pid_alloc},
+    task::{kstack_alloc, pid_alloc, schedule::Scheduler},
 };
 
 use super::{
-    context::TaskContext,
+    context::{TaskContext, __switch},
+    cpu, curr_ctx, curr_task, idle_ctx,
     manager::{kstack_dealloc, kstack_vm_alloc, PID},
+    TASK_MANAGER,
 };
 
 /// Five-state model:
 ///
-/// - **Running** or **Runnable** (R): The task takes up a CPU core to execute its code.
+/// - **Running** or **Runnable** (R)
 /// - **Sleeping** states: **Interruptible** (S) and **Uninterruptible** (D).
-/// S will only for resources to be available, while D will react to both signals and the
-/// availability of resources.
-/// - **Stopped** (T): A task will react to `SIGSTOP` or `SIGTSTP` signals and be brought back
-/// to running or runnable by `SIGCONT` signal.
-/// - **Zombie** (Z): When a task has completed its execution or is terminated, it will send the
-/// `SIGCHLD` signal to the parent task and go into the zombie state.
-#[derive(Debug, Clone, Copy)]
+/// - **Stopped** (T)
+/// - **Zombie** (Z)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskState {
+    /// The task is waiting in scheduler.
     Runnable,
+
+    /// The task takes up a CPU core to execute its code.
     Running,
+
+    /// A task will react to `SIGSTOP` or `SIGTSTP` signals and be brought back
+    /// to running or runnable by `SIGCONT` signal.
     Stopped,
+
+    /// Task will only for resources to be available.
     Interruptible,
+
+    /// Task will react to both signals and the availability of resources.
     Uninterruptible,
+
+    /// When a task has completed its execution or is terminated, it will send the
+    /// `SIGCHLD` signal to the parent task and go into the zombie state.
     Zombie,
 }
 
-/// Mutable data owned by the task.
+/// Mutable inner data of the task, not protected by lock.
 pub struct TaskInner {
     /// Task exit code, known as the number returned to a parent process by an executable.
     pub exit_code: i32,
@@ -58,18 +69,8 @@ pub struct TaskInner {
     /// Task context
     pub ctx: TaskContext,
 
-    /// Task state, using five-state model.
-    pub state: TaskState,
-
-    /// Hierarchy pointers in task management.
-    /// INIT task has no parent task.
-    pub parent: Option<Weak<Task>>,
-
-    /// Pointers to child tasks.
-    /// When a parent task exits before its children, they will become orphans.
-    /// These tasks will be adopted by INIT task to avoid being dropped when the reference
-    /// counter becomes 0.
-    pub children: Vec<Arc<Task>>,
+    /// Current working directory.
+    pub curr_dir: String,
 
     /// If a thread is started using `clone(2)` with the `CLONE_CHILD_SETTID` flag,
     /// set_child_tid is set to the value passed in the ctid argument of that system call.
@@ -82,9 +83,6 @@ pub struct TaskInner {
     /// clear_child_tid is set to the value passed in the ctid argument of that system call.
     pub clear_child_tid: usize,
 
-    /// Current working directory.
-    pub curr_dir: String,
-
     /// Pending signals.
     pub sig_pending: SigPending,
 
@@ -94,6 +92,27 @@ pub struct TaskInner {
 
 unsafe impl Send for TaskInner {}
 
+/// Mutable inner data of the task, protected by lock.
+pub struct TaskLockedInner {
+    /// Task state, using five-state model.
+    pub state: TaskState,
+
+    /// Sleep lock id.
+    pub sleeping_on: Option<usize>,
+
+    /// Hierarchy pointers in task management.
+    /// INIT task has no parent task.
+    pub parent: Option<Weak<Task>>,
+
+    /// Pointers to child tasks.
+    /// When a parent task exits before its children, they will become orphans.
+    /// These tasks will be adopted by INIT task to avoid being dropped when the reference
+    /// counter becomes 0.
+    pub children: Vec<Arc<Task>>,
+}
+
+unsafe impl Send for TaskLockedInner {}
+
 /// In conventional opinion, process is the minimum unit of resource allocation, while task (or
 /// thread) is the minimum unit of scheduling. Process is always created with a main task. On
 /// the one hand, a process may have several tasks; on the other hand, these tasks shared the
@@ -101,12 +120,18 @@ unsafe impl Send for TaskInner {}
 /// identification (called pid) and etc.
 ///
 /// We use four types of regions to maintain the task metadata:
-/// - Shared and immutable: uses [`Arc<T>`]
-/// - Shared and mutable: uses [`Arc<SpinLock<T>>`]
+/// - Shared with other tasks and immutable: uses [`Arc<T>`]
+/// - Shared with other takss and mutable: uses [`Arc<SpinLock<T>>`]
 /// - Local and immutable: data initialized once when task created
-/// - Local and mutable: uses [`SpinLock<TaskInner>`] to wrap the data together
+/// - Local and mutable fields that might be changed by other harts: uses [`SpinLock<TaskLockedInner>`] to wrap
+/// the data together
+/// - Local and mutable files that cannot be accessed by multiple harts at the same time: uses
+/// [`SyncUnsafeCell<TaskInner>`]
 pub struct Task {
     /* Local and immutable */
+    /// Name of this task (for debug).
+    pub name: String,
+
     /// Kernel stack identification.
     pub kstack: usize,
 
@@ -115,10 +140,6 @@ pub struct Task {
 
     /// Trapframe physical address.
     pub trapframe_pa: PhysAddr,
-
-    /* Local and mutable */
-    /// Inner data wrapped by [`SpinLock`].
-    inner: SpinLock<TaskInner>,
 
     /* Shared and immutable */
     /// Process identification.
@@ -141,8 +162,12 @@ pub struct Task {
     /// Signal actions.
     pub sig_actions: Arc<SpinLock<SigActions>>,
 
-    /// Name of this task.
-    pub name: String,
+    /* Local and mutable */
+    /// Inner data wrapped by [`SpinLock`].
+    pub locked_inner: SpinLock<TaskLockedInner>,
+
+    /// Inner data wrapped by [`SyncUnsafeCell`].
+    pub inner: SyncUnsafeCell<TaskInner>,
 }
 
 impl Task {
@@ -191,17 +216,20 @@ impl Task {
             kstack,
             tid: MAIN_TASK,
             trapframe_pa,
-            inner: SpinLock::new(TaskInner {
+            inner: SyncUnsafeCell::new(TaskInner {
                 exit_code: 0,
                 ctx: TaskContext::new(user_trap_return as usize, kstack_base),
-                state: TaskState::Runnable,
-                parent: None,
-                children: Vec::new(),
                 set_child_tid: 0,
                 clear_child_tid: 0,
                 curr_dir: dir,
                 sig_pending: SigPending::new(),
                 sig_blocked: SigSet::new(),
+            }),
+            locked_inner: SpinLock::new(TaskLockedInner {
+                state: TaskState::Runnable,
+                sleeping_on: None,
+                parent: None,
+                children: Vec::new(),
             }),
             pid: Arc::new(PID(pid)),
             tid_allocator: Arc::new(SpinLock::new(RecycleAllocator::new(MAIN_TASK + 1))),
@@ -213,28 +241,22 @@ impl Task {
         Ok(task)
     }
 
-    /// Trapframe of this task
+    /// Returns the [`TrapFrame`] of this task
     pub fn trapframe(&self) -> &'static mut TrapFrame {
         TrapFrame::from(self.trapframe_pa)
     }
 
-    /// Acquire inner lock to modify the metadata in [`TaskInner`].
-    pub fn inner_lock(&self) -> SpinLockGuard<TaskInner> {
-        self.inner.lock()
+    /// Mutable access to [`TaskInner`].
+    pub fn inner(&self) -> &mut TaskInner {
+        unsafe { &mut *self.inner.get() }
     }
 
-    /// Try to acquire inner lock to modify the metadata in [`TaskInner`]
-    pub fn inner_try_lock(&self) -> Option<SpinLockGuard<TaskInner>> {
-        self.inner.try_lock()
+    /// Acquires inner lock to modify the metadata in [`TaskLockedInner`].
+    pub fn locked_inner(&self) -> SpinLockGuard<TaskLockedInner> {
+        self.locked_inner.lock()
     }
 
-    /// Get task status
-    pub fn get_state(&self) -> TaskState {
-        let inner = self.inner.lock();
-        inner.state
-    }
-
-    /// Get the reference of a file object by file descriptor `fd`.
+    /// Gets the reference of a file object by file descriptor `fd`.
     pub fn get_file(&self, fd: usize) -> KernelResult<Arc<dyn File>> {
         let fd_manager = self.fd_manager.lock();
         fd_manager.get(fd)
@@ -356,7 +378,7 @@ impl Task {
     /// Gets the directory name from a file descriptor.
     pub fn get_dir(&self, dirfd: usize) -> KernelResult<Path> {
         if dirfd == AT_FDCWD {
-            Ok(Path::new(self.inner_lock().curr_dir.as_str()))
+            Ok(Path::new(self.inner().curr_dir.as_str()))
         } else {
             let dir = self.fd_manager.lock().get(dirfd)?;
             if dir.is_dir() {
@@ -455,5 +477,38 @@ impl Task {
         }
 
         Ok(0)
+    }
+}
+
+/* Sleep lock */
+
+impl kernel_sync::SleepLockSched for TaskLockedInner {
+    unsafe fn sched(guard: SpinLockGuard<Self>) {
+        // Lock might be released after the task is pushed back to the scheduler.
+        TASK_MANAGER.lock().add(curr_task().take().unwrap());
+        drop(guard);
+
+        __switch(curr_ctx(), idle_ctx());
+    }
+
+    fn set_id(task: &mut Self, id: Option<usize>) {
+        task.sleeping_on = id;
+    }
+
+    fn sleep(task: &mut Self) {
+        task.state = TaskState::Interruptible;
+    }
+
+    /// Wakes up tasks sleeping on this lock.
+    fn wakeup(id: usize) {
+        TASK_MANAGER.lock().iter().for_each(|task| {
+            let mut inner = task.locked_inner();
+            if inner.state == TaskState::Interruptible
+                && inner.sleeping_on.is_some()
+                && inner.sleeping_on.unwrap() == id
+            {
+                inner.state = TaskState::Runnable;
+            }
+        });
     }
 }

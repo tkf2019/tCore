@@ -4,18 +4,19 @@ use time_subsys::{TimeSpec, TimeVal};
 
 use crate::{
     arch::{mm::VirtAddr, timer::get_time_sec_f64},
-    task::manager::current_task,
+    task::manager::curr_task,
 };
 
 use super::SyscallImpl;
 
 impl SyscallTimer for SyscallImpl {
     fn clock_gettime(_clockid: usize, tp: usize) -> SyscallResult {
-        let current = current_task().unwrap();
-        let mut mm = current.mm.lock();
+        let curr = curr_task().unwrap();
+        let mut curr_mm = curr.mm.lock();
 
         // Get time specification from user address space.
-        mm.alloc_write_type(tp.into(), &TimeSpec::new(get_time_sec_f64()))
+        curr_mm
+            .alloc_write_type(tp.into(), &TimeSpec::new(get_time_sec_f64()))
             .map_err(|_| Errno::EFAULT)?;
 
         Ok(0)
@@ -30,11 +31,12 @@ impl SyscallTimer for SyscallImpl {
     }
 
     fn gettimeofday(tv: usize) -> SyscallResult {
-        let current = current_task().unwrap();
-        let mut mm = current.mm.lock();
+        let curr = curr_task().unwrap();
+        let mut curr_mm = curr.mm.lock();
 
         // Get time specification from user address space.
-        mm.alloc_write_type(VirtAddr::from(tv), &TimeVal::new(get_time_sec_f64()))
+        curr_mm
+            .alloc_write_type(VirtAddr::from(tv), &TimeVal::new(get_time_sec_f64()))
             .map_err(|_| Errno::EFAULT)?;
 
         Ok(0)

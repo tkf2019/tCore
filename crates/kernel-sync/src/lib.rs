@@ -15,7 +15,7 @@ mod spinlock;
 
 pub use rcu::{reclamation, wait, RcuCell, RcuDrop, RcuDropFn, RcuReadGuard, RcuType};
 pub use seqlock::SeqLock;
-pub use sleeplock::{Sched, SleepLock, SleepLockGuard};
+pub use sleeplock::{Sched as SleepLockSched, SleepLock, SleepLockGuard};
 pub use spinlock::{SpinLock, SpinLockGuard};
 
 use arch::*;
@@ -26,13 +26,13 @@ const NCPU: usize = 16;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CPU {
     /// Depth of push_off() nesting.
-    noff: usize,
+    pub noff: usize,
 
     /// Were interrupts enabled before push_off()?
-    intena: bool,
+    pub intena: bool,
 }
 
-static mut CPUs: [CPU; NCPU] = [CPU {
+pub static mut CPUs: [CPU; NCPU] = [CPU {
     noff: 0,
     intena: false,
 }; NCPU];

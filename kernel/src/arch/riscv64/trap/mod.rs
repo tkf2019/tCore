@@ -15,7 +15,7 @@ use crate::{
     println,
     syscall::syscall,
     task::do_exit,
-    task::{manager::current_task, trapframe_base},
+    task::{manager::curr_task, trapframe_base},
 };
 
 use self::trapframe::KernelTrapContext;
@@ -74,11 +74,11 @@ pub fn user_trap_handler() -> ! {
     match scause.cause() {
         Trap::Exception(Exception::UserEnvCall) => {
             // pc + 4
-            let current = current_task().unwrap();
-            let trapframe = current.trapframe();
+            let curr = curr_task().unwrap();
+            let trapframe = curr.trapframe();
             trapframe.next_epc();
             // Syscall may change the flow
-            drop(current);
+            drop(curr);
             match syscall(trapframe.syscall_args().unwrap()) {
                 Ok(ret) => trapframe.set_a0(ret),
                 Err(errno) => {
@@ -88,20 +88,20 @@ pub fn user_trap_handler() -> ! {
             };
         }
         Trap::Exception(Exception::StorePageFault) => {
-            let current = current_task().unwrap();
-            let mut current_mm = current.mm.lock();
+            let curr = curr_task().unwrap();
+            let mut curr_mm = curr.mm.lock();
             // show_trapframe(&current.trapframe());
             trap_info();
-            if let Err(err) = current_mm
-                .do_handle_page_fault(VirtAddr::from(stval), VMFlags::USER | VMFlags::WRITE)
+            if let Err(err) =
+                curr_mm.do_handle_page_fault(VirtAddr::from(stval), VMFlags::USER | VMFlags::WRITE)
             {
                 fatal_info(err);
                 do_exit(-1);
             }
         }
         _ => {
-            let current = current_task().unwrap();
-            show_trapframe(current.trapframe());
+            let curr = curr_task().unwrap();
+            show_trapframe(curr.trapframe());
             trap_info();
             do_exit(-1);
         }
@@ -120,16 +120,18 @@ pub fn user_trap_handler() -> ! {
 /// current task. We must drop them before changing the control flow without unwinding.
 #[no_mangle]
 pub fn user_trap_return() -> ! {
+    // crate::tests::sleeplock::test();
+
     extern "C" {
         fn __uservec();
         fn __userret();
     }
     let (satp, trapframe_base, userret) = {
-        let current = current_task().unwrap();
-        let current_mm = current.mm.lock();
+        let curr = curr_task().unwrap();
+        let curr_mm = curr.mm.lock();
         (
-            current_mm.page_table.satp(),
-            trapframe_base(current.tid),
+            curr_mm.page_table.satp(),
+            trapframe_base(curr.tid),
             __userret as usize - __uservec as usize + TRAMPOLINE_VA,
         )
     };

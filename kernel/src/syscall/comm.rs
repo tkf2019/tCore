@@ -4,15 +4,15 @@ use errno::Errno;
 use signal_defs::{SigAction, SigActionFlags, SigSet, SignalNo, NSIG};
 use syscall_interface::{SyscallComm, SyscallResult};
 
-use crate::{arch::mm::VirtAddr, fs::Pipe, task::current_task, user_buf_next, user_buf_next_mut};
+use crate::{arch::mm::VirtAddr, fs::Pipe, task::curr_task, user_buf_next, user_buf_next_mut};
 
 use super::SyscallImpl;
 
 impl SyscallComm for SyscallImpl {
     fn pipe(pipefd: *const u32, _flags: usize) -> SyscallResult {
-        let current = current_task().unwrap();
+        let curr = curr_task().unwrap();
 
-        let mut fd_manager = current.fd_manager.lock();
+        let mut fd_manager = curr.fd_manager.lock();
         let (pipe_read, pipe_write) = Pipe::new();
 
         if fd_manager.fd_count() + 2 > fd_manager.fd_limit() {
@@ -23,7 +23,7 @@ impl SyscallComm for SyscallImpl {
         let fd_write = fd_manager.push(Arc::new(pipe_write)).unwrap();
         drop(fd_manager);
 
-        let mut mm = current.mm.lock();
+        let mut curr_mm = curr.mm.lock();
 
         let fd_size = size_of::<u32>();
         let fd_addr = VirtAddr::from(pipefd as usize);
@@ -31,10 +31,10 @@ impl SyscallComm for SyscallImpl {
             return Err(Errno::EFAULT);
         }
 
-        let buf = mm
+        let buf = curr_mm
             .get_buf_mut(fd_addr, 2 * fd_size)
             .map_err(|_| Errno::EFAULT)?;
-        drop(mm);
+        drop(curr_mm);
 
         let mut iter = buf.into_iter().step_by(fd_size);
         *user_buf_next_mut!(iter, u32) = fd_read as u32;
@@ -57,12 +57,12 @@ impl SyscallComm for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        let current = current_task().unwrap();
-        let mut mm = current.mm.lock();
-        let mut sig_actions = current.sig_actions.lock();
+        let curr = curr_task().unwrap();
+        let mut curr_mm = curr.mm.lock();
+        let mut sig_actions = curr.sig_actions.lock();
 
         if oldact != 0 {
-            let oldact = mm
+            let oldact = curr_mm
                 .get_buf_mut(oldact.into(), sig_action_size)
                 .map_err(|_| Errno::EFAULT)?;
             let mut iter = oldact.into_iter().step_by(size_of::<usize>());
@@ -74,7 +74,7 @@ impl SyscallComm for SyscallImpl {
         }
 
         if act != 0 {
-            let act = mm
+            let act = curr_mm
                 .get_buf_mut(act.into(), sig_action_size)
                 .map_err(|_| Errno::EFAULT)?;
             let mut iter = act.into_iter().step_by(size_of::<usize>());

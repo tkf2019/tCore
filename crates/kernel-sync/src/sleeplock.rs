@@ -35,7 +35,7 @@ pub trait Sched {
     fn set_id(thread: &mut Self, id: Option<usize>);
 
     /// Switch to scheduler.
-    unsafe fn sched();
+    unsafe fn sched(guard: SpinLockGuard<Self>);
 }
 
 static SleepLockIDAllocator: Lazy<SpinLock<RecycleAllocator>> =
@@ -146,28 +146,28 @@ impl<T: ?Sized, S: Sched> SleepLock<T, S> {
 
         // Automatically release the lock and sleep on chan.
         while inner.locked {
-            // Must acquire thread lock in order to change thread state and then call sched().
             let mut guard = thread.lock();
             drop(inner);
 
-            // Go to sleep
             S::sleep(&mut guard);
             S::set_id(&mut guard, Some(lock_id));
 
             unsafe {
                 // Interrupt cannot be nesting or set before scheduler.
-                assert!(CPUs[cpu_id()].noff == 1 && !intr_get());
+                assert!(CPUs[cpu_id()].noff == 1);
+                assert!(!intr_get());
                 // Saves and restores CPU local variable, intena.
                 let intena = CPUs[cpu_id()].intena;
-                S::sched();
+                S::sched(guard);
                 CPUs[cpu_id()].intena = intena;
             }
 
             // Tidy up
+            guard = thread.lock();
             S::set_id(&mut guard, None);
+            drop(guard);
 
             // Reacquire original lock
-            drop(guard);
             inner = self.inner.lock();
         }
         inner.locked = true;

@@ -3,7 +3,7 @@ use syscall_interface::*;
 
 use crate::{
     mm::{MmapFlags, MmapProt},
-    task::{current_task, do_exit},
+    task::{curr_task, do_exit},
 };
 
 use super::SyscallImpl;
@@ -23,29 +23,29 @@ impl SyscallProc for SyscallImpl {
     }
 
     fn getpid() -> SyscallResult {
-        Ok(current_task().unwrap().pid.0)
+        Ok(curr_task().unwrap().pid.0)
     }
 
     fn gettid() -> SyscallResult {
-        Ok(current_task().unwrap().tid)
+        Ok(curr_task().unwrap().tid)
     }
 
     fn set_tid_address(tidptr: usize) -> SyscallResult {
-        let current = current_task().unwrap();
-        current.inner_lock().clear_child_tid = tidptr;
-        Ok(current.tid)
+        let curr = curr_task().unwrap();
+        curr.inner().clear_child_tid = tidptr;
+        Ok(curr.tid)
     }
 
     fn brk(brk: usize) -> SyscallResult {
-        let current = current_task().unwrap();
-        let mut current_mm = current.mm.lock();
-        current_mm.do_brk(brk.into())
+        let curr = curr_task().unwrap();
+        let mut curr_mm = curr.mm.lock();
+        curr_mm.do_brk(brk.into())
     }
 
     fn munmap(addr: usize, len: usize) -> SyscallResult {
-        let current = current_task().unwrap();
-        let mut current_mm = current.mm.lock();
-        current_mm
+        let curr = curr_task().unwrap();
+        let mut curr_mm = curr.mm.lock();
+        curr_mm
             .do_munmap(addr.into(), len)
             .map(|_| 0)
             .map_err(|err| err.into())
@@ -65,8 +65,8 @@ impl SyscallProc for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        let current = current_task().unwrap();
-        current.do_mmap(addr.into(), len, prot.unwrap(), flags.unwrap(), fd, off)
+        let curr = curr_task().unwrap();
+        curr.do_mmap(addr.into(), len, prot.unwrap(), flags.unwrap(), fd, off)
     }
 
     fn mprotect(addr: usize, len: usize, prot: usize) -> SyscallResult {
@@ -75,9 +75,9 @@ impl SyscallProc for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        let current = current_task().unwrap();
-        let mut current_mm = current.mm.lock();
-        current_mm
+        let curr = curr_task().unwrap();
+        let mut curr_mm = curr.mm.lock();
+        curr_mm
             .do_mprotect(addr.into(), len, prot.unwrap())
             .map(|_| 0)
             .map_err(|err| err.into())

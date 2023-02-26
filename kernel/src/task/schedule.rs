@@ -1,6 +1,17 @@
-use alloc::{collections::VecDeque, sync::Arc};
+use alloc::{
+    collections::{vec_deque, VecDeque},
+    string::String,
+    sync::Arc,
+};
+use log::warn;
+use oscomp::fetch_test;
 
-use super::Task;
+use crate::{
+    config::{IS_TEST_ENV, ROOT_DIR},
+    loader::from_args,
+};
+
+use super::{Task, TaskState};
 
 /// Possible interfaces for task schedulers.
 pub trait Scheduler {
@@ -21,6 +32,11 @@ impl QueueScheduler {
             queue: VecDeque::new(),
         }
     }
+
+    /// Returns a front-to-back iterator that returns immutable references.
+    pub fn iter(&self) -> vec_deque::Iter<Arc<Task>> {
+        self.queue.iter()
+    }
 }
 
 impl Scheduler for QueueScheduler {
@@ -29,6 +45,24 @@ impl Scheduler for QueueScheduler {
     }
 
     fn fetch(&mut self) -> Option<Arc<Task>> {
-        self.queue.pop_front()
+        if self.queue.is_empty() && IS_TEST_ENV {
+            if let Some(args) = fetch_test() {
+                return from_args(String::from(ROOT_DIR), args)
+                    .map_err(|err| warn!("{:?}", err))
+                    .ok();
+            }
+            None
+        } else {
+            let task = self.queue.pop_front().unwrap();
+
+            // State cannot be set to other states except [`TaskState::Runnable`] by other harts,
+            // e.g. this task is waken up by another task that releases the resources.
+            if task.locked_inner().state != TaskState::Runnable {
+                self.queue.push_back(task);
+                None
+            } else {
+                Some(task)
+            }
+        }
     }
 }

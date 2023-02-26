@@ -1,8 +1,8 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::cell::SyncUnsafeCell;
 use id_alloc::{IDAllocator, RecycleAllocator};
-use kernel_sync::SpinLock;
-use log::{error, trace};
+use kernel_sync::{CPUs, SpinLock};
+use log::{debug, error, trace, warn};
 use oscomp::{fetch_test, finish_test};
 use spin::Lazy;
 
@@ -18,6 +18,7 @@ use crate::{
     error::KernelResult,
     loader::from_args,
     mm::{pma::FixedPMA, KERNEL_MM},
+    tests,
 };
 
 use super::{
@@ -121,13 +122,22 @@ pub fn cpu() -> &'static mut CPUContext {
 }
 
 /// Gets current task running on this CPU.
-pub fn current_task() -> Option<Arc<Task>> {
+pub fn curr_task() -> Option<Arc<Task>> {
     cpu().current.as_ref().map(Arc::clone)
 }
 
 /// IDLE task context on this CPU.
 pub fn idle_ctx() -> *const TaskContext {
     &cpu().idle_ctx as _
+}
+
+/// Gets current task context.
+///
+/// # Safety
+///
+/// [`TaskContext`] cannot be modified by other tasks, thus we can access it with raw pointer.
+pub unsafe fn curr_ctx() -> *const TaskContext {
+    &curr_task().unwrap().inner().ctx
 }
 
 pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
@@ -158,75 +168,65 @@ pub fn init() {
 pub fn idle() -> ! {
     loop {
         let mut task_manager = TASK_MANAGER.lock();
-        let mut task = task_manager.fetch();
-        if IS_TEST_ENV && task.is_none() {
-            // Task path.
-            if let Some(args) = fetch_test() {
-                task = from_args(String::from(ROOT_DIR), args)
-                    .map_err(|err| error!("{:?}", err))
-                    .ok();
-            }
-        }
 
-        if let Some(task) = task {
+        if let Some(task) = task_manager.fetch() {
             let cpu_ctx = cpu();
             let idle_ctx = &cpu_ctx.idle_ctx as *const TaskContext;
             let next_ctx = {
-                let mut task_inner = task.inner_lock();
-                task_inner.state = TaskState::Running;
-                &task_inner.ctx as *const TaskContext
+                let mut locked_inner = task.locked_inner();
+                locked_inner.state = TaskState::Running;
+                &task.inner().ctx as *const TaskContext
             };
             // Ownership moved to `current`.
             cpu_ctx.current = Some(task);
+
             // Release the lock.
             drop(task_manager);
 
             unsafe { __switch(idle_ctx, next_ctx) };
-
-            // Back to idle task.
-            let current = current_task().take().expect("From IDLE task");
-            match current.get_state() {
-                TaskState::Runnable => {
-                    TASK_MANAGER.lock().add(current);
-                }
-                TaskState::Zombie => {
-                    if !IS_TEST_ENV && current.pid.0 == 0 {
-                        panic!("All task exited!");
-                    } else {
-                        handle_zombie(current);
-                    }
-                }
-                _ => {
-                    panic!("Invalid task state back to idle!");
-                }
-            }
         }
     }
 }
 
 /// Current task exits. Run next task.
 pub fn do_exit(exit_code: i32) {
+    let curr = curr_task().unwrap();
+    trace!("{:#?} exited with code {}", curr, exit_code);
     let curr_ctx = {
-        let current = current_task().unwrap();
-        trace!("{:#?} exited with code {}", current, exit_code);
-        let mut current_inner = current.inner_lock();
-        current_inner.exit_code = exit_code;
-        current_inner.state = TaskState::Zombie;
-        &current_inner.ctx as *const TaskContext
+        let mut locked_inner = curr.locked_inner();
+        curr.inner().exit_code = exit_code;
+        locked_inner.state = TaskState::Zombie;
+        &curr.inner().ctx as *const TaskContext
     };
+
+    if !IS_TEST_ENV && curr.pid.0 == 0 {
+        panic!("All task exited!");
+    } else {
+        handle_zombie(curr);
+    }
+
     unsafe { __switch(curr_ctx, idle_ctx()) };
 }
 
 /// Current task suspends. Run next task.
 pub fn do_yield() {
+    let curr = curr_task().take().unwrap();
+    trace!("{:#?} suspended", curr);
     let curr_ctx = {
-        let current = current_task().unwrap();
-        // trace!("{:#?} suspended", current);
-        let mut current_inner = current.inner_lock();
-        current_inner.state = TaskState::Runnable;
-        &current_inner.ctx as *const TaskContext
+        let mut locked_inner = curr.locked_inner();
+        locked_inner.state = TaskState::Runnable;
+        &curr.inner().ctx as *const TaskContext
     };
-    unsafe { __switch(curr_ctx, idle_ctx()) };
+
+    // push back to scheduler
+    TASK_MANAGER.lock().add(curr);
+
+    unsafe {
+        // Saves and restores CPU local variable, intena.
+        let intena = CPUs[get_cpu_id()].intena;
+        __switch(curr_ctx, idle_ctx());
+        CPUs[get_cpu_id()].intena = intena;
+    };
 }
 
 /// Handle zombie tasks.
@@ -244,8 +244,8 @@ pub fn do_yield() {
 /// So we need to acquire the locks in order:
 ///
 /// ```
-/// let mut child_inner = child.inner_lock();
-/// let mut init_task_inner = INIT_TASK.inner_lock();
+/// let mut child_inner = child.locked_inner();
+/// let mut init_task_inner = INIT_TASK.locked_inner();
 /// ```
 ///
 /// to eliminate the dead lock when both current task and its child are trying acquire
@@ -256,18 +256,18 @@ pub fn do_yield() {
 /// either, thus the child just in this function can acquire the lock of [`INIT_TASK`]
 /// successfully and finally release both locks.
 pub fn handle_zombie(task: Arc<Task>) {
-    let mut inner = task.inner_lock();
-    for child in inner.children.iter() {
+    let mut locked_inner = task.locked_inner();
+    for child in locked_inner.children.iter() {
         if !IS_TEST_ENV {
-            let mut child_inner = child.inner_lock();
-            let mut init_task_inner = INIT_TASK.inner_lock();
+            let mut child_inner = child.locked_inner();
+            let mut init_task_inner = INIT_TASK.locked_inner();
             child_inner.parent = Some(Arc::downgrade(&INIT_TASK));
             init_task_inner.children.push(child.clone());
         }
     }
-    inner.children.clear();
-    inner.state = TaskState::Zombie;
+    locked_inner.children.clear();
+    locked_inner.state = TaskState::Zombie;
     if IS_TEST_ENV && task.tid == MAIN_TASK {
-        finish_test(inner.exit_code, &task.name);
+        finish_test(task.inner().exit_code, &task.name);
     }
 }
