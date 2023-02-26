@@ -10,4 +10,4 @@ authors = ["TKF <kaifu6821@qq.com>"]
 description = "Cache in memory for device data and metadata"
 
 [dependencies]
-kernel-sync = { path = "../kernel-sync" }
+kernel-sync = {  git = "https://github.com/tkf2019/kernel-sync" }

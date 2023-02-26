@@ -9,4 +9,4 @@ edition = "2021"
 log = "0.4"
 spin = "0.9"
 
-kernel-sync = { path = "../kernel-sync" }
+kernel-sync = {  git = "https://github.com/tkf2019/kernel-sync" }
