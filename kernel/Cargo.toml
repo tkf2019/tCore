@@ -27,7 +27,7 @@ kernel-sync = {  git = "https://github.com/tkf2019/kernel-sync" }
 signal-defs = { path = "../crates/signal-defs" }
 syscall-interface = { path = "../crates/syscall" }
 time-subsys = { path = "../crates/time-subsys" }
-vfs = { path = "../crates/vfs" }
+vfs = { path = "../crates/rust-vfs", default-features = false, features = ["alloc", "log_level_trace"] }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 riscv = "0.10"

@@ -1,5 +1,5 @@
 [package]
-name = "vfs"
+name = "vfs-stale"
 version = "0.1.0"
 edition = "2021"
 

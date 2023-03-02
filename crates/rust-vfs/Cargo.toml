@@ -1,5 +1,5 @@
 [package]
-name = "rust-vfs"
+name = "vfs"
 version = "0.1.0"
 edition = "2021"
 authors = ["TKF <kaifu6821@qq.com>"]
@@ -11,6 +11,8 @@ description = "Virtual filesystem library"
 [features]
 # Use Rust std library
 std = []
+# Use alloc crate
+alloc = []
 # Enable only error-level logging
 log_level_error = []
 # Enable logging levels warn and up
@@ -23,11 +25,13 @@ log_level_debug = ["log_level_info"]
 log_level_trace = ["log_level_debug"]
 
 # Default features
-default = ["std", "log_level_error"]
+default = ["log_level_error", "alloc"]
 
 [dependencies]
 bitflags = "1.3.2"
 log = "0.4"
 spin = "0.9"
 
-kernel-sync = {  git = "https://github.com/tkf2019/kernel-sync" }
+kernel-sync = {  git = "https://github.com/tkf2019/kernel-sync", branch = "main" }
+
+errno = { path = "../errno" }

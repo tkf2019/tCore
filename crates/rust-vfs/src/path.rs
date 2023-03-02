@@ -61,10 +61,7 @@ impl Path {
     /// 2. Replaces contiguous `'/'`s with a single `'/'`.
     pub fn canonicalize(&mut self) {
         let is_dir = self.is_dir();
-        self.0 = self
-            .split()
-            .iter()
-            .fold(String::new(), |path, &item| path + "/" + item);
+        self.0 = self.split().iter().fold(String::new(), |path, &item| path + "/" + item);
         if is_dir {
             self.0.push('/');
         }
@@ -81,7 +78,6 @@ impl Path {
     /// This path will be considered as a directory path.
     pub fn extend(&mut self, path: &str) {
         assert!(self.is_dir());
-        let mut pos = 0;
         self.0 += path;
         self.canonicalize();
     }
@@ -100,7 +96,7 @@ impl Path {
     }
 
     /// Gets the last item of this path.
-    /// 
+    ///
     /// The item will ends with '/' if the original path is a directory.
     pub fn last(&mut self) -> Option<String> {
         if self.is_root() {
@@ -118,7 +114,7 @@ impl Path {
     }
 
     /// Gets the last item of this path and remove it.
-    /// 
+    ///
     /// The item will ends with '/' if the original path is a directory.
     pub fn pop(&mut self) -> Option<String> {
         if self.0.len() == 1 {

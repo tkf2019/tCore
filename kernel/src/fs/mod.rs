@@ -2,18 +2,19 @@ use alloc::sync::Arc;
 use errno::Errno;
 use vfs::*;
 
-mod fat;
+mod f;
 mod fd;
 pub mod mem;
 mod pipe;
 mod stdio;
+mod fat;
 
-pub use fat::GLOBAL_FS;
+pub use f::GLOBAL_FS;
 pub use fd::*;
 pub use pipe::*;
 pub use stdio::*;
 
-use self::fat::FSDir;
+use self::f::FSDir;
 
 /// Opens a file object.
 ///

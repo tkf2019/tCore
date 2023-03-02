@@ -1,5 +1,5 @@
 use riscv::register::time;
-use time_subsys::{MSEC_PER_SEC, USEC_PER_SEC};
+use time_subsys::{MSEC_PER_SEC, NSEC_PER_SEC, USEC_PER_SEC};
 
 use crate::config::CLOCK_FREQ;
 
@@ -21,4 +21,8 @@ pub fn get_time_ms() -> usize {
 
 pub fn get_time_us() -> usize {
     time::read() / (CLOCK_FREQ / USEC_PER_SEC)
+}
+
+pub fn get_time_ns() -> usize {
+    time::read() / (CLOCK_FREQ / NSEC_PER_SEC)
 }

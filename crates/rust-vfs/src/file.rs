@@ -1,7 +1,10 @@
-#[cfg(all(not(feature = "std"), feature = "alloc"))]
-use alloc::{boxed::Box, string::String, vec::Vec};
+use core::any::Any;
 
-use crate::SuperBlock;
+use alloc::sync::Arc;
+#[cfg(all(not(feature = "std"), feature = "alloc"))]
+use alloc::vec::Vec;
+
+use crate::{Inode, InodeMode, Path};
 
 bitflags::bitflags! {
     pub struct OpenFlags: u32 {
@@ -103,27 +106,89 @@ pub enum SeekWhence {
     End = 2,
 }
 
-pub struct File {
-    /// Flags specified when opening the file.
-    flags: OpenFlags,
+/// Represents an elapsed time.
+#[repr(C)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
+pub struct TimeSpec {
+    /// Number of whole seconds of elapsed time.
+    pub sec: usize,
 
-    /// Pointer to file operation table.
-    ops: Box<dyn FileOperations>,
-
-    /// Current file offset (file pointer).
-    off: SpinLock<usize>,
-
-    /// Pointer to superblock object.
-    sb: &mut SuperBlock,
+    /// Number of nanoseconds of rest of elapsed time minus tv_sec.
+    pub nsec: usize,
 }
 
-pub trait FileOperations: Send + Sync {
+/// File attributes
+#[repr(C)]
+#[derive(Debug)]
+pub struct FileAttr {
+    /// Inode mode (file access permission)
+    pub mode: InodeMode,
+
+    /// File open flags.
+    pub flags: OpenFlags,
+
+    /// Number of hard links.
+    pub nlink: usize,
+
+    /// Size of file in bytes.
+    pub size: usize,
+
+    /// Time of last access.
+    pub atime: TimeSpec,
+
+    /// Time of last modification.
+    pub mtime: TimeSpec,
+
+    /// Time of last status change.
+    pub ctime: TimeSpec,
+}
+
+pub trait AsAny {
+    fn as_any(&self) -> &dyn Any;
+}
+
+impl<T: Any> AsAny for T {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// An object implementing [`File`] has no corresponding image on disk.
+#[allow(unused)]
+pub trait File: Send + Sync + AsAny {
+    /// Moves the cursor with [`SeekWhence`] flags.
+    /// See [lseek](https://man7.org/linux/man-pages/man2/lseek.2.html).
+    fn seek(&self, offset: usize, whence: SeekWhence) -> Option<usize> {
+        None
+    }
+
     /// Reads bytes from this file to the buffer.
     ///
     /// Returns the number of bytes read from this file.
     /// Returns [`None`] if the file is not readable.
     fn read(&self, buf: &mut [u8]) -> Option<usize> {
         None
+    }
+
+    /// Writes bytes from the buffer to this file.
+    ///
+    /// Returns the number of bytes written to this file.
+    /// Returns [`None`] if the file is not writable.
+    fn write(&self, buf: &[u8]) -> Option<usize> {
+        None
+    }
+
+    /// Gets attributes of the file.
+    fn getattr(&self) -> FileAttr;
+
+    /// Flushes the file by writing all cached data to disk.
+    fn fsync(&self) {}
+
+    /// Reads all bytes from the file.
+    ///
+    /// Only the size of real file can be known, so this function is `unsafe`.
+    unsafe fn read_all(&self) -> Vec<u8> {
+        unimplemented!()
     }
 
     /// Reads the file starting at offset to buffer.
@@ -137,21 +202,6 @@ pub trait FileOperations: Send + Sync {
         read_len
     }
 
-    /// Reads all bytes from the file.
-    ///
-    /// Only the size of real file can be known, so this function is `unsafe`.
-    unsafe fn read_all(&self) -> Vec<u8> {
-        unimplemented!()
-    }
-
-    /// Writes bytes from the buffer to this file.
-    ///
-    /// Returns the number of bytes written to this file.
-    /// Returns [`None`] if the file is not writable.
-    fn write(&self, buf: &[u8]) -> Option<usize> {
-        None
-    }
-
     /// Writes the file starting at offset from buffer.
     ///
     /// Returns the number of bytes written successfully.
@@ -163,16 +213,23 @@ pub trait FileOperations: Send + Sync {
         write_len
     }
 
-    /// Moves the cursor with [`SeekWhence`] flags.
-    ///
-    /// See `<https://man7.org/linux/man-pages/man2/lseek.2.html>`.
-    fn seek(&self, offset: usize, whence: SeekWhence) -> Option<usize> {
-        None
+    fn readable(&self) -> bool {
+        self.getattr().flags.readable()
     }
 
-    /// Called when reference to an open file is closed.
-    fn flush(&self) {}
+    fn writable(&self) -> bool {
+        self.getattr().flags.writable()
+    }
 
-    /// Flushes the file by writing all cached data to disk.
-    fn fsync(&self) {}
+    fn is_dir(&self) -> bool {
+        self.getattr().mode.contains(InodeMode::S_IFDIR)
+    }
+
+    fn is_reg(&self) -> bool {
+        self.getattr().mode.contains(InodeMode::S_IFREG)
+    }
+
+    fn getnlink(&self) -> usize {
+        self.getattr().nlink
+    }
 }

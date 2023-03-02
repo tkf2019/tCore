@@ -164,28 +164,13 @@ impl Seek for FatIO {
     }
 }
 
-/// Mutable data owned by [`FSFile`].
-pub struct FSFileInner {
-    /// Last access.
-    pub atime: TimeSpec,
-
-    /// Last modification.
-    pub mtime: TimeSpec,
-
-    /// Last change of attributes.
-    pub ctime: TimeSpec,
-
-    /// Close-on-exec
-    pub cloexec: bool,
-}
-
 /// A wrapper for [`FatFile`] to implement [`File`].
 ///
 /// We use three types of regions to maintain the task metadata:
 /// - Local and immutable: data initialized once when task created.
 /// - Shared and mutable: uses [`Arc<SpinLock<T>>`].
 /// - Local and mutable: uses [`SpinLock<TaskInner>`] to wrap the data together.
-pub struct FSFile {
+pub struct File {
     /// Able to read.
     pub readable: bool,
 

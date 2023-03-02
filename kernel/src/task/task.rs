@@ -400,10 +400,10 @@ impl Task {
     /// If pathname is absolute, then dirfd is ignored.
     pub fn resolve_path(&self, dirfd: usize, pathname: String) -> KernelResult<Path> {
         if pathname.starts_with("/") {
-            Ok(Path::new(pathname.as_str()))
+            Ok(Path::new(&pathname))
         } else {
             let mut path = self.get_dir(dirfd)?;
-            path.extend(pathname.as_str());
+            path.extend(&pathname);
             Ok(path)
         }
     }
@@ -430,25 +430,6 @@ impl Task {
         self.fd_manager
             .lock()
             .push(open(path, flags).map_err(|errno| KernelError::Errno(errno))?)
-    }
-
-    /// A helper for [`syscall_interface::SyscallFile::readv`] and [`syscall_interface::SyscallFile::writev`].
-    pub fn for_each_iov(
-        &self,
-        iov: VirtAddr,
-        iovcnt: usize,
-        mut op: impl FnMut(usize, usize) -> bool,
-    ) -> KernelResult {
-        let size = size_of::<IoVec>();
-        let mut mm = self.mm.lock();
-        let buf = mm.get_buf_mut(iov, iovcnt * size)?;
-        for bytes in buf.into_iter().step_by(size) {
-            let iov = unsafe { &*(bytes as *const IoVec) };
-            if !op(iov.iov_base, iov.iov_len) {
-                break;
-            }
-        }
-        Ok(())
     }
 
     /// A helper for [`syscall_interface::SyscallFile::unlinkat`].
