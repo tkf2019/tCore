@@ -33,8 +33,8 @@ vfs = { path = "../crates/rust-vfs", default-features = false, features = ["allo
 riscv = "0.10"
 sbi-rt = { version = "0.0.2", features = ["legacy"] }
 
+uintr = { git = "https://github.com/U-interrupt/rust-uintr" }
 mm-rv = { path = "../crates/mm-rv" }
-uintr = { path = "../crates/uintr" }
 
 [features]
 default = ["oscomp", "test"]

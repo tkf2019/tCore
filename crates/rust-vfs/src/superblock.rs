@@ -31,7 +31,7 @@ pub struct SuperBlock<V: VFS> {
     /// Dentry object of the filesystem’s root directory.
     ///
     /// [`SuperBlock`] holds a reference to avoid root being dropped.
-    pub root: Arc<Dentry<V>>,
+    pub root: Arc<Dentry>,
 
     /// Inner mutable members
     pub inner: SpinLock<SuperBlockMutInner<V>>,
@@ -45,8 +45,8 @@ pub struct SuperBlock<V: VFS> {
 
 pub struct SuperBlockMutInner<V: VFS> {
     phantom: PhantomData<V>,
-
     /// Modified (dirty) flag, which specifies whether the superblock is dirty.
+
     pub dirty: bool,
 }
 
