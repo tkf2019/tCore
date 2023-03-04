@@ -31,23 +31,23 @@ use crate::{Inode, InodeState, VFS};
 /// file. The `inode` field of the dentry object is set to `None`, but the object still remains in the dentry
 /// cache, so that further lookup operations to the same file pathname can be quickly resolved. The term
 /// "negative" is somewhat misleading, because no negative value is involved.
-pub struct Dentry<V: VFS> {
+pub struct Dentry {
     /// Filename
     pub name: String,
 
     /// Inode associated with filename.
-    pub inode: SyncUnsafeCell<Option<Weak<Inode<V>>>>,
+    pub inode: SyncUnsafeCell<Option<Weak<Inode>>>,
 
     /// Dentry of parent directory.
-    pub parent: Weak<Dentry<V>>,
+    pub parent: Weak<Dentry>,
 
     /// List of subdirectory dentries.
-    pub children: SeqLock<LinkedList<Arc<Dentry<V>>>>,
+    pub children: SeqLock<LinkedList<Arc<Dentry>>>,
 }
 
-impl<V: VFS> Dentry<V> {
+impl Dentry {
     /// Creates a new [`Dentry`] in **negative** state.
-    pub fn new(name: &str, parent: Weak<Dentry<V>>) -> Self {
+    pub fn new(name: &str, parent: Weak<Dentry>) -> Self {
         Self {
             name: String::from(name),
             inode: SyncUnsafeCell::new(None),
@@ -57,7 +57,7 @@ impl<V: VFS> Dentry<V> {
     }
 
     /// Searches a directory for an inode corresponding to the filename included in a dentry object.
-    pub fn find(&self, name: &str) -> Option<Arc<Dentry<V>>> {
+    pub fn find(&self, name: &str) -> Option<Arc<Dentry>> {
         self.children.read(|list| {
             for dentry in list {
                 if dentry.name == name {
@@ -69,7 +69,7 @@ impl<V: VFS> Dentry<V> {
     }
 
     /// Creates a new dentry in this directory, otherwise returns the existing dentry.
-    pub fn create(&self, name: &str, this: Weak<Dentry<V>>) -> Arc<Dentry<V>> {
+    pub fn create(&self, name: &str, this: Weak<Dentry>) -> Arc<Dentry> {
         let mut locked = self.children.write();
         for dentry in locked.iter() {
             if dentry.name == name {
@@ -78,7 +78,6 @@ impl<V: VFS> Dentry<V> {
         }
         let new_dentry = Arc::new(Dentry::new(name, this));
         locked.push_front(new_dentry.clone());
-
         new_dentry
     }
 
@@ -87,16 +86,14 @@ impl<V: VFS> Dentry<V> {
         let mut locked = self.children.write();
         locked.drain_filter(|dentry| dentry.name == name);
     }
-}
 
-impl<V: VFS> Dentry<V> {
     /// Sets the inode pointer of this [`Dentry`].
-    pub fn set_inode(&self, inode: Weak<Inode<V>>) {
+    pub fn set_inode(&self, inode: Weak<Inode>) {
         *unsafe { &mut *self.inode.get() } = Some(inode);
     }
 
     /// Gets the inode pinter of this [`Dentry`].
-    pub fn get_inode(&self) -> Option<Arc<Inode<V>>> {
+    pub fn get_inode(&self) -> Option<Arc<Inode>> {
         unsafe { &*self.inode.get() }.as_ref().and_then(|inode| {
             let inode = inode.upgrade().unwrap();
             if inode.locked.read(|locked| locked.state == InodeState::Clear) {
@@ -111,9 +108,9 @@ impl<V: VFS> Dentry<V> {
 pub const DCACHE_SIZE: usize = 512;
 
 /// LRU Dcache for memory reclamation.
-pub struct DentryCache<V: VFS>(LinkedList<Arc<Dentry<V>>>);
+pub struct DentryCache(LinkedList<Arc<Dentry>>);
 
-impl<V: VFS> DentryCache<V> {
+impl DentryCache {
     /// Creates a new [`DentryCache`]
     pub const fn new() -> Self {
         Self(LinkedList::new())
@@ -125,7 +122,7 @@ impl<V: VFS> DentryCache<V> {
     /// and reference counter will be decreased.
     ///
     /// This function might acquire the lock of parent dentry.
-    pub fn access(&mut self, d: Arc<Dentry<V>>) {
+    pub fn access(&mut self, d: Arc<Dentry>) {
         self.0.push_front(d);
 
         if self.0.len() >= DCACHE_SIZE {

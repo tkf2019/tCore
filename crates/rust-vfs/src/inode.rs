@@ -1,29 +1,34 @@
 //! Inode definition and operations.
 
-use core::{cell::SyncUnsafeCell, marker::PhantomData};
+use kernel_sync::SpinLock;
 
-use alloc::{collections::LinkedList, sync::Arc};
-use kernel_sync::SeqLock;
+use crate::{SuperBlock, TimeSpec, VFSResult};
 
-use crate::{TimeSpec, VFSResult, VFS};
+bitflags::bitflags! {
+    /// Inode state bits. Protected by inode lock.
+    pub struct InodeState: u8 {
+        /// The inode object is modified without synchronization to disk.
+        /// Not dirty enough for O_DATASYNC.
+        const I_DIRTY_SYNC = 1 << 0;
 
-/// Inode state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InodeState {
-    /// Modified without synchronization to disk.
-    Dirty,
+        /// Data-related inode changes pending.
+        const I_DIRTY_DATASYNC = 1 << 1;
 
-    /// The inode object is involved in an I/O transfer.
-    Lock,
+        /// Data-related inode changes pending.
+        const I_DIRTY_PAGESYNC = 1 << 2;
 
-    /// The inode object is being freed.
-    Freeing,
+        /// The inode object is involved in an I/O transfer.
+        const I_LOCK = 1 << 3;
 
-    /// The inode object contents are no longer meaningful.
-    Clear,
+        /// The inode object is being freed.
+        const I_FREEING = 1 << 4;
 
-    /// The inode object has been allocated but not yet filled with data read from the disk.
-    New,
+        /// The inode object contents are no longer meaningful.
+        const I_CLEAR = 1 << 5;
+
+        /// The inode object has been allocated but not yet filled with data read from the disk.
+        const I_NEW = 1 << 6;
+    }
 }
 
 bitflags::bitflags! {
@@ -80,32 +85,29 @@ bitflags::bitflags! {
 
 /// All information needed by the filesystem to handle a file is included in a data
 /// structure called an inode.
-pub struct Inode<V: VFS> {
-    pub phantom: PhantomData<V>,
-
+#[derive(Debug)]
+pub struct Inode {
     /// Inode number
     pub ino: usize,
+
+    /// Super block
+    pub sb: &'static SuperBlock,
 
     /// Block size in bytes
     pub block_size: usize,
 
-    /// Inode mutable members
-    pub inner: SyncUnsafeCell<InodeMutInner>,
-
-    /// Inode locked members
-    pub locked: SeqLock<InodeLockedInner>,
-}
-
-/// Inode mutable inner members initialized after allocating an [`Inode`].
-pub struct InodeMutInner {
     /// Inode mode
     pub mode: InodeMode,
+
+    /// Inode inner fields
+    pub inner: SpinLock<InodeInner>,
 }
 
-/// Inode locked inner members.
-pub struct InodeLockedInner {
-    /// File length in bytes.
-    pub file_size: usize,
+/// Fields of [`Inode`] protected by lock.
+#[derive(Debug)]
+pub struct InodeInner {
+    /// File size in bytes.
+    pub size: usize,
 
     /// Number of hard links
     pub nlink: usize,
@@ -123,60 +125,40 @@ pub struct InodeLockedInner {
     pub ctime: TimeSpec,
 }
 
-impl<V: VFS> Inode<V> {
-    /// Decreases the hard link of this inode, destroying the disk inode if the hard link is zero.
-    pub fn unlink(&self) -> VFSResult {
-        let mut locked = self.locked.write();
-        if locked.nlink == 1 {
-            locked.state = InodeState::Clear;
-            V::destroy_inode(self)?;
+impl Inode {
+    fn empty(sb: &SuperBlock) -> Self {
+        Self {
+            ino: 0,
+            sb,
+            block_size: 0,
+            mode: InodeMode::empty(),
+            inner: SpinLock::new(InodeInner {
+                size: 0,
+                nlink: 1,
+                state: InodeState::empty(),
+                atime: TimeSpec::default(),
+                mtime: TimeSpec::default(),
+                ctime: TimeSpec::default(),
+            }),
         }
-        locked.nlink -= 1;
-        Ok(())
-    }
-
-    /// Gets [`InodeMode`] of this [`Inode`].
-    pub fn get_mode(&self) -> InodeMode {
-        unsafe { &*self.inner.get() }.mode
-    }
-
-    /// Sets [`InodeMode`] of this [`Inode`].
-    pub fn set_mode(&self, mode: InodeMode) {
-        unsafe { &mut *self.inner.get() }.mode = mode;
     }
 }
 
-impl<V: VFS> Drop for Inode<V> {
+impl Drop for Inode {
     fn drop(&mut self) {
-        self.locked.read(|locked| {
-            if locked.state == InodeState::Dirty {
-                V::flush_inode(self).unwrap();
+        let inner = self.inner.lock();
+        if inner.nlink == 0 {
+            if let Some(delete_inode) = self.sb.ops.delete_inode {
+                delete_inode(self);
             }
-        })
+        }
     }
 }
 
-/// Maximum Icache size.
-pub const ICACHE_SIZE: usize = 512;
-
-/// LRU Icache for memory reclamation
-pub struct InodeCache<V: VFS>(LinkedList<Arc<Inode<V>>>);
-
-impl<V: VFS> InodeCache<V> {
-    /// Creates a new [`InodeCache`].
-    pub const fn new() -> Self {
-        Self(LinkedList::new())
-    }
-
-    /// Pushes the node recently accessed to the front.
-    ///
-    /// We don't need to consider duplicated nodes, because these nodes will be released sooner or later
-    /// and reference counter will be decreased.
-    pub fn access(&mut self, inode: Arc<Inode<V>>) {
-        self.0.push_front(inode);
-
-        if self.0.len() >= ICACHE_SIZE {
-            self.0.pop_back();
-        }
+pub fn alloc_inode(sb: &SuperBlock) -> Inode {
+    if let Some(alloc_inode) = sb.ops.alloc_inode {
+        alloc_inode(sb)
+    } else {
+        Inode::empty(sb)
     }
 }
