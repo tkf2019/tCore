@@ -2,7 +2,7 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 use core::cell::SyncUnsafeCell;
 use id_alloc::{IDAllocator, RecycleAllocator};
 use kernel_sync::{CPUs, SpinLock};
-use log::{debug, error, trace, warn};
+use log::trace;
 use oscomp::{fetch_test, finish_test};
 use spin::Lazy;
 
@@ -18,7 +18,6 @@ use crate::{
     error::KernelResult,
     loader::from_args,
     mm::{pma::FixedPMA, KERNEL_MM},
-    tests,
 };
 
 use super::{
@@ -174,7 +173,7 @@ pub fn idle() -> ! {
             let idle_ctx = &cpu_ctx.idle_ctx as *const TaskContext;
             let next_ctx = {
                 let mut locked_inner = task.locked_inner();
-                locked_inner.state = TaskState::Running;
+                locked_inner.state = TaskState::RUNNING;
                 &task.inner().ctx as *const TaskContext
             };
             // Ownership moved to `current`.
@@ -195,7 +194,7 @@ pub fn do_exit(exit_code: i32) {
     let curr_ctx = {
         let mut locked_inner = curr.locked_inner();
         curr.inner().exit_code = exit_code;
-        locked_inner.state = TaskState::Zombie;
+        locked_inner.state = TaskState::ZOMBIE;
         &curr.inner().ctx as *const TaskContext
     };
 
@@ -214,7 +213,7 @@ pub fn do_yield() {
     trace!("{:#?} suspended", curr);
     let curr_ctx = {
         let mut locked_inner = curr.locked_inner();
-        locked_inner.state = TaskState::Runnable;
+        locked_inner.state = TaskState::RUNNABLE;
         &curr.inner().ctx as *const TaskContext
     };
 
@@ -266,7 +265,7 @@ pub fn handle_zombie(task: Arc<Task>) {
         }
     }
     locked_inner.children.clear();
-    locked_inner.state = TaskState::Zombie;
+    locked_inner.state = TaskState::ZOMBIE;
     if IS_TEST_ENV && task.tid == MAIN_TASK {
         finish_test(task.inner().exit_code, &task.name);
     }

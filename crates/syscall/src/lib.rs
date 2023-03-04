@@ -69,6 +69,7 @@ numeric_enum! {
         CLONE = 220,
         MMAP = 222,
         MPROTECT = 226,
+        
     }
 }
 

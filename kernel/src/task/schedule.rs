@@ -57,7 +57,7 @@ impl Scheduler for QueueScheduler {
 
             // State cannot be set to other states except [`TaskState::Runnable`] by other harts,
             // e.g. this task is waken up by another task that releases the resources.
-            if task.locked_inner().state != TaskState::Runnable {
+            if task.locked_inner().state != TaskState::RUNNABLE {
                 self.queue.push_back(task);
                 None
             } else {

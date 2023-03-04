@@ -32,33 +32,34 @@ use super::{
     TASK_MANAGER,
 };
 
-/// Five-state model:
-///
-/// - **Running** or **Runnable** (R)
-/// - **Sleeping** states: **Interruptible** (S) and **Uninterruptible** (D).
-/// - **Stopped** (T)
-/// - **Zombie** (Z)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TaskState {
-    /// The task is waiting in scheduler.
-    Runnable,
+bitflags::bitflags! {
+    /// Five-state model:
+    ///
+    /// - **Running** or **Runnable** (R)
+    /// - **Sleeping** states: **Interruptible** (S) and **Uninterruptible** (D).
+    /// - **Stopped** (T)
+    /// - **Zombie** (Z)
+    pub struct TaskState: u8 {
+        /// The task is waiting in scheduler.
+        const RUNNABLE = 1 << 0;
 
-    /// The task takes up a CPU core to execute its code.
-    Running,
+        /// The task takes up a CPU core to execute its code.
+        const RUNNING = 1  << 1;
 
-    /// A task will react to `SIGSTOP` or `SIGTSTP` signals and be brought back
-    /// to running or runnable by `SIGCONT` signal.
-    Stopped,
+        /// A task will react to `SIGSTOP` or `SIGTSTP` signals and be brought back
+        /// to running or runnable by `SIGCONT` signal.
+        const STOPPED = 1 << 2;
 
-    /// Task will only for resources to be available.
-    Interruptible,
+        /// Task will only for resources to be available.
+        const INTERRUPTIBLE = 1 << 3;
 
-    /// Task will react to both signals and the availability of resources.
-    Uninterruptible,
+        /// Task will react to both signals and the availability of resources.
+        const UNINTERRUPTIBLE = 1 << 4;
 
-    /// When a task has completed its execution or is terminated, it will send the
-    /// `SIGCHLD` signal to the parent task and go into the zombie state.
-    Zombie,
+        /// When a task has completed its execution or is terminated, it will send the
+        /// `SIGCHLD` signal to the parent task and go into the zombie state.
+        const ZOMBIE = 1 << 5;
+    }
 }
 
 /// Mutable inner data of the task, not protected by lock.
@@ -174,7 +175,7 @@ impl Task {
     /// Create a new task from ELF data.
     pub fn new(dir: String, elf_data: &[u8], args: Vec<String>) -> KernelResult<Self> {
         // Get task name
-        let name = args[0].clone();
+        let name = args.join(" ");
 
         // Init address space
         let mut mm = MM::new()?;
@@ -226,7 +227,7 @@ impl Task {
                 sig_blocked: SigSet::new(),
             }),
             locked_inner: SpinLock::new(TaskLockedInner {
-                state: TaskState::Runnable,
+                state: TaskState::RUNNABLE,
                 sleeping_on: None,
                 parent: None,
                 children: Vec::new(),
@@ -496,18 +497,18 @@ impl kernel_sync::SleepLockSched for TaskLockedInner {
     }
 
     fn sleep(task: &mut Self) {
-        task.state = TaskState::Interruptible;
+        task.state = TaskState::INTERRUPTIBLE;
     }
 
     /// Wakes up tasks sleeping on this lock.
     fn wakeup(id: usize) {
         TASK_MANAGER.lock().iter().for_each(|task| {
             let mut inner = task.locked_inner();
-            if inner.state == TaskState::Interruptible
+            if inner.state == TaskState::INTERRUPTIBLE
                 && inner.sleeping_on.is_some()
                 && inner.sleeping_on.unwrap() == id
             {
-                inner.state = TaskState::Runnable;
+                inner.state = TaskState::RUNNABLE;
             }
         });
     }

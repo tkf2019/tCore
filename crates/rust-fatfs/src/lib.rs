@@ -52,6 +52,7 @@
     clippy::cast_possible_truncation,
     clippy::bool_to_int_with_if, // less readable
     clippy::uninlined_format_args, // not supported before Rust 1.58.0
+    deprecated
 )]
 
 extern crate log;
