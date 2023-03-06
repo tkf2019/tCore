@@ -19,8 +19,8 @@ mod syscall;
 mod task;
 mod tests;
 
-#[cfg(target_arch = "riscv64")]
 #[path = "arch/riscv64/mod.rs"]
+#[cfg(target_arch = "riscv64")]
 mod arch;
 
 extern crate alloc;

@@ -57,10 +57,11 @@ jobs:
           cd qemu-7.0.0
           sudo make install
           qemu-system-riscv64 --version
-      - name: build os.bin
+      - name: Build
         run: |
-          make all
-      - name: run os
+          cargo xtask make --oscomp
+          cp ${{ github.workspace }}/target/riscv64gc-unknown-none-elf/release/tcore-kernel kernel-qemu
+      - name: Run
         run: |
           wget $IMG_URL -O fat32.img
           timeout $TIMEOUT qemu-system-riscv64 \
