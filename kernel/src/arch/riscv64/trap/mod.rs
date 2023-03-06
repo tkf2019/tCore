@@ -11,7 +11,7 @@ use crate::{
     arch::mm::VirtAddr,
     config::TRAMPOLINE_VA,
     error::KernelError,
-    mm::VMFlags,
+    mm::{do_handle_page_fault, VMFlags},
     println,
     syscall::syscall,
     task::do_exit,
@@ -92,18 +92,23 @@ pub fn user_trap_handler() -> ! {
             let mut curr_mm = curr.mm.lock();
             // show_trapframe(&current.trapframe());
             trap_info();
-            if let Err(err) =
-                curr_mm.do_handle_page_fault(VirtAddr::from(stval), VMFlags::USER | VMFlags::WRITE)
-            {
+            if let Err(err) = do_handle_page_fault(
+                &mut curr_mm,
+                VirtAddr::from(stval),
+                VMFlags::USER | VMFlags::WRITE,
+            ) {
                 fatal_info(err);
-                do_exit(-1);
+                drop(curr_mm);
+                drop(curr);
+                unsafe { do_exit(-1) };
             }
         }
         _ => {
             let curr = curr_task().unwrap();
             show_trapframe(curr.trapframe());
             trap_info();
-            do_exit(-1);
+            drop(curr);
+            unsafe { do_exit(-1) };
         }
     }
     user_trap_return();

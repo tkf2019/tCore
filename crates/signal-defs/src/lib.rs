@@ -14,3 +14,7 @@ pub use siginfo::*;
 pub use signo::*;
 pub use sigpending::*;
 pub use sigset::*;
+
+pub fn sigmask(signo: SignalNo) -> u64 {
+    1 << (usize::from(signo) as u64 - 1)
+}

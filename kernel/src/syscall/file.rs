@@ -1,11 +1,37 @@
+use alloc::string::String;
 use core::mem::size_of;
 use errno::Errno;
+use log::trace;
 use syscall_interface::*;
-use vfs::{OpenFlags, SeekWhence, StatMode};
+use vfs::{OpenFlags, Path, SeekWhence, StatMode};
 
-use crate::{arch::mm::VirtAddr, task::curr_task};
+use crate::{
+    arch::mm::VirtAddr,
+    error::KernelResult,
+    fs::{open, unlink},
+    task::{curr_task, Task},
+};
 
 use super::SyscallImpl;
+
+/// Resolves absolute path with directory file descriptor and pathname.
+///
+/// If the pathname is relative, then it is interpreted relative to the directory
+/// referred to by the file descriptor dirfd .
+///
+/// If pathname is relative and dirfd is the special value [`AT_FDCWD`], then pathname
+/// is interpreted relative to the current working directory of the calling process.
+///
+/// If pathname is absolute, then dirfd is ignored.
+pub fn resolve_path(task: &Task, dirfd: usize, pathname: String) -> KernelResult<Path> {
+    if pathname.starts_with("/") {
+        Ok(Path::new(pathname.as_str()))
+    } else {
+        let mut path = task.get_dir(dirfd)?;
+        path.extend(pathname.as_str());
+        Ok(path)
+    }
+}
 
 impl SyscallFile for SyscallImpl {
     fn write(fd: usize, buf: *const u8, count: usize) -> SyscallResult {
@@ -75,7 +101,22 @@ impl SyscallFile for SyscallImpl {
         }
 
         let curr = curr_task().unwrap();
-        curr.do_open(dirfd, pathname, flags.unwrap(), mode)
+        let flags = flags.unwrap();
+
+        if flags.contains(OpenFlags::O_CREAT) && mode.is_none()
+            || flags.contains(OpenFlags::O_WRONLY | OpenFlags::O_RDWR)
+        {
+            return Err(Errno::EINVAL);
+        }
+
+        let mut mm = curr.mm.lock();
+        let path = resolve_path(&curr, dirfd, mm.get_str(VirtAddr::from(pathname as usize))?)?;
+
+        trace!("OPEN {:?} {:?}", path, flags);
+
+        let mut fd_manager = curr.fd_manager.lock();
+        fd_manager
+            .push(open(path, flags)?)
             .map_err(|err| err.into())
     }
 
@@ -153,9 +194,25 @@ impl SyscallFile for SyscallImpl {
     }
 
     fn unlinkat(dirfd: usize, pathname: *const u8, flags: usize) -> SyscallResult {
-        let curr = curr_task().unwrap();
-        curr.do_unlinkat(dirfd, pathname, flags)
-            .map_err(|err| Errno::from(err))?;
-        Ok(0)
+        // curr.do_unlinkat(dirfd, pathname, flags)
+        // .map_err(|err| Errno::from(err))?;
+        if flags == AT_REMOVEDIR {
+            unimplemented!()
+        } else if flags == 0 {
+            {
+                let curr = curr_task().unwrap();
+                let mut mm = curr.mm.lock();
+                let path =
+                    { resolve_path(&curr, dirfd, mm.get_str(VirtAddr::from(pathname as usize))?)? };
+
+                trace!("UNLINKAT {:?}", path);
+
+                unlink(path)?;
+
+                Ok(0)
+            }
+        } else {
+            Err(Errno::EINVAL)
+        }
     }
 }

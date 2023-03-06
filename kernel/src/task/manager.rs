@@ -164,7 +164,7 @@ pub fn init() {
 /// 1. Each cpu tries to acquire the lock of global task manager.
 /// 2. Each cpu runs the task fetched from schedule queue.
 /// 3. Handle the final state after a task finishes `do_yield` or `do_exit`.
-pub fn idle() -> ! {
+pub unsafe fn idle() -> ! {
     loop {
         let mut task_manager = TASK_MANAGER.lock();
 
@@ -182,13 +182,17 @@ pub fn idle() -> ! {
             // Release the lock.
             drop(task_manager);
 
-            unsafe { __switch(idle_ctx, next_ctx) };
+            __switch(idle_ctx, next_ctx);
         }
     }
 }
 
 /// Current task exits. Run next task.
-pub fn do_exit(exit_code: i32) {
+/// 
+/// # Safety
+/// 
+/// Unsafe context switch will be called in this function.
+pub unsafe fn do_exit(exit_code: i32) {
     let curr = curr_task().unwrap();
     trace!("{:#?} exited with code {}", curr, exit_code);
     let curr_ctx = {
@@ -204,11 +208,15 @@ pub fn do_exit(exit_code: i32) {
         handle_zombie(curr);
     }
 
-    unsafe { __switch(curr_ctx, idle_ctx()) };
+    __switch(curr_ctx, idle_ctx());
 }
 
 /// Current task suspends. Run next task.
-pub fn do_yield() {
+/// 
+/// # Safety
+/// 
+/// Unsafe context switch will be called in this function.
+pub unsafe fn do_yield() {
     let curr = curr_task().take().unwrap();
     trace!("{:#?} suspended", curr);
     let curr_ctx = {
@@ -220,12 +228,10 @@ pub fn do_yield() {
     // push back to scheduler
     TASK_MANAGER.lock().add(curr);
 
-    unsafe {
-        // Saves and restores CPU local variable, intena.
-        let intena = CPUs[get_cpu_id()].intena;
-        __switch(curr_ctx, idle_ctx());
-        CPUs[get_cpu_id()].intena = intena;
-    };
+    // Saves and restores CPU local variable, intena.
+    let intena = CPUs[get_cpu_id()].intena;
+    __switch(curr_ctx, idle_ctx());
+    CPUs[get_cpu_id()].intena = intena;
 }
 
 /// Handle zombie tasks.

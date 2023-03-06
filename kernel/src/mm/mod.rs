@@ -9,7 +9,7 @@ use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::{fmt, mem::size_of, slice};
 use errno::Errno;
 use kernel_sync::SpinLock;
-use log::warn;
+use log::{trace, warn};
 use syscall_interface::SyscallResult;
 
 use crate::{
@@ -20,6 +20,7 @@ use crate::{
     config::*,
     error::*,
     mm::{pma::LazyPMA, UserBuffer},
+    task::Task,
 };
 
 pub use file::BackendFile;
@@ -227,7 +228,7 @@ impl MM {
             let start = self.find_free_area(start, len)?;
             (start, start + len)
         } else {
-            self.do_munmap(start, len)?;
+            do_munmap(self, start, len)?;
             (start, end)
         };
 
@@ -428,154 +429,6 @@ impl MM {
     }
 }
 
-/* Syscall helpers */
-
-/// Value aligned to the multiple of page size.
-pub fn page_align(value: usize) -> usize {
-    value & !(PAGE_SIZE - 1)
-}
-
-pub fn page_index(start_va: VirtAddr, va: VirtAddr) -> usize {
-    Page::from(va).number() - Page::from(start_va).number()
-}
-
-impl MM {
-    /// A helper for [`syscall_interface::SyscallProc::brk`].
-    pub fn do_brk(&mut self, brk: VirtAddr) -> SyscallResult {
-        if brk < self.start_brk {
-            return Ok(self.brk.value());
-        }
-
-        let new_page = Page::from(brk);
-        let old_page = Page::from(self.brk);
-        if new_page == old_page {
-            self.brk = brk;
-            return Ok(brk.value());
-        }
-
-        // Always allow shrinking brk.
-        if brk < self.brk {
-            if self
-                .do_munmap(
-                    (new_page + 1).start_address(),
-                    (old_page.number() - new_page.number()) * PAGE_SIZE,
-                )
-                .is_err()
-            {
-                return Ok(self.brk.value());
-            }
-            self.brk = brk;
-            return Ok(self.brk.value());
-        }
-
-        // Check against existing mmap mappings.
-        if self.get_vma(brk - 1, |_, _, _| Ok(())).is_ok() {
-            return Ok(self.brk.value());
-        }
-
-        // Initialize memory area
-        if self.brk == self.start_brk {
-            self.add_vma(VMArea::new(
-                self.start_brk,
-                self.start_brk + PAGE_SIZE,
-                VMFlags::USER | VMFlags::READ | VMFlags::WRITE,
-                Arc::new(SpinLock::new(LazyPMA::new(1, None)?)),
-            )?)?;
-        }
-
-        self.get_vma(self.start_brk, |vma, _, _| unsafe { vma.extend(brk) })
-            .unwrap();
-        self.brk = brk;
-        Ok(brk.value())
-    }
-
-    /// A helper for [`syscall_interface::SyscallProc::munmap`].
-    pub fn do_munmap(&mut self, start: VirtAddr, len: usize) -> KernelResult {
-        let len = page_align(len);
-        if !start.is_aligned() || len == 0 {
-            return Err(KernelError::InvalidArgs);
-        }
-        let end = start + len;
-
-        let vma_range = self.get_vma_range(start, end)?;
-        for index in vma_range {
-            let mut need_remove = false;
-            let vma = self.vma_list[index].as_mut().unwrap();
-            let mut new_vma = None;
-
-            if start > vma.start_va && end < vma.end_va && self.vma_map.len() >= MAX_MAP_COUNT {
-                return Err(KernelError::VMAAllocFailed);
-            }
-
-            // Handle intersection cases.
-            if vma.start_va >= start && vma.end_va <= end {
-                vma.unmap_all(&mut self.page_table)?;
-                need_remove = true;
-            } else if vma.start_va < start && vma.end_va > end {
-                let (mid, right) = vma.split(start, end)?;
-                mid.unwrap().unmap_all(&mut self.page_table)?;
-                new_vma = right;
-            } else if vma.end_va > end {
-                // vma starting address modified to end
-                self.vma_map.remove(&vma.start_va);
-                let (left, _) = vma.split(start, end)?;
-                self.vma_map.insert(vma.start_va, index);
-                left.unwrap().unmap_all(&mut self.page_table)?;
-            } else {
-                let (right, _) = vma.split(start, end)?;
-                right.unwrap().unmap_all(&mut self.page_table)?;
-            }
-
-            if need_remove {
-                let vma = self.vma_list[index].take().unwrap();
-                self.vma_recycled.push(index);
-                self.vma_map.remove(&vma.start_va);
-            }
-
-            // Avoid crashes.
-            self.vma_cache = None;
-
-            if let Some(new_vma) = new_vma {
-                self.add_vma(new_vma)?;
-            }
-        }
-        Ok(())
-    }
-
-    /// A helper for [`syscall_interface::SyscallProc::mprotect`].
-    pub fn do_mprotect(&mut self, start: VirtAddr, len: usize, prot: MmapProt) -> KernelResult {
-        let len = page_align(len);
-        if !start.is_aligned() || len == 0 {
-            return Err(KernelError::InvalidArgs);
-        }
-        let end = start + len;
-
-        self.get_vma(start, |vma, _, _| {
-            if vma.end_va < end {
-                return Err(KernelError::VMANotFound);
-            }
-            Ok(())
-        })
-    }
-}
-
-/* Trap helpers */
-
-impl MM {
-    /// A page fault helper for [`crate::trap::user_trap_handler`].
-    pub fn do_handle_page_fault(&mut self, va: VirtAddr, flags: VMFlags) -> KernelResult {
-        self.get_vma(va, |vma, pt, _| {
-            let (_, alloc) = vma.alloc_frame(Page::from(va), pt)?;
-            if !alloc || !vma.flags.contains(flags) {
-                return Err(KernelError::FatalPageFault);
-            }
-            Ok(())
-        })
-    }
-}
-
-/* Derives */
-
 impl fmt::Debug for MM {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
@@ -592,4 +445,222 @@ impl fmt::Debug for MM {
         }
         Ok(())
     }
+}
+
+/* Syscall helpers */
+
+/// Value aligned to the multiple of page size.
+pub fn page_align(value: usize) -> usize {
+    value & !(PAGE_SIZE - 1)
+}
+
+pub fn page_index(start_va: VirtAddr, va: VirtAddr) -> usize {
+    Page::from(va).number() - Page::from(start_va).number()
+}
+
+/// A helper for [`syscall_interface::SyscallProc::brk`].
+pub fn do_brk(mm: &mut MM, brk: VirtAddr) -> SyscallResult {
+    if brk < mm.start_brk {
+        return Ok(mm.brk.value());
+    }
+
+    let new_page = Page::from(brk);
+    let old_page = Page::from(mm.brk);
+    if new_page == old_page {
+        mm.brk = brk;
+        return Ok(brk.value());
+    }
+
+    // Always allow shrinking brk.
+    if brk < mm.brk {
+        if do_munmap(
+            mm,
+            (new_page + 1).start_address(),
+            (old_page.number() - new_page.number()) * PAGE_SIZE,
+        )
+        .is_err()
+        {
+            return Ok(mm.brk.value());
+        }
+        mm.brk = brk;
+        return Ok(mm.brk.value());
+    }
+
+    // Check against existing mmap mappings.
+    if mm.get_vma(brk - 1, |_, _, _| Ok(())).is_ok() {
+        return Ok(mm.brk.value());
+    }
+
+    // Initialize memory area
+    if mm.brk == mm.start_brk {
+        mm.add_vma(VMArea::new(
+            mm.start_brk,
+            mm.start_brk + PAGE_SIZE,
+            VMFlags::USER | VMFlags::READ | VMFlags::WRITE,
+            Arc::new(SpinLock::new(LazyPMA::new(1, None)?)),
+        )?)?;
+    }
+
+    mm.get_vma(mm.start_brk, |vma, _, _| unsafe { vma.extend(brk) })
+        .unwrap();
+    mm.brk = brk;
+    Ok(brk.value())
+}
+
+/// A helper for [`syscall_interface::SyscallProc::munmap`].
+pub fn do_munmap(mm: &mut MM, start: VirtAddr, len: usize) -> KernelResult {
+    let len = page_align(len);
+    if !start.is_aligned() || len == 0 {
+        return Err(KernelError::InvalidArgs);
+    }
+    let end = start + len;
+
+    let vma_range = mm.get_vma_range(start, end)?;
+    for index in vma_range {
+        let mut need_remove = false;
+        let vma = mm.vma_list[index].as_mut().unwrap();
+        let mut new_vma = None;
+
+        if start > vma.start_va && end < vma.end_va && mm.vma_map.len() >= MAX_MAP_COUNT {
+            return Err(KernelError::VMAAllocFailed);
+        }
+
+        // Handle intersection cases.
+        if vma.start_va >= start && vma.end_va <= end {
+            vma.unmap_all(&mut mm.page_table)?;
+            need_remove = true;
+        } else if vma.start_va < start && vma.end_va > end {
+            let (mid, right) = vma.split(start, end)?;
+            mid.unwrap().unmap_all(&mut mm.page_table)?;
+            new_vma = right;
+        } else if vma.end_va > end {
+            // vma starting address modified to end
+            mm.vma_map.remove(&vma.start_va);
+            let (left, _) = vma.split(start, end)?;
+            mm.vma_map.insert(vma.start_va, index);
+            left.unwrap().unmap_all(&mut mm.page_table)?;
+        } else {
+            let (right, _) = vma.split(start, end)?;
+            right.unwrap().unmap_all(&mut mm.page_table)?;
+        }
+
+        if need_remove {
+            let vma = mm.vma_list[index].take().unwrap();
+            mm.vma_recycled.push(index);
+            mm.vma_map.remove(&vma.start_va);
+        }
+
+        // Avoid crashes.
+        mm.vma_cache = None;
+
+        if let Some(new_vma) = new_vma {
+            mm.add_vma(new_vma)?;
+        }
+    }
+    Ok(())
+}
+
+/// A helper for [`syscall_interface::SyscallProc::mprotect`].
+pub fn do_mprotect(mm: &mut MM, start: VirtAddr, len: usize, prot: MmapProt) -> KernelResult {
+    let len = page_align(len);
+    if !start.is_aligned() || len == 0 {
+        return Err(KernelError::InvalidArgs);
+    }
+    let end = start + len;
+
+    mm.get_vma(start, |vma, _, _| {
+        if vma.end_va < end {
+            return Err(KernelError::VMANotFound);
+        }
+        Ok(())
+    })
+}
+
+/// A helper for [`syscall_interface::SyscallProc::mmap`].
+///
+/// TODO: MAP_SHARED and MAP_PRIVATE
+pub fn do_mmap(
+    task: &Task,
+    hint: VirtAddr,
+    len: usize,
+    prot: MmapProt,
+    flags: MmapFlags,
+    fd: usize,
+    off: usize,
+) -> SyscallResult {
+    trace!(
+        "MMAP {:?}, 0x{:X?} {:#?} {:#?} 0x{:X} 0x{:X}",
+        hint,
+        len,
+        prot,
+        flags,
+        fd,
+        off
+    );
+
+    if len == 0
+        || !hint.is_aligned()
+        || !(hint + len).is_aligned()
+        || hint + len > VirtAddr::from(LOW_MAX_VA)
+        || hint == VirtAddr::zero() && flags.contains(MmapFlags::MAP_FIXED)
+    {
+        return Err(Errno::EINVAL);
+    }
+
+    let mut mm = task.mm.lock();
+    if mm.map_count() >= MAX_MAP_COUNT {
+        return Err(Errno::ENOMEM);
+    }
+
+    // Find an available area by kernel.
+    let anywhere = hint == VirtAddr::zero() && !flags.contains(MmapFlags::MAP_FIXED);
+
+    // Handle different cases indicated by `MmapFlags`.
+    if flags.contains(MmapFlags::MAP_ANONYMOUS) {
+        if fd as isize == -1 && off == 0 {
+            if let Ok(start) = mm.alloc_vma(hint, hint + len, prot.into(), anywhere, None) {
+                return Ok(start.value());
+            } else {
+                return Err(Errno::ENOMEM);
+            }
+        }
+        return Err(Errno::EINVAL);
+    }
+
+    // Map to backend file.
+    if let Ok(file) = task.fd_manager.lock().get(fd) {
+        if !file.is_reg() || !file.read_ready() {
+            return Err(Errno::EACCES);
+        }
+        if let Some(_) = file.seek(off, vfs::SeekWhence::Set) {
+            let backend = BackendFile::new(file, off);
+            if let Ok(start) = mm.alloc_vma(hint, hint + len, prot.into(), anywhere, Some(backend))
+            {
+                return Ok(start.value());
+            } else {
+                return Err(Errno::ENOMEM);
+            }
+        } else {
+            return Err(Errno::EACCES);
+        }
+    } else {
+        return Err(Errno::EBADF);
+    }
+
+    // Invalid arguments or unimplemented cases
+    // flags contained none of MAP_PRIVATE, MAP_SHARED, or MAP_SHARED_VALIDATE.
+    // Err(Errno::EINVAL)
+}
+
+/* Trap helpers */
+
+/// A page fault helper for [`crate::trap::user_trap_handler`].
+pub fn do_handle_page_fault(mm: &mut MM, va: VirtAddr, flags: VMFlags) -> KernelResult {
+    mm.get_vma(va, |vma, pt, _| {
+        let (_, alloc) = vma.alloc_frame(Page::from(va), pt)?;
+        if !alloc || !vma.flags.contains(flags) {
+            return Err(KernelError::FatalPageFault);
+        }
+        Ok(())
+    })
 }

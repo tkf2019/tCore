@@ -49,7 +49,7 @@ impl File for Pipe {
                 }
                 // Release the lock.
                 drop(ring_buf);
-                do_yield();
+                unsafe { do_yield() };
                 continue;
             }
             read_len += ring_buf.read(&mut buf[read_len..]);
@@ -75,7 +75,7 @@ impl File for Pipe {
                 }
                 // Release the lock.
                 drop(ring_buf);
-                do_yield();
+                unsafe { do_yield() };
                 continue;
             }
             write_len += ring_buf.write(&buf[write_len..]);

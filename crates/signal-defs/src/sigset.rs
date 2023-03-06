@@ -47,6 +47,8 @@ impl SigSet {
     pub fn difference(&mut self, other: &SigSet) {
         self.0 &= !other.0;
     }
+
+    
 }
 
 impl From<u64> for SigSet {

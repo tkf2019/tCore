@@ -64,7 +64,7 @@ impl SigPending {
     /// Result is unpredictable if `signum` is out of range.
     pub fn add(&mut self, sig: SigInfo) {
         self.list.push_back(sig);
-        self.mask.set(sig.si_signo as usize - 1);
+        self.mask.set(sig.signo as usize - 1);
     }
 
     /// Fetches a pending unblocked signal to handle.
@@ -73,7 +73,7 @@ impl SigPending {
         let mut siginfo = None;
         let mut first = 0;
         for (i, sig) in self.list.iter().enumerate() {
-            if self.mask.get(sig.si_signo as usize - 1) {
+            if self.mask.get(sig.signo as usize - 1) {
                 siginfo = Some(*sig);
                 first = i;
                 break;
@@ -82,7 +82,7 @@ impl SigPending {
         // Removes the signal from pending list.
         if siginfo.is_some() {
             self.list.remove(first);
-            self.mask.unset(siginfo.unwrap().si_signo as usize - 1);
+            self.mask.unset(siginfo.unwrap().signo as usize - 1);
         }
         siginfo
     }

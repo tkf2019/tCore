@@ -64,14 +64,15 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
         }
     }
     // IDLE loop
-    task::idle();
+    unsafe { task::idle() };
 }
 
 #[no_mangle]
 pub extern "C" fn rust_main_others(hartid: usize) -> ! {
     // Other initializations.
+    
     arch::init(hartid, false);
     info!("(Secondary) Start executing tasks.");
     // IDLE loop
-    task::idle();
+    unsafe { task::idle() };
 }

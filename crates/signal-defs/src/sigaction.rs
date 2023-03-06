@@ -146,8 +146,7 @@ impl SigAction {
     }
 }
 
-/// The entries in the "Action" column of the table below specify the default
-/// disposition for each signal, as follows:
+/// The possible effects an unblocked signal set to SIG_DFL can have are:
 pub enum SigActionDefault {
     /// Default action is to terminate the process.
     Term,

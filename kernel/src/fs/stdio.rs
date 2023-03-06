@@ -20,7 +20,7 @@ impl File for Stdin {
         buf[0] = loop {
             let c = getchar();
             if c == 0 || c == 255 {
-                do_yield();
+                unsafe { do_yield() };
                 continue;
             } else {
                 break c;

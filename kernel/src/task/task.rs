@@ -3,14 +3,14 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
-use core::{cell::SyncUnsafeCell, fmt, mem::size_of};
+use core::{cell::SyncUnsafeCell, fmt};
 use errno::Errno;
 use id_alloc::{IDAllocator, RecycleAllocator};
-use kernel_sync::{SleepLockSched, SpinLock, SpinLockGuard};
-use log::{debug, trace};
-use signal_defs::{SigActions, SigInfo, SigPending, SigSet, NSIG};
-use syscall_interface::{IoVec, SyscallResult, AT_FDCWD, AT_REMOVEDIR};
-use vfs::{File, OpenFlags, Path, StatMode};
+use kernel_sync::{SpinLock, SpinLockGuard};
+use log::trace;
+use signal_defs::{SigActions, SigPending, SigSet};
+use syscall_interface::AT_FDCWD;
+use vfs::{File, Path};
 
 use crate::{
     arch::{
@@ -19,15 +19,15 @@ use crate::{
     },
     config::*,
     error::{KernelError, KernelResult},
-    fs::{open, unlink, FDManager},
+    fs::FDManager,
     loader::from_elf,
-    mm::{pma::FixedPMA, BackendFile, MmapFlags, MmapProt, KERNEL_MM, MM},
+    mm::{pma::FixedPMA, KERNEL_MM, MM},
     task::{kstack_alloc, pid_alloc, schedule::Scheduler},
 };
 
 use super::{
     context::{TaskContext, __switch},
-    cpu, curr_ctx, curr_task, idle_ctx,
+    curr_ctx, curr_task, idle_ctx,
     manager::{kstack_dealloc, kstack_vm_alloc, PID},
     TASK_MANAGER,
 };
@@ -262,6 +262,20 @@ impl Task {
         let fd_manager = self.fd_manager.lock();
         fd_manager.get(fd)
     }
+
+    /// Gets the directory name from a file descriptor.
+    pub fn get_dir(&self, dirfd: usize) -> KernelResult<Path> {
+        if dirfd == AT_FDCWD {
+            Ok(Path::new(self.inner().curr_dir.as_str()))
+        } else {
+            let dir = self.fd_manager.lock().get(dirfd)?;
+            if dir.is_dir() {
+                Ok(dir.get_path().unwrap())
+            } else {
+                Err(KernelError::Errno(Errno::ENOTDIR))
+            }
+        }
+    }
 }
 
 impl Drop for Task {
@@ -294,191 +308,6 @@ pub fn ustack_layout(tid: usize) -> (usize, usize) {
     let ustack_base = USER_STACK_BASE - tid * (USER_STACK_SIZE + PAGE_SIZE);
     let ustack_top = ustack_base - USER_STACK_SIZE;
     (ustack_top, ustack_base - ADDR_ALIGN)
-}
-
-/* Syscall helpers */
-
-impl Task {
-    /// A helper for [`syscall_interface::SyscallProc::mmap`].
-    ///
-    /// TODO: MAP_SHARED and MAP_PRIVATE
-    pub fn do_mmap(
-        &self,
-        hint: VirtAddr,
-        len: usize,
-        prot: MmapProt,
-        flags: MmapFlags,
-        fd: usize,
-        off: usize,
-    ) -> SyscallResult {
-        trace!(
-            "MMAP {:?}, 0x{:X?} {:#?} {:#?} 0x{:X} 0x{:X}",
-            hint,
-            len,
-            prot,
-            flags,
-            fd,
-            off
-        );
-
-        if len == 0
-            || !hint.is_aligned()
-            || !(hint + len).is_aligned()
-            || hint + len > VirtAddr::from(LOW_MAX_VA)
-            || hint == VirtAddr::zero() && flags.contains(MmapFlags::MAP_FIXED)
-        {
-            return Err(Errno::EINVAL);
-        }
-
-        let mut mm = self.mm.lock();
-        if mm.map_count() >= MAX_MAP_COUNT {
-            return Err(Errno::ENOMEM);
-        }
-
-        // Find an available area by kernel.
-        let anywhere = hint == VirtAddr::zero() && !flags.contains(MmapFlags::MAP_FIXED);
-
-        // Handle different cases indicated by `MmapFlags`.
-        if flags.contains(MmapFlags::MAP_ANONYMOUS) {
-            if fd as isize == -1 && off == 0 {
-                if let Ok(start) = mm.alloc_vma(hint, hint + len, prot.into(), anywhere, None) {
-                    return Ok(start.value());
-                } else {
-                    return Err(Errno::ENOMEM);
-                }
-            }
-            return Err(Errno::EINVAL);
-        }
-
-        // Map to backend file.
-        if let Ok(file) = self.fd_manager.lock().get(fd) {
-            if !file.is_reg() || !file.read_ready() {
-                return Err(Errno::EACCES);
-            }
-            if let Some(_) = file.seek(off, vfs::SeekWhence::Set) {
-                let backend = BackendFile::new(file, off);
-                if let Ok(start) =
-                    mm.alloc_vma(hint, hint + len, prot.into(), anywhere, Some(backend))
-                {
-                    return Ok(start.value());
-                } else {
-                    return Err(Errno::ENOMEM);
-                }
-            } else {
-                return Err(Errno::EACCES);
-            }
-        } else {
-            return Err(Errno::EBADF);
-        }
-
-        // Invalid arguments or unimplemented cases
-        // flags contained none of MAP_PRIVATE, MAP_SHARED, or MAP_SHARED_VALIDATE.
-        // Err(Errno::EINVAL)
-    }
-
-    /// Gets the directory name from a file descriptor.
-    pub fn get_dir(&self, dirfd: usize) -> KernelResult<Path> {
-        if dirfd == AT_FDCWD {
-            Ok(Path::new(self.inner().curr_dir.as_str()))
-        } else {
-            let dir = self.fd_manager.lock().get(dirfd)?;
-            if dir.is_dir() {
-                Ok(dir.get_path().unwrap())
-            } else {
-                Err(KernelError::Errno(Errno::ENOTDIR))
-            }
-        }
-    }
-
-    /// Resolves absolute path with directory file descriptor and pathname.
-    ///
-    /// If the pathname is relative, then it is interpreted relative to the directory
-    /// referred to by the file descriptor dirfd .
-    ///
-    /// If pathname is relative and dirfd is the special value [`AT_FDCWD`], then pathname
-    /// is interpreted relative to the current working directory of the calling process.
-    ///
-    /// If pathname is absolute, then dirfd is ignored.
-    pub fn resolve_path(&self, dirfd: usize, pathname: String) -> KernelResult<Path> {
-        if pathname.starts_with("/") {
-            Ok(Path::new(pathname.as_str()))
-        } else {
-            let mut path = self.get_dir(dirfd)?;
-            path.extend(pathname.as_str());
-            Ok(path)
-        }
-    }
-
-    /// A helper for [`syscall_interface::SyscallFile::openat`].
-    pub fn do_open(
-        &self,
-        dirfd: usize,
-        pathname: *const u8,
-        flags: OpenFlags,
-        mode: Option<StatMode>,
-    ) -> KernelResult<usize> {
-        if flags.contains(OpenFlags::O_CREAT) && mode.is_none()
-            || flags.contains(OpenFlags::O_WRONLY | OpenFlags::O_RDWR)
-        {
-            return Err(KernelError::Errno(Errno::EINVAL));
-        }
-
-        let mut mm = self.mm.lock();
-        let path = self.resolve_path(dirfd, mm.get_str(VirtAddr::from(pathname as usize))?)?;
-
-        trace!("OPEN {:?} {:?}", path, flags);
-
-        self.fd_manager
-            .lock()
-            .push(open(path, flags).map_err(|errno| KernelError::Errno(errno))?)
-    }
-
-    /// A helper for [`syscall_interface::SyscallFile::readv`] and [`syscall_interface::SyscallFile::writev`].
-    pub fn for_each_iov(
-        &self,
-        iov: VirtAddr,
-        iovcnt: usize,
-        mut op: impl FnMut(usize, usize) -> bool,
-    ) -> KernelResult {
-        let size = size_of::<IoVec>();
-        let mut mm = self.mm.lock();
-        let buf = mm.get_buf_mut(iov, iovcnt * size)?;
-        for bytes in buf.into_iter().step_by(size) {
-            let iov = unsafe { &*(bytes as *const IoVec) };
-            if !op(iov.iov_base, iov.iov_len) {
-                break;
-            }
-        }
-        Ok(())
-    }
-
-    /// A helper for [`syscall_interface::SyscallFile::unlinkat`].
-    pub fn do_unlinkat(&self, dirfd: usize, pathname: *const u8, flags: usize) -> KernelResult {
-        if flags == AT_REMOVEDIR {
-            unimplemented!()
-        } else if flags == 0 {
-            let mut mm = self.mm.lock();
-            let path = self.resolve_path(dirfd, mm.get_str(VirtAddr::from(pathname as usize))?)?;
-
-            trace!("UNLINKAT {:?}", path);
-
-            unlink(path).map_err(|err| KernelError::Errno(err))
-        } else {
-            Err(KernelError::InvalidArgs)
-        }
-    }
-}
-
-/* Signal Helpers */
-
-impl Task {
-    pub fn send_sig_info(sig: usize, info: &SigInfo) -> SyscallResult {
-        if (sig as isize) < 0 || sig > NSIG {
-            return Err(Errno::EINVAL);
-        }
-
-        Ok(0)
-    }
 }
 
 /* Sleep lock */
