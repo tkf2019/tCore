@@ -7,13 +7,14 @@ use core::{cell::SyncUnsafeCell, fmt};
 use errno::Errno;
 use id_alloc::{IDAllocator, RecycleAllocator};
 use kernel_sync::{SpinLock, SpinLockGuard};
-use log::{trace, info};
+use log::trace;
 use signal_defs::{SigActions, SigPending, SigSet};
 use syscall_interface::AT_FDCWD;
 use vfs::{File, Path};
 
 use crate::{
     arch::{
+        TaskContext, __switch,
         mm::{frame_dealloc, AllocatedFrame, Frame, PTEFlags, Page, PhysAddr, VirtAddr, PAGE_SIZE},
         trap::{user_trap_handler, user_trap_return, TrapFrame},
     },
@@ -26,7 +27,6 @@ use crate::{
 };
 
 use super::{
-    context::{TaskContext, __switch},
     curr_ctx, curr_task, idle_ctx,
     manager::{kstack_dealloc, kstack_vm_alloc, PID},
     TASK_MANAGER,

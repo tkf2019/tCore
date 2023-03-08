@@ -1,10 +1,12 @@
 pub mod mm {
     pub use mm_rv::*;
 }
+mod context;
 pub mod timer;
 pub mod trap;
 pub mod uintr;
 
+pub use context::*;
 use mm_rv::*;
 use riscv::asm::{sfence_vma, sfence_vma_all};
 

@@ -10,14 +10,15 @@ use crate::{
     arch::{
         mm::VirtAddr,
         trap::{user_trap_return, TrapFrame},
+        TaskContext,
     },
     config::MAIN_TASK,
     error::{KernelError, KernelResult},
 };
 
 use super::{
-    context::TaskContext, init_trapframe, kstack_alloc, kstack_dealloc, kstack_vm_alloc, pid_alloc,
-    schedule::Scheduler, Task, TaskInner, TaskLockedInner, TaskState, PID, TASK_MANAGER,
+    init_trapframe, kstack_alloc, kstack_dealloc, kstack_vm_alloc, pid_alloc, schedule::Scheduler,
+    Task, TaskInner, TaskLockedInner, TaskState, PID, TASK_MANAGER,
 };
 
 bitflags::bitflags! {
@@ -111,17 +112,7 @@ pub fn do_clone(
         let mut mm = mm.lock();
         let trapframe_pa = init_trapframe(&mut mm)?;
         let trapframe = TrapFrame::from(trapframe_pa);
-        // Copy from trapframe of parent task
-        *trapframe = *TrapFrame::from(task.trapframe_pa);
-        // Child task returns zero
-        trapframe.set_a0(0);
-        // Set stack pointer
-        if stack != 0 {
-            trapframe.set_sp(stack);
-        }
-        if flags.contains(CloneFlags::CLONE_SETTLS) {
-            trapframe.set_tp(tls);
-        }
+        trapframe.copy_from(TrapFrame::from(task.trapframe_pa), flags, stack, tls);
         trapframe_pa
     };
 

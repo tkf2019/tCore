@@ -7,7 +7,7 @@ pub mod vma;
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::{fmt, mem::size_of, slice};
 use errno::Errno;
-use log::{info, trace, warn};
+use log::{trace, warn};
 use syscall_interface::SyscallResult;
 
 use crate::{

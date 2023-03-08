@@ -5,6 +5,7 @@ use syscall_interface::SyscallNO;
 use crate::{
     error::{KernelError, KernelResult},
     syscall::SyscallArgs,
+    task::CloneFlags,
 };
 
 /// User context is saved in trapframe by trap handler in trampoline.
@@ -50,6 +51,23 @@ impl TrapFrame {
         };
         trapframe.user_regs[1] = user_sp;
         trapframe
+    }
+
+    /// Copies from the old one when we clone a task and initialize its trap frame.
+    pub fn copy_from(&mut self, orig: &mut TrapFrame, flags: CloneFlags, stack: usize, tls: usize) {
+        *self = *orig;
+
+        // Child task returns zero
+        self.set_a0(0);
+
+        // Set stack pointer
+        if stack != 0 {
+            self.set_sp(stack);
+        }
+
+        if flags.contains(CloneFlags::CLONE_SETTLS) {
+            self.set_tp(tls);
+        }
     }
 
     /// Get syscall arguments in registers in user trap frame.

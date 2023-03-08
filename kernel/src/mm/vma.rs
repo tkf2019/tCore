@@ -1,7 +1,7 @@
 use core::fmt;
 
 use alloc::{sync::Arc, vec::Vec};
-use log::{info, warn};
+use log::warn;
 
 use crate::{
     arch::{flush_tlb, mm::*},

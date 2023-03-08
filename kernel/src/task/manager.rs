@@ -2,12 +2,12 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 use core::cell::SyncUnsafeCell;
 use id_alloc::{IDAllocator, RecycleAllocator};
 use kernel_sync::{CPUs, SpinLock};
-use log::{trace, info};
+use log::trace;
 use oscomp::{fetch_test, finish_test};
 use spin::Lazy;
 
 use crate::{
-    arch::{get_cpu_id, mm::PAGE_SIZE},
+    arch::{get_cpu_id, mm::PAGE_SIZE, TaskContext, __switch},
     config::{
         ADDR_ALIGN, CPU_NUM, INIT_TASK_PATH, IS_TEST_ENV, KERNEL_STACK_SIZE, MAIN_TASK, ROOT_DIR,
         TRAMPOLINE_VA,
@@ -18,7 +18,6 @@ use crate::{
 };
 
 use super::{
-    context::{TaskContext, __switch},
     schedule::{QueueScheduler, Scheduler},
     task::Task,
     TaskState,
