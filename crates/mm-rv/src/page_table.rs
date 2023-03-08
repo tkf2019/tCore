@@ -164,7 +164,7 @@ pub struct PageTable {
 }
 
 impl PageTable {
-    /// Create a page table with a newly allocated root frame.
+    /// Creates a page table with a newly allocated root frame.
     pub fn new() -> Result<Self, &'static str> {
         let root_frame = AllocatedFrame::new(true)?;
         Ok(Self {
@@ -242,11 +242,11 @@ impl PageTable {
     }
 
     /// Clears the page table entry found by the page.
-    pub fn unmap(&mut self, page: Page) -> Result<(), &'static str> {
-        let (pa, _) = self.walk(page)?;
-        let pte = PageTableEntry::zero();
-        pte.write(pa);
-        Ok(())
+    pub fn unmap(&mut self, page: Page) {
+        if let Ok((pa, _)) = self.walk(page) {
+            let pte = PageTableEntry::zero();
+            pte.write(pa);
+        }
     }
 
     /// Translate virtual address into physical address.

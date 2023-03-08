@@ -2,22 +2,19 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 use core::cell::SyncUnsafeCell;
 use id_alloc::{IDAllocator, RecycleAllocator};
 use kernel_sync::{CPUs, SpinLock};
-use log::trace;
+use log::{trace, info};
 use oscomp::{fetch_test, finish_test};
 use spin::Lazy;
 
 use crate::{
-    arch::{
-        get_cpu_id,
-        mm::{PTEFlags, PAGE_SIZE},
-    },
+    arch::{get_cpu_id, mm::PAGE_SIZE},
     config::{
-        ADDR_ALIGN, CPU_NUM, INIT_TASK_PATH, IS_TEST_ENV, KERNEL_STACK_PAGES, KERNEL_STACK_SIZE,
-        MAIN_TASK, ROOT_DIR, TRAMPOLINE_VA,
+        ADDR_ALIGN, CPU_NUM, INIT_TASK_PATH, IS_TEST_ENV, KERNEL_STACK_SIZE, MAIN_TASK, ROOT_DIR,
+        TRAMPOLINE_VA,
     },
     error::KernelResult,
     loader::from_args,
-    mm::{pma::FixedPMA, KERNEL_MM},
+    mm::{VMFlags, KERNEL_MM},
 };
 
 use super::{
@@ -77,8 +74,7 @@ pub fn kstack_vm_alloc(kstack: usize) -> KernelResult<usize> {
         None,
         kstack_top.into(),
         kstack_base.into(),
-        PTEFlags::READABLE | PTEFlags::WRITABLE,
-        Arc::new(SpinLock::new(FixedPMA::new(KERNEL_STACK_PAGES)?)),
+        VMFlags::READ | VMFlags::WRITE,
     )?;
     Ok(kstack_base)
 }
@@ -188,9 +184,9 @@ pub unsafe fn idle() -> ! {
 }
 
 /// Current task exits. Run next task.
-/// 
+///
 /// # Safety
-/// 
+///
 /// Unsafe context switch will be called in this function.
 pub unsafe fn do_exit(exit_code: i32) {
     let curr = curr_task().unwrap();
@@ -212,9 +208,9 @@ pub unsafe fn do_exit(exit_code: i32) {
 }
 
 /// Current task suspends. Run next task.
-/// 
+///
 /// # Safety
-/// 
+///
 /// Unsafe context switch will be called in this function.
 pub unsafe fn do_yield() {
     let curr = curr_task().take().unwrap();

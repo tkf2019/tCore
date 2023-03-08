@@ -7,21 +7,21 @@ use core::{cell::SyncUnsafeCell, fmt};
 use errno::Errno;
 use id_alloc::{IDAllocator, RecycleAllocator};
 use kernel_sync::{SpinLock, SpinLockGuard};
-use log::trace;
+use log::{trace, info};
 use signal_defs::{SigActions, SigPending, SigSet};
 use syscall_interface::AT_FDCWD;
 use vfs::{File, Path};
 
 use crate::{
     arch::{
-        mm::{PTEFlags, PhysAddr, VirtAddr, PAGE_SIZE},
+        mm::{frame_dealloc, AllocatedFrame, Frame, PTEFlags, Page, PhysAddr, VirtAddr, PAGE_SIZE},
         trap::{user_trap_handler, user_trap_return, TrapFrame},
     },
     config::*,
     error::{KernelError, KernelResult},
-    fs::FDManager,
+    fs::{FDManager, FSInfo},
     loader::from_elf,
-    mm::{pma::FixedPMA, KERNEL_MM, MM},
+    mm::{KERNEL_MM, MM},
     task::{kstack_alloc, pid_alloc, schedule::Scheduler},
 };
 
@@ -69,9 +69,6 @@ pub struct TaskInner {
 
     /// Task context
     pub ctx: TaskContext,
-
-    /// Current working directory.
-    pub curr_dir: String,
 
     /// If a thread is started using `clone(2)` with the `CLONE_CHILD_SETTID` flag,
     /// set_child_tid is set to the value passed in the ctid argument of that system call.
@@ -160,6 +157,9 @@ pub struct Task {
     /// File descriptor table.
     pub fd_manager: Arc<SpinLock<FDManager>>,
 
+    /// Filesystem info
+    pub fs_info: Arc<SpinLock<FSInfo>>,
+
     /// Signal actions.
     pub sig_actions: Arc<SpinLock<SigActions>>,
 
@@ -190,15 +190,7 @@ impl Task {
         let kstack_base = kstack_vm_alloc(kstack)?;
 
         // Init trapframe
-        let trapframe_base: VirtAddr = trapframe_base(MAIN_TASK).into();
-        mm.alloc_write_vma(
-            None,
-            trapframe_base,
-            trapframe_base + PAGE_SIZE,
-            PTEFlags::READABLE | PTEFlags::WRITABLE,
-            Arc::new(SpinLock::new(FixedPMA::new(1)?)),
-        )?;
-        let trapframe_pa = mm.translate(trapframe_base)?;
+        let trapframe_pa = init_trapframe(&mut mm)?;
         let trapframe = TrapFrame::from(trapframe_pa);
         *trapframe = TrapFrame::new(
             KERNEL_MM.lock().page_table.satp(),
@@ -222,7 +214,6 @@ impl Task {
                 ctx: TaskContext::new(user_trap_return as usize, kstack_base),
                 set_child_tid: 0,
                 clear_child_tid: 0,
-                curr_dir: dir,
                 sig_pending: SigPending::new(),
                 sig_blocked: SigSet::new(),
             }),
@@ -236,6 +227,11 @@ impl Task {
             tid_allocator: Arc::new(SpinLock::new(RecycleAllocator::new(MAIN_TASK + 1))),
             mm: Arc::new(SpinLock::new(mm)),
             fd_manager: Arc::new(SpinLock::new(fd_manager)),
+            fs_info: Arc::new(SpinLock::new(FSInfo {
+                umask: 0,
+                cwd: dir,
+                root: String::from("/"),
+            })),
             sig_actions: Arc::new(SpinLock::new(SigActions::new())),
             name,
         };
@@ -266,7 +262,7 @@ impl Task {
     /// Gets the directory name from a file descriptor.
     pub fn get_dir(&self, dirfd: usize) -> KernelResult<Path> {
         if dirfd == AT_FDCWD {
-            Ok(Path::new(self.inner().curr_dir.as_str()))
+            Ok(Path::new(self.fs_info.lock().cwd.as_str()))
         } else {
             let dir = self.fd_manager.lock().get(dirfd)?;
             if dir.is_dir() {
@@ -280,11 +276,14 @@ impl Task {
 
 impl Drop for Task {
     fn drop(&mut self) {
+        trace!("Drop {:?}", self);
         kstack_dealloc(self.kstack);
         // We don't release the memory resource occupied by the kernel stack.
         // This memory area might be used agian when a new task calls for a
         // new kernel stack.
         self.tid_allocator.lock().dealloc(self.tid);
+        // Deallocate the trapframe
+        frame_dealloc(Frame::from(self.trapframe_pa).number(), 1);
     }
 }
 
@@ -299,6 +298,27 @@ impl fmt::Debug for Task {
 /// Trapframes are located right below the Trampoline in each address space.
 pub fn trapframe_base(tid: usize) -> usize {
     TRAMPOLINE_VA - PAGE_SIZE - tid * PAGE_SIZE
+}
+
+/// Initialize trapframe
+pub fn init_trapframe(mm: &mut MM) -> KernelResult<PhysAddr> {
+    let trapframe = AllocatedFrame::new(true).map_err(|_| KernelError::FrameAllocFailed)?;
+    // Will be manually dropped
+    core::mem::forget(&trapframe);
+    let trapframe_pa = trapframe.start_address();
+    let trapframe_va: VirtAddr = trapframe_base(MAIN_TASK).into();
+    mm.page_table
+        .map(
+            Page::from(trapframe_va),
+            trapframe.clone(),
+            PTEFlags::READABLE | PTEFlags::WRITABLE | PTEFlags::VALID,
+        )
+        .map_err(|_| {
+            // Drop the trapframe manually before returning error
+            drop(trapframe);
+            KernelError::PageTableInvalid
+        })?;
+    Ok(trapframe_pa)
 }
 
 /// Returns task stack layout [top, base) by task identification.

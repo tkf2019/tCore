@@ -1,11 +1,15 @@
 use core::fmt;
 
+use alloc::{sync::Arc, vec::Vec};
+use log::{info, warn};
+
 use crate::{
     arch::{flush_tlb, mm::*},
+    config::USER_MAX_PAGES,
     error::{KernelError, KernelResult},
 };
 
-use super::{flags::*, page_index, pma::PMA};
+use super::{flags::*, page_count, page_index, page_range, MmapFile};
 
 /// Represents an area in virtual address space with the range of [start_va, end_va).
 pub struct VMArea {
@@ -18,20 +22,21 @@ pub struct VMArea {
     /// End virtual address.
     pub end_va: VirtAddr,
 
-    /// This area has the ownership of [`AllocatedPageRange`].
-    pages: AllocatedPageRange,
+    /// Mapped to a allocated frames.
+    pub frames: Vec<Option<Arc<AllocatedFrame>>>,
 
-    /// Mapped to a physical memory area, with behaviors depending on the usage of this area.
-    pma: PMA,
+    /// Backed by file wihch can be None.
+    pub file: Option<Arc<MmapFile>>,
 }
 
 impl VMArea {
-    /// Create new virtual memory area [start_va, end_va) with protection flags.
+    /// Creates a new virtual memory area [start_va, end_va) with protection flags.
     pub fn new(
         start_va: VirtAddr,
         end_va: VirtAddr,
         flags: VMFlags,
-        pma: PMA,
+        frames: Vec<Option<Arc<AllocatedFrame>>>,
+        file: Option<Arc<MmapFile>>,
     ) -> KernelResult<Self> {
         if end_va <= start_va || flags.is_empty() {
             return Err(KernelError::InvalidArgs);
@@ -40,15 +45,60 @@ impl VMArea {
             flags,
             start_va,
             end_va,
-            pages: AllocatedPageRange::new(Page::from(start_va), Page::from(end_va - 1) + 1),
-            pma,
+            frames,
+            file,
         })
     }
 
-    /// Updates members due to modification on address.
-    pub fn adjust(&mut self) {
-        self.pages =
-            AllocatedPageRange::new(Page::from(self.start_va), Page::from(self.end_va - 1) + 1);
+    /// Creates a new [`VMArea`] with frames allocated lazily.
+    pub fn new_lazy(
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        flags: VMFlags,
+        file: Option<Arc<MmapFile>>,
+    ) -> KernelResult<Self> {
+        let count = page_count(start_va, end_va);
+        if end_va <= start_va || flags.is_empty() || count == 0 || count > USER_MAX_PAGES {
+            return Err(KernelError::InvalidArgs);
+        }
+
+        let mut frames = Vec::new();
+        frames.resize_with(count, || None);
+
+        Ok(Self {
+            flags,
+            start_va,
+            end_va,
+            frames,
+            file,
+        })
+    }
+
+    /// Creates a new [`VMArea`] with frames allocated in advance.
+    pub fn new_fixed(start_va: VirtAddr, end_va: VirtAddr, flags: VMFlags) -> KernelResult<Self> {
+        let count = page_count(start_va, end_va);
+        if end_va <= start_va || flags.is_empty() || count == 0 || count > USER_MAX_PAGES {
+            return Err(KernelError::InvalidArgs);
+        }
+
+        let mut frames = Vec::new();
+
+        if !flags.contains(VMFlags::IDENTICAL) {
+            frames.resize_with(count, || Some(Arc::new(AllocatedFrame::new(true).unwrap())));
+        }
+
+        Ok(Self {
+            flags,
+            start_va,
+            end_va,
+            frames,
+            file: None,
+        })
+    }
+
+    /// Returns the size of this [`VMArea`] in pages.
+    pub fn size_in_pages(&self) -> usize {
+        page_count(self.start_va, self.end_va)
     }
 
     /// Returns if this area contains the virtual address.
@@ -61,21 +111,74 @@ impl VMArea {
         self.start_va <= start_va && self.end_va > end_va && start_va < end_va
     }
 
-    pub fn backend_flags() {
-        
-    }
-
     /// Extends an area with new end.
     ///
     /// This function does not check if current area overlaps with an old area, thus  
     /// the result is unpredictable. So it is marked as `unsafe` for further use.
-    pub unsafe fn extend(&mut self, new_end: VirtAddr) -> KernelResult {
+    pub unsafe fn extend(&mut self, new_end: VirtAddr) {
         self.end_va = new_end;
-        self.adjust();
-        self.pma
-            .lock()
-            .extend(Page::from(new_end - 1).number() - self.pages.start.number() + 1)?;
-        Ok(())
+        self.frames.resize_with(self.size_in_pages(), || None);
+    }
+
+    /// Gets the frame by index.
+    pub fn get_frame(&mut self, index: usize, alloc: bool) -> KernelResult<Frame> {
+        if let Some(frame) = &self.frames[index] {
+            Ok((*frame.as_ref()).clone())
+        } else if alloc {
+            let frame = AllocatedFrame::new(true).map_err(|_| KernelError::FrameAllocFailed)?;
+            if let Some(file) = &self.file {
+                if file.read(index * PAGE_SIZE, frame.as_slice_mut()).is_none() {
+                    return Err(KernelError::VMAFailedIO);
+                }
+            }
+            let frame_inner = frame.clone();
+            // ownership moved
+            self.frames[index] = Some(Arc::new(frame));
+            Ok(frame_inner)
+        } else {
+            Err(KernelError::FrameNotFound)
+        }
+    }
+
+    /// Reclaims the frame by index, writing back to file if before the [`AllocatedFrame`] dropped.
+    pub fn reclaim_frame(&mut self, index: usize) {
+        if let Some(frame) = self.frames[index].take() {
+            if self.file.is_some() && Arc::strong_count(&frame) == 1 {
+                // TODO: wirte if dirty
+                self.file
+                    .as_ref()
+                    .unwrap()
+                    .write(index * PAGE_SIZE, frame.as_slice());
+            }
+        }
+    }
+
+    /// Gets all frames of this [`VMArea`].
+    pub fn get_frames(&mut self, alloc: bool) -> KernelResult<Vec<Option<Frame>>> {
+        if self.flags.contains(VMFlags::IDENTICAL) {
+            let start = Frame::from(Page::from(self.start_va).number());
+            Ok(FrameRange::new(start, start + self.size_in_pages())
+                .range()
+                .map(|frame| Some(frame))
+                .collect())
+        } else {
+            let mut v = Vec::new();
+            for frame in &mut self.frames {
+                if let Some(frame) = frame {
+                    v.push(Some((*frame.as_ref()).clone()))
+                } else {
+                    if alloc {
+                        let new_frame = frame.insert(Arc::new(
+                            AllocatedFrame::new(true).map_err(|_| KernelError::FrameAllocFailed)?,
+                        ));
+                        v.push(Some((*new_frame.as_ref()).clone()))
+                    } else {
+                        v.push(None);
+                    }
+                }
+            }
+            Ok(v)
+        }
     }
 
     /// Maps the whole virtual memory area.
@@ -84,32 +187,20 @@ impl VMArea {
     ///
     /// This function flushes TLB entries each page, thus there is no need to
     /// call [`Self::flush_all`] explicitly.
-    pub fn map_all(&self, pt: &mut PageTable, flags: PTEFlags) -> KernelResult {
-        let mut pma = self.pma.lock();
-        let frames = if pma.is_mapped() {
-            pma.get_frames(true)?
-        } else {
-            FrameRange::new(
-                Frame::from(self.pages.start.number()),
-                Frame::from(self.pages.end.number()),
-            )
+    pub fn map_all(&mut self, pt: &mut PageTable, flags: PTEFlags, alloc: bool) -> KernelResult {
+        for (page, frame) in page_range(self.start_va, self.end_va)
             .range()
-            .map(|frame| Some(frame))
-            .collect()
-        };
-        for (page, frame) in self.pages.range().zip(frames) {
-            if pt
-                .map(
-                    page,
-                    frame.unwrap(),
-                    PTEFlags::VALID | flags | self.flags.into(),
-                )
-                .is_err()
-            {
-                return Err(KernelError::PageTableInvalid);
+            .zip(self.get_frames(alloc)?)
+        {
+            if frame.is_some() {
+                pt.map(page, frame.unwrap(), PTEFlags::VALID | flags)
+                    .map_err(|err| {
+                        warn!("{}", err);
+                        KernelError::PageTableInvalid
+                    })?;
             }
-            flush_tlb(Some(page.start_address()));
         }
+        flush_tlb(None);
         Ok(())
     }
 
@@ -118,30 +209,40 @@ impl VMArea {
     /// This function flushes TLB entries each page, thus there is no need to
     /// call [`Self::flush_all`] explicitly.
     pub fn unmap_all(&self, pt: &mut PageTable) -> KernelResult {
-        self.pages.range().for_each(|page| {
-            if pt.unmap(page).is_ok() {
-                flush_tlb(Some(page.start_address()));
-            }
-        });
-        Ok(())
-    }
-
-    /// Flushes all TLB entries.
-    pub fn flush_all(&self) {
-        self.pages
+        page_range(self.start_va, self.end_va)
             .range()
-            .for_each(|page| flush_tlb(Some(page.start_address())));
+            .for_each(|page| pt.unmap(page));
+        flush_tlb(None);
+        Ok(())
     }
 
     /// Allocates a frame for mapped page.
     ///
     /// Returns true if a new frame is really allocated.
-    pub fn alloc_frame(&mut self, page: Page, pt: &mut PageTable) -> KernelResult<(Frame, bool)> {
+    pub fn alloc_frame(
+        &mut self,
+        page: Page,
+        pt: &mut PageTable,
+        overwrite: bool,
+    ) -> KernelResult<(Frame, bool)> {
         let (pte_pa, mut pte) = pt.create(page).map_err(|_| KernelError::PageTableInvalid)?;
-        if !pte.flags().is_valid() {
-            let mut pma = self.pma.lock();
-            let index = page.number() - self.pages.start.number();
-            let frame = pma.get_frame(index, true)?;
+        if !pte.flags().is_valid() || overwrite {
+            let index = page.number() - Page::from(self.start_va).number();
+
+            // reclaims the old frame
+            let frame = if pte.flags().is_valid() {
+                let old = self.get_frame(index, false)?;
+                self.reclaim_frame(index);
+                let new = self.get_frame(index, true)?;
+
+                // copy on write
+                new.as_slice_mut().copy_from_slice(old.as_slice());
+
+                new
+            } else {
+                self.get_frame(index, true)?
+            };
+
             pte.set_flags(
                 PTEFlags::VALID | PTEFlags::ACCESSED | PTEFlags::DIRTY | self.flags.into(),
             );
@@ -179,46 +280,77 @@ impl VMArea {
         start: VirtAddr,
         end: VirtAddr,
     ) -> KernelResult<(Option<VMArea>, Option<VMArea>)> {
+        let start_idx = page_index(self.start_va, start);
+        let end_idx = page_index(self.start_va, end);
+
         if end <= self.start_va
             || self.end_va <= start
             || start <= self.start_va && self.end_va <= end
         {
             Ok((None, None))
         } else if self.start_va < start && end < self.end_va {
-            let (mid_pma, right_pma) = self.pma.lock().split(
-                Some(page_index(self.start_va, start)),
-                Some(page_index(self.start_va, end)),
-            )?;
-            let mid_vma = mid_pma.and_then(|pma| Self::new(start, end, self.flags, pma).ok());
-            let right_vma =
-                right_pma.and_then(|pma| Self::new(end, self.end_va, self.flags, pma).ok());
+            let right_vma = Some(
+                Self::new(
+                    end,
+                    self.end_va,
+                    self.flags,
+                    self.frames.drain(end_idx..).collect(),
+                    self.file
+                        .as_ref()
+                        .map(|file| Arc::new(file.split(end_idx * PAGE_SIZE))),
+                )
+                .unwrap(),
+            );
+            let mid_vma = Some(
+                Self::new(
+                    start,
+                    end,
+                    self.flags,
+                    self.frames.drain(start_idx..).collect(),
+                    self.file
+                        .as_ref()
+                        .map(|file| Arc::new(file.split(start_idx * PAGE_SIZE))),
+                )
+                .unwrap(),
+            );
 
             self.end_va = start;
-            self.adjust();
 
             Ok((mid_vma, right_vma))
         } else if self.start_va < start && self.end_va < end {
-            let (right_pma, _) = self
-                .pma
-                .lock()
-                .split(Some(page_index(self.start_va, start)), None)?;
-            let right_vma =
-                right_pma.and_then(|pma| Self::new(start, self.end_va, self.flags, pma).ok());
+            let right_vma = Some(
+                Self::new(
+                    start,
+                    self.end_va,
+                    self.flags,
+                    self.frames.drain(start_idx..).collect(),
+                    self.file
+                        .as_ref()
+                        .map(|file| Arc::new(file.split(start_idx * PAGE_SIZE))),
+                )
+                .unwrap(),
+            );
 
             self.end_va = start;
-            self.adjust();
 
             Ok((right_vma, None))
         } else if start < self.start_va && end < self.end_va {
-            let (left_pma, _) = self
-                .pma
-                .lock()
-                .split(None, Some(page_index(self.start_va, end)))?;
-            let left_vma =
-                left_pma.and_then(|pma| Self::new(self.start_va, end, self.flags, pma).ok());
+            let left_vma = Some(
+                Self::new(
+                    self.start_va,
+                    end,
+                    self.flags,
+                    self.frames.drain(..end_idx).collect(),
+                    self.file.as_ref().map(|file| Arc::new(file.split(0))),
+                )
+                .unwrap(),
+            );
 
             self.start_va = end;
-            self.adjust();
+            self.file = self
+                .file
+                .as_ref()
+                .map(|file| Arc::new(file.split(end_idx * PAGE_SIZE)));
 
             Ok((left_vma, None))
         } else {
@@ -228,12 +360,6 @@ impl VMArea {
 }
 
 /* Derives */
-
-impl Clone for VMArea {
-    fn clone(&self) -> Self {
-        Self::new(self.start_va, self.end_va, self.flags, self.pma.clone()).unwrap()
-    }
-}
 
 impl fmt::Debug for VMArea {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

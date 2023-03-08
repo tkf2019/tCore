@@ -16,7 +16,12 @@ bitflags::bitflags! {
         /// See [`MmapFlags::MAP_GROWSDOWN`].
         const GROWSDOWN = 1 << 8;
 
-        /// Not standard.
+        /* Unstandard flags */
+
+        /// Identical memory maps with no frame allocated
+        const IDENTICAL = 1 << 62;
+
+        /// User accessible 
         const USER = 1 << 63;
     }
 }

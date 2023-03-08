@@ -22,10 +22,7 @@ pub struct FDManager {
     /// Maximum file descriptor limit.
     limit: usize,
 
-    /// The effective mode is modified by the process's umask in the usual
-    /// way: in the absence of a default ACL, the mode of the created file
-    /// is `(mode & ~umask)`.
-    umask: u32,
+    
 }
 
 impl FDManager {
@@ -35,7 +32,6 @@ impl FDManager {
             list: Vec::new(),
             recycled: Vec::new(),
             limit: DEFAULT_FD_LIMIT,
-            umask: 0,
         };
         fd_manager.push(Arc::new(Stdin)).unwrap();
         fd_manager.push(Arc::new(Stdout)).unwrap();
@@ -107,21 +103,15 @@ impl FDManager {
     pub fn is_full(&self) -> bool {
         self.fd_count() >= self.limit
     }
-
-    /// Returns umask.
-    pub fn get_umask(&self) -> u32 {
-        self.umask
-    }
 }
 
 impl fmt::Debug for FDManager {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "File Descriptor Manager: len={:X}, limit={:X}, umask={:X}",
+            "File Descriptor Manager: len={:X}, limit={:X}",
             self.list.len(),
             self.limit,
-            self.umask
         )
     }
 }

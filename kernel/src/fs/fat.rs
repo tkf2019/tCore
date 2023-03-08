@@ -389,7 +389,7 @@ impl File for FSFile {
     unsafe fn read_all(&self) -> Vec<u8> {
         let _guard = GLOBAL_FS.lock();
         let len = self.get_size().unwrap();
-        trace!("FSFile::read_all 0x{:x}", len);
+        trace!("FSFile::read_all 0x{:x} bytes", len);
         let mut buf: Vec<u8> = Vec::new();
         buf.resize(len, 0);
         let mut pos = 0;

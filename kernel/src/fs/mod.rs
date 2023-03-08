@@ -7,11 +7,13 @@ mod fd;
 pub mod mem;
 mod pipe;
 mod stdio;
+mod info;
 
 pub use fat::GLOBAL_FS;
 pub use fd::*;
 pub use pipe::*;
 pub use stdio::*;
+pub use info::*;
 
 use self::fat::FSDir;
 

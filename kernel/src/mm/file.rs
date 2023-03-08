@@ -3,7 +3,7 @@ use vfs::File;
 
 /// Memory mapped file.
 #[derive(Clone)]
-pub struct BackendFile {
+pub struct MmapFile {
     /// Inner file
     file: Arc<dyn File>,
 
@@ -11,7 +11,7 @@ pub struct BackendFile {
     offset: usize,
 }
 
-impl BackendFile {
+impl MmapFile {
     /// Creates a new memory mapped file
     pub fn new(file: Arc<dyn File>, offset: usize) -> Self {
         Self { file, offset }
@@ -27,10 +27,10 @@ impl BackendFile {
         self.file.write_at_off(off + self.offset, buf)
     }
 
-    /// Seeks to `off` starting from `self.offset`.
-    pub fn seek(&mut self, off: usize) {
-        self.offset += off;
-    }
+    // /// Seeks to `off` starting from `self.offset`.
+    // pub fn seek(&mut self, off: usize) {
+    //     self.offset += off;
+    // }
 
     /// Split at `off` starting from `self.offset`
     pub fn split(&self, off: usize) -> Self {

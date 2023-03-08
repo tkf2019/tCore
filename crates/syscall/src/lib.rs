@@ -27,12 +27,12 @@ mod proc;
 mod timer;
 
 pub use comm::*;
+use errno::Errno;
 pub use file::*;
 pub use io::*;
 use numeric_enum_macro::numeric_enum;
 pub use proc::*;
 pub use timer::*;
-use errno::Errno;
 
 numeric_enum! {
     #[repr(usize)]
@@ -67,9 +67,9 @@ numeric_enum! {
         BRK = 214,
         MUNMAP = 215,
         CLONE = 220,
+        EXECVE = 221,
         MMAP = 222,
         MPROTECT = 226,
-        
     }
 }
 

@@ -2,7 +2,6 @@ pub mod flags;
 mod init;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
-use kernel_sync::SpinLock;
 use vfs::{OpenFlags, Path};
 use xmas_elf::{
     header,
@@ -11,11 +10,11 @@ use xmas_elf::{
 };
 
 use crate::{
-    arch::mm::{PTEFlags, Page, VirtAddr, PAGE_SIZE},
-    config::{ADDR_ALIGN, ELF_BASE_RELOCATE, USER_STACK_BASE, USER_STACK_PAGES, USER_STACK_SIZE},
+    arch::mm::{Page, VirtAddr, PAGE_SIZE},
+    config::{ADDR_ALIGN, ELF_BASE_RELOCATE, USER_STACK_BASE, USER_STACK_SIZE},
     error::{KernelError, KernelResult},
     fs::open,
-    mm::{pma::FixedPMA, MM},
+    mm::{VMFlags, MM},
     task::Task,
 };
 
@@ -86,16 +85,16 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
                 max_page = Page::floor(end_va - 1) + 1;
 
                 // Map flags
-                let mut map_flags: PTEFlags = PTEFlags::USER_ACCESSIBLE;
+                let mut map_flags = VMFlags::USER;
                 let phdr_flags = phdr.flags();
                 if phdr_flags.is_read() {
-                    map_flags |= PTEFlags::READABLE;
+                    map_flags |= VMFlags::READ;
                 }
                 if phdr_flags.is_write() {
-                    map_flags |= PTEFlags::WRITABLE;
+                    map_flags |= VMFlags::WRITE;
                 }
                 if phdr_flags.is_execute() {
-                    map_flags |= PTEFlags::EXECUTABLE;
+                    map_flags |= VMFlags::EXEC;
                 }
 
                 // Allocate a new virtual memory area
@@ -110,7 +109,6 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
                     start_va + dyn_base,
                     end_va + dyn_base,
                     map_flags,
-                    Arc::new(SpinLock::new(FixedPMA::new(count.number())?)),
                 )?;
             }
             program::Type::Interp => {
@@ -142,8 +140,7 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
         None,
         ustack_top.into(),
         ustack_base.into(),
-        PTEFlags::READABLE | PTEFlags::WRITABLE | PTEFlags::USER_ACCESSIBLE,
-        Arc::new(SpinLock::new(FixedPMA::new(USER_STACK_PAGES)?)),
+        VMFlags::READ | VMFlags::WRITE | VMFlags::USER,
     )?;
     let mut vsp = VirtAddr::from(ustack_base);
     let sp = mm.translate(vsp)?;

@@ -1,16 +1,31 @@
 use errno::Errno;
+use mm_rv::VirtAddr;
 use syscall_interface::*;
 
 use crate::{
     mm::{do_brk, do_mmap, do_mprotect, do_munmap, MmapFlags, MmapProt},
-    task::{curr_task, do_exit},
+    task::{curr_task, do_clone, do_exit, CloneFlags},
 };
 
 use super::SyscallImpl;
 
 impl SyscallProc for SyscallImpl {
     fn clone(flags: usize, stack: usize, ptid: usize, tls: usize, ctid: usize) -> SyscallResult {
-        todo!()
+        let flags = CloneFlags::from_bits(flags as u32);
+        if flags.is_none() {
+            return Err(Errno::EINVAL);
+        }
+
+        let curr = curr_task().unwrap();
+        do_clone(
+            &curr,
+            flags.unwrap(),
+            stack,
+            tls,
+            VirtAddr::from(ptid),
+            VirtAddr::from(ctid),
+        )
+        .map_err(|err| err.into())
     }
 
     fn exit(status: usize) -> ! {

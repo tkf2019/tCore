@@ -25,6 +25,9 @@ pub enum KernelError {
     /// Get frame out of the physical memory area
     FrameOutOfRange,
 
+    /// Failed to get the frame
+    FrameNotFound,
+
     /// Failed to resolve ELF
     /// - Wrong magic number
     /// - Unsupported architecture or XLEN
@@ -55,23 +58,17 @@ pub enum KernelError {
     /// FD exceeds limit
     FDOutOfBound,
 
-    /// PMA failed to read ot write
-    PMAFailedIO,
-
-    /// PMA failed to get the frame
-    PMAFrameNotFound,
-
-    /// PMA index out of range
-    PMAOutOfRange,
-
     /// Page has not been mapped.
     PageUnmapped,
 
-    /// Cannot find the virtual memory area.
-    VMANotFound,
-
     /// Page fault cannot be handled.
     FatalPageFault,
+    
+    /// Cannot find the virtual memory area.
+    VMANotFound,
+    
+    /// VMA failed to read ot write file.
+    VMAFailedIO,
 
     /// Run out of free memory
     VMAAllocFailed,

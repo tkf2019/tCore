@@ -1,13 +1,11 @@
-use alloc::sync::Arc;
 use kernel_sync::SpinLock;
 use log::info;
 use spin::Lazy;
 
 use crate::{
-    arch::mm::PTEFlags,
     config::{MMIO, PHYSICAL_MEMORY_END},
     error::KernelResult,
-    mm::pma::IdenticalPMA,
+    mm::VMFlags,
 };
 
 use super::MM;
@@ -36,8 +34,7 @@ fn new_kernel() -> KernelResult<MM> {
         None,
         (stext as usize).into(),
         (etext as usize).into(),
-        PTEFlags::READABLE | PTEFlags::EXECUTABLE,
-        Arc::new(SpinLock::new(IdenticalPMA)),
+        VMFlags::READ | VMFlags::EXEC | VMFlags::IDENTICAL,
     )?;
     info!(
         "{:>10} [{:#x}, {:#x})",
@@ -49,8 +46,7 @@ fn new_kernel() -> KernelResult<MM> {
         None,
         (srodata as usize).into(),
         (erodata as usize).into(),
-        PTEFlags::READABLE,
-        Arc::new(SpinLock::new(IdenticalPMA)),
+        VMFlags::READ | VMFlags::IDENTICAL,
     )?;
     info!(
         "{:>10} [{:#x}, {:#x})",
@@ -62,8 +58,7 @@ fn new_kernel() -> KernelResult<MM> {
         None,
         (sdata as usize).into(),
         (edata as usize).into(),
-        PTEFlags::READABLE | PTEFlags::WRITABLE,
-        Arc::new(SpinLock::new(IdenticalPMA)),
+        VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
     )?;
     info!(
         "{:>10} [{:#x}, {:#x})",
@@ -75,8 +70,7 @@ fn new_kernel() -> KernelResult<MM> {
         None,
         (sbss_with_stack as usize).into(),
         (ebss as usize).into(),
-        PTEFlags::READABLE | PTEFlags::WRITABLE,
-        Arc::new(SpinLock::new(IdenticalPMA)),
+        VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
     )?;
     info!(
         "{:>10} [{:#x}, {:#x})",
@@ -88,8 +82,7 @@ fn new_kernel() -> KernelResult<MM> {
         None,
         (ekernel as usize).into(),
         PHYSICAL_MEMORY_END.into(),
-        PTEFlags::READABLE | PTEFlags::WRITABLE,
-        Arc::new(SpinLock::new(IdenticalPMA)),
+        VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
     )?;
     info!(
         "{:>10} [{:#x}, {:#x})",
@@ -102,8 +95,7 @@ fn new_kernel() -> KernelResult<MM> {
             None,
             (*base).into(),
             (*base + *len).into(),
-            PTEFlags::READABLE | PTEFlags::WRITABLE,
-            Arc::new(SpinLock::new(IdenticalPMA)),
+            VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
         )?;
         info!("{:>10} [{:#x}, {:#x})", "mmio", base, base + len);
     }
@@ -112,8 +104,7 @@ fn new_kernel() -> KernelResult<MM> {
             None,
             (*base).into(),
             (*base + *len).into(),
-            PTEFlags::READABLE | PTEFlags::WRITABLE,
-            Arc::new(SpinLock::new(IdenticalPMA)),
+            VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
         )?;
         info!("{:>10} [{:#x}, {:#x})", "arch mmio", base, base + len);
     }

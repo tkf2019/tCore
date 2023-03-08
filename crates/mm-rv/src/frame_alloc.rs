@@ -1,13 +1,14 @@
-use buddy_system_allocator::LockedFrameAllocator;
+use buddy_system_allocator::FrameAllocator;
 use core::{fmt, ops::Deref};
+use kernel_sync::SpinLock;
 use log::info;
 use spin::Lazy;
 
 use crate::{Frame, FrameRange, PAGE_SIZE};
 
 /// Defines global frame allocator. This implementation is based on buddy system allocator.
-pub static GLOBAL_FRAME_ALLOCATOR: Lazy<LockedFrameAllocator> =
-    Lazy::new(|| LockedFrameAllocator::new());
+pub static GLOBAL_FRAME_ALLOCATOR: Lazy<SpinLock<FrameAllocator>> =
+    Lazy::new(|| SpinLock::new(FrameAllocator::new()));
 
 /// Global interface for frame allocator.
 pub fn frame_alloc(count: usize) -> Option<usize> {

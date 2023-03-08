@@ -9,7 +9,7 @@ use crate::{
 
 /// User context is saved in trapframe by trap handler in trampoline.
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct TrapFrame {
     /// Kernel page table root
     kernel_satp: usize,
@@ -83,6 +83,16 @@ impl TrapFrame {
     /// Set return errno or value after an syscall.
     pub fn set_a0(&mut self, a0: usize) {
         self.user_regs[9] = a0;
+    }
+
+    /// Set stack pointer while cloning task
+    pub fn set_sp(&mut self, sp: usize) {
+        self.user_regs[1] = sp;
+    }
+
+    /// Set tp while cloning task with tls
+    pub fn set_tp(&mut self, tp: usize) {
+        self.user_regs[3] = tp;
     }
 }
 

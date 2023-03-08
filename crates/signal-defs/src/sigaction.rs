@@ -166,6 +166,7 @@ pub enum SigActionDefault {
 
 pub const NSIG: usize = 64;
 
+#[derive(Debug, Clone, Copy)]
 pub struct SigActions(pub [Option<SigAction>; NSIG]);
 
 impl SigActions {

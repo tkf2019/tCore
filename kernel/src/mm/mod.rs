@@ -1,32 +1,26 @@
 mod file;
 mod flags;
 mod kernel;
-pub mod pma;
 mod user_buf;
 pub mod vma;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::{fmt, mem::size_of, slice};
 use errno::Errno;
-use kernel_sync::SpinLock;
-use log::{trace, warn};
+use log::{info, trace, warn};
 use syscall_interface::SyscallResult;
 
 use crate::{
-    arch::{
-        mm::{Frame, PTEFlags, Page, PageRange, PageTable, PhysAddr, VirtAddr},
-        trap::__trampoline,
-    },
+    arch::{mm::*, trap::__trampoline},
     config::*,
     error::*,
-    mm::{pma::LazyPMA, UserBuffer},
+    mm::UserBuffer,
     task::Task,
 };
 
-pub use file::BackendFile;
+pub use file::MmapFile;
 pub use flags::*;
 pub use kernel::KERNEL_MM;
-use pma::PMArea;
 pub use user_buf::*;
 use vma::VMArea;
 
@@ -34,8 +28,7 @@ pub struct MM {
     /// Holds the pointer to [`PageTable`].
     ///
     /// This object has the ownership of the page table. So the lifetime of [`PageTable`]
-    /// depends on the [`MM`] tied to it. In `sys_vfork`, parent task will be blocked until
-    /// the child task exits.
+    /// depends on the [`MM`] tied to it.
     pub page_table: PageTable,
 
     /// List of [`VMArea`]s.
@@ -99,6 +92,52 @@ impl MM {
         }
     }
 
+    /// Create a new [`MM`] from cloner.
+    ///
+    /// Uses the copy-on-write technique (COW) to prevent all data of the parent process from being copied
+    /// when fork is executed.
+    pub fn clone(&self) -> KernelResult<Self> {
+        let mut page_table = PageTable::new().map_err(|_| KernelError::FrameAllocFailed)?;
+        let mut new_vma_list = Vec::new();
+        for vma in self.vma_list.iter() {
+            if let Some(vma) = vma {
+                let mut new_vma = VMArea {
+                    flags: vma.flags,
+                    start_va: vma.start_va,
+                    end_va: vma.end_va,
+                    frames: vma.frames.clone(),
+                    file: vma.file.clone(),
+                };
+                let mut flags = PTEFlags::from(vma.flags);
+                // Read-only for new area.
+                flags.remove(PTEFlags::WRITABLE);
+                new_vma.map_all(&mut page_table, flags, false)?;
+                new_vma_list.push(Some(new_vma));
+            }
+            new_vma_list.push(None);
+        }
+        page_table
+            .map(
+                VirtAddr::from(TRAMPOLINE_VA).into(),
+                PhysAddr::from(__trampoline as usize).into(),
+                PTEFlags::READABLE | PTEFlags::EXECUTABLE | PTEFlags::VALID,
+            )
+            .map_err(|err| {
+                warn!("{}", err);
+                KernelError::PageTableInvalid
+            })?;
+        Ok(Self {
+            page_table,
+            vma_list: new_vma_list,
+            vma_recycled: self.vma_recycled.clone(),
+            vma_map: self.vma_map.clone(),
+            vma_cache: None,
+            entry: self.entry,
+            start_brk: self.start_brk,
+            brk: self.brk,
+        })
+    }
+
     /// A warpper for `translate` in `PageTable`.
     pub fn translate(&mut self, va: VirtAddr) -> KernelResult<PhysAddr> {
         self.page_table
@@ -148,6 +187,7 @@ impl MM {
                 ))
             });
             if dst.is_err() {
+                warn!("{:?}", dst.err());
                 return Err(KernelError::PageTableInvalid);
             }
             dst.unwrap().copy_from_slice(src);
@@ -169,7 +209,7 @@ impl MM {
     /// This function does not create any memory map for the new area.
     pub fn add_vma(&mut self, vma: VMArea) -> KernelResult {
         if self.map_count() >= MAX_MAP_COUNT {
-            return Err(KernelError::Errno(Errno::ENOMEM));
+            return Err(KernelError::VMAAllocFailed);
         }
         let mut index = self.vma_list.len();
         if !self.vma_recycled.is_empty() {
@@ -188,18 +228,16 @@ impl MM {
     ///
     /// Writes the data to the mapped physical areas without any check for overlaps.
     ///
-    /// This function may be only used when we try to initialize a kernel or user address
-    /// space.
+    /// This function may be only used when we try to initialize a kernel or user address space.
     pub fn alloc_write_vma(
         &mut self,
         data: Option<&[u8]>,
         start_va: VirtAddr,
         end_va: VirtAddr,
-        flags: PTEFlags,
-        pma: Arc<SpinLock<dyn PMArea>>,
+        flags: VMFlags,
     ) -> KernelResult {
-        let vma = VMArea::new(start_va, end_va, flags.into(), pma)?;
-        vma.map_all(&mut self.page_table, flags)?;
+        let mut vma = VMArea::new_fixed(start_va, end_va, flags)?;
+        vma.map_all(&mut self.page_table, flags.into(), true)?;
         self.add_vma(vma)?;
         if let Some(data) = data {
             unsafe { self.write_vma(data, start_va, end_va)? };
@@ -221,7 +259,7 @@ impl MM {
         end: VirtAddr,
         flags: VMFlags,
         anywhere: bool,
-        backend: Option<BackendFile>,
+        file: Option<Arc<MmapFile>>,
     ) -> KernelResult<VirtAddr> {
         let len = end.value() - start.value();
         let (start, end) = if anywhere {
@@ -232,15 +270,7 @@ impl MM {
             (start, end)
         };
 
-        let vma = VMArea::new(
-            start,
-            end,
-            flags,
-            Arc::new(SpinLock::new(LazyPMA::new(
-                page_index(start, end),
-                backend,
-            )?)),
-        )?;
+        let vma = VMArea::new_lazy(start, end, flags, file)?;
 
         // No need to fllush TLB explicitly; old maps have been cleaned.
         self.add_vma(vma)?;
@@ -325,7 +355,18 @@ impl MM {
     /// - `va`: starting virtual address.
     pub fn alloc_frame(&mut self, va: VirtAddr) -> KernelResult<Frame> {
         self.get_vma(va, |vma, pt, _| {
-            vma.alloc_frame(Page::from(va), pt).map(|(frame, _)| frame)
+            vma.alloc_frame(Page::from(va), pt, false)
+                .map(|(frame, _)| frame)
+        })
+    }
+
+    /// Forces to allocate a frame, overwriting the page table with the new frame if the map already exists in the page table.
+    ///
+    /// This function is mainly used for Copy-on-Write (COW) mechanism.
+    pub fn force_alloc_frame(&mut self, va: VirtAddr) -> KernelResult<Frame> {
+        self.get_vma(va, |vma, pt, _| {
+            vma.alloc_frame(Page::from(va), pt, true)
+                .map(|(frame, _)| frame)
         })
     }
 
@@ -342,8 +383,10 @@ impl MM {
         let mut frames = Vec::new();
         for page in PageRange::from_virt_addr(start_va, (end_va - start_va).value()) {
             frames.push(
-                self.get_vma(page.start_address(), |vma, pt, _| vma.alloc_frame(page, pt))
-                    .map(|(frame, _)| frame)?,
+                self.get_vma(page.start_address(), |vma, pt, _| {
+                    vma.alloc_frame(page, pt, false)
+                })
+                .map(|(frame, _)| frame)?,
             );
         }
         Ok(frames)
@@ -454,8 +497,22 @@ pub fn page_align(value: usize) -> usize {
     value & !(PAGE_SIZE - 1)
 }
 
+/// Page index from start in a range of pages
 pub fn page_index(start_va: VirtAddr, va: VirtAddr) -> usize {
     Page::from(va).number() - Page::from(start_va).number()
+}
+
+/// The number of total pages covered by this exclusive range.
+pub fn page_count(start_va: VirtAddr, end_va: VirtAddr) -> usize {
+    Page::from(end_va - 1).number() - Page::from(start_va).number() + 1
+}
+
+/// Range of pages
+pub fn page_range(start_va: VirtAddr, end_va: VirtAddr) -> PageRange {
+    PageRange {
+        start: Page::from(start_va),
+        end: Page::from(end_va - 1) + 1,
+    }
 }
 
 /// A helper for [`syscall_interface::SyscallProc::brk`].
@@ -493,16 +550,19 @@ pub fn do_brk(mm: &mut MM, brk: VirtAddr) -> SyscallResult {
 
     // Initialize memory area
     if mm.brk == mm.start_brk {
-        mm.add_vma(VMArea::new(
+        mm.add_vma(VMArea::new_lazy(
             mm.start_brk,
             mm.start_brk + PAGE_SIZE,
             VMFlags::USER | VMFlags::READ | VMFlags::WRITE,
-            Arc::new(SpinLock::new(LazyPMA::new(1, None)?)),
+            None,
         )?)?;
     }
 
-    mm.get_vma(mm.start_brk, |vma, _, _| unsafe { vma.extend(brk) })
-        .unwrap();
+    mm.get_vma(mm.start_brk, |vma, _, _| unsafe {
+        vma.extend(brk);
+        Ok(())
+    })
+    .unwrap();
     mm.brk = brk;
     Ok(brk.value())
 }
@@ -633,9 +693,13 @@ pub fn do_mmap(
             return Err(Errno::EACCES);
         }
         if let Some(_) = file.seek(off, vfs::SeekWhence::Set) {
-            let backend = BackendFile::new(file, off);
-            if let Ok(start) = mm.alloc_vma(hint, hint + len, prot.into(), anywhere, Some(backend))
-            {
+            if let Ok(start) = mm.alloc_vma(
+                hint,
+                hint + len,
+                prot.into(),
+                anywhere,
+                Some(Arc::new(MmapFile::new(file, off))),
+            ) {
                 return Ok(start.value());
             } else {
                 return Err(Errno::ENOMEM);
@@ -655,12 +719,22 @@ pub fn do_mmap(
 /* Trap helpers */
 
 /// A page fault helper for [`crate::trap::user_trap_handler`].
+///
+/// The store page fault might be caused by:
+/// 1. Frame not allocated yet;
+/// 2. Unable to write (COW);
 pub fn do_handle_page_fault(mm: &mut MM, va: VirtAddr, flags: VMFlags) -> KernelResult {
     mm.get_vma(va, |vma, pt, _| {
-        let (_, alloc) = vma.alloc_frame(Page::from(va), pt)?;
-        if !alloc || !vma.flags.contains(flags) {
+        if !vma.flags.contains(flags) {
             return Err(KernelError::FatalPageFault);
         }
+
+        let (_, alloc) = vma.alloc_frame(Page::from(va), pt, true)?;
+
+        if !alloc {
+            return Err(KernelError::FatalPageFault);
+        }
+
         Ok(())
     })
 }

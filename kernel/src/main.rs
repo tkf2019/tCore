@@ -51,7 +51,7 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
     arch::init(hartid, true);
     // Initialize oscomp testcases, which will be loaded from disk.
     if IS_TEST_ENV {
-        oscomp::init(oscomp::testcases::FORMAT_LIBC_STATIC);
+        oscomp::init(oscomp::testcases::LIBC_STATIC_TESTCASES);
     }
     // Initialize the first task.
     task::init();
@@ -70,7 +70,7 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
 #[no_mangle]
 pub extern "C" fn rust_main_others(hartid: usize) -> ! {
     // Other initializations.
-    
+
     arch::init(hartid, false);
     info!("(Secondary) Start executing tasks.");
     // IDLE loop
