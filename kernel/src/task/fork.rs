@@ -1,6 +1,6 @@
 use core::cell::SyncUnsafeCell;
 
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{collections::LinkedList, sync::Arc};
 use id_alloc::*;
 use kernel_sync::SpinLock;
 use log::trace;
@@ -174,7 +174,7 @@ pub fn do_clone(
             } else {
                 Some(Arc::downgrade(task))
             },
-            children: Vec::new(),
+            children: LinkedList::new(),
         }),
         inner: SyncUnsafeCell::new(TaskInner {
             exit_code: 0,
@@ -229,7 +229,7 @@ pub fn do_clone(
     if let Some(parent) = &locked.parent {
         if let Some(parent) = parent.upgrade() {
             let mut locked = parent.locked_inner();
-            locked.children.push(new_task);
+            locked.children.push_back(new_task);
         }
     }
 

@@ -158,9 +158,9 @@ impl VMArea {
         if self.flags.contains(VMFlags::IDENTICAL) {
             let start = Frame::from(Page::from(self.start_va).number());
             Ok(FrameRange::new(start, start + self.size_in_pages())
-                .range()
-                .map(|frame| Some(frame))
-                .collect())
+            .range()
+            .map(|frame| Some(frame))
+            .collect())
         } else {
             let mut v = Vec::new();
             for frame in &mut self.frames {

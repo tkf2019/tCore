@@ -98,11 +98,11 @@ pub fn from_elf(elf_data: &[u8], args: Vec<String>, mm: &mut MM) -> KernelResult
                 }
 
                 // Allocate a new virtual memory area
-                let count = max_page - Page::floor(start_va).into();
                 let data = match phdr.get_data(&elf).unwrap() {
                     SegmentData::Undefined(data) => data,
                     _ => return Err(KernelError::ELFInvalidSegment),
                 };
+                
                 // Address may not be aligned.
                 mm.alloc_write_vma(
                     Some(data),

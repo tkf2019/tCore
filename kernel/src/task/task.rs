@@ -1,4 +1,5 @@
 use alloc::{
+    collections::LinkedList,
     string::String,
     sync::{Arc, Weak},
     vec::Vec,
@@ -106,7 +107,7 @@ pub struct TaskLockedInner {
     /// When a parent task exits before its children, they will become orphans.
     /// These tasks will be adopted by INIT task to avoid being dropped when the reference
     /// counter becomes 0.
-    pub children: Vec<Arc<Task>>,
+    pub children: LinkedList<Arc<Task>>,
 }
 
 unsafe impl Send for TaskLockedInner {}
@@ -221,7 +222,7 @@ impl Task {
                 state: TaskState::RUNNABLE,
                 sleeping_on: None,
                 parent: None,
-                children: Vec::new(),
+                children: LinkedList::new(),
             }),
             pid: Arc::new(PID(pid)),
             tid_allocator: Arc::new(SpinLock::new(RecycleAllocator::new(MAIN_TASK + 1))),
@@ -277,19 +278,22 @@ impl Task {
 impl Drop for Task {
     fn drop(&mut self) {
         trace!("Drop {:?}", self);
+
         kstack_dealloc(self.kstack);
-        // We don't release the memory resource occupied by the kernel stack.
-        // This memory area might be used agian when a new task calls for a
-        // new kernel stack.
+
         self.tid_allocator.lock().dealloc(self.tid);
-        // Deallocate the trapframe
+
         frame_dealloc(Frame::from(self.trapframe_pa).number(), 1);
     }
 }
 
 impl fmt::Debug for Task {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Task [{} {}:{}]", self.name, self.pid.0, self.tid)
+        write!(
+            f,
+            "Task [{}] pid={} tid={}",
+            self.name, self.pid.0, self.tid
+        )
     }
 }
 
@@ -303,8 +307,6 @@ pub fn trapframe_base(tid: usize) -> usize {
 /// Initialize trapframe
 pub fn init_trapframe(mm: &mut MM) -> KernelResult<PhysAddr> {
     let trapframe = AllocatedFrame::new(true).map_err(|_| KernelError::FrameAllocFailed)?;
-    // Will be manually dropped
-    core::mem::forget(&trapframe);
     let trapframe_pa = trapframe.start_address();
     let trapframe_va: VirtAddr = trapframe_base(MAIN_TASK).into();
     mm.page_table
@@ -313,11 +315,9 @@ pub fn init_trapframe(mm: &mut MM) -> KernelResult<PhysAddr> {
             trapframe.clone(),
             PTEFlags::READABLE | PTEFlags::WRITABLE | PTEFlags::VALID,
         )
-        .map_err(|_| {
-            // Drop the trapframe manually before returning error
-            drop(trapframe);
-            KernelError::PageTableInvalid
-        })?;
+        .map_err(|_| KernelError::PageTableInvalid)?;
+    // Will be manually dropped
+    core::mem::forget(trapframe);
     Ok(trapframe_pa)
 }
 

@@ -39,6 +39,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
         SyscallNO::GETTID => SyscallImpl::gettid(),
         SyscallNO::BRK => SyscallImpl::brk(args[0]),
         SyscallNO::MUNMAP => SyscallImpl::munmap(args[0], args[1]),
+        SyscallNO::CLONE => SyscallImpl::clone(args[0], args[1], args[2], args[3], args[4]),
         SyscallNO::MMAP => SyscallImpl::mmap(args[0], args[1], args[2], args[3], args[4], args[5]),
         SyscallNO::MPROTECT => SyscallImpl::mprotect(args[0], args[1], args[2]),
         _ => {

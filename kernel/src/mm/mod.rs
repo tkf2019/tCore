@@ -720,7 +720,7 @@ pub fn do_mmap(
 
 /// A page fault helper for [`crate::trap::user_trap_handler`].
 ///
-/// The store page fault might be caused by:
+/// Store page fault might be caused by:
 /// 1. Frame not allocated yet;
 /// 2. Unable to write (COW);
 pub fn do_handle_page_fault(mm: &mut MM, va: VirtAddr, flags: VMFlags) -> KernelResult {

@@ -48,7 +48,7 @@ impl Scheduler for QueueScheduler {
         if self.queue.is_empty() && IS_TEST_ENV {
             if let Some(args) = fetch_test() {
                 return from_args(String::from(ROOT_DIR), args)
-                    .map_err(|err| warn!("{:?}", err))
+                    .map_err(|_| warn!("TEST NOT FOUND"))
                     .ok();
             }
             None

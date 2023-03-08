@@ -188,7 +188,7 @@ pub unsafe fn idle() -> ! {
 ///
 /// Unsafe context switch will be called in this function.
 pub unsafe fn do_exit(exit_code: i32) {
-    let curr = curr_task().unwrap();
+    let curr = curr_task().take().unwrap();
     trace!("{:#?} exited with code {}", curr, exit_code);
     let curr_ctx = {
         let mut locked_inner = curr.locked_inner();
@@ -262,7 +262,7 @@ pub fn handle_zombie(task: Arc<Task>) {
             let mut child_inner = child.locked_inner();
             let mut init_task_inner = INIT_TASK.locked_inner();
             child_inner.parent = Some(Arc::downgrade(&INIT_TASK));
-            init_task_inner.children.push(child.clone());
+            init_task_inner.children.push_back(child.clone());
         }
     }
     locked_inner.children.clear();
