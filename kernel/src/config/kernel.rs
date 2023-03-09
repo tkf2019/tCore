@@ -62,9 +62,6 @@ pub const DEFAULT_FD_LIMIT: usize = 0x100;
 /// Boot root directory
 pub const ROOT_DIR: &str = "/";
 
-/// Main task in the same address space
-pub const MAIN_TASK: usize = 0;
-
 /// Absolute path of init task
 pub const INIT_TASK_PATH: &str = "hello_world";
 

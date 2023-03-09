@@ -9,7 +9,7 @@ use spin::Lazy;
 use crate::{
     arch::{get_cpu_id, mm::PAGE_SIZE, TaskContext, __switch},
     config::{
-        ADDR_ALIGN, CPU_NUM, INIT_TASK_PATH, IS_TEST_ENV, KERNEL_STACK_SIZE, MAIN_TASK, ROOT_DIR,
+        ADDR_ALIGN, CPU_NUM, INIT_TASK_PATH, IS_TEST_ENV, KERNEL_STACK_SIZE, ROOT_DIR,
         TRAMPOLINE_VA,
     },
     error::KernelResult,
@@ -22,24 +22,6 @@ use super::{
     task::Task,
     TaskState,
 };
-
-/// Global process identification allocator.
-static PID_ALLOCATOR: Lazy<SpinLock<RecycleAllocator>> =
-    Lazy::new(|| SpinLock::new(RecycleAllocator::new(0)));
-
-/// Only provides [`pid_alloc()`] interface.
-pub fn pid_alloc() -> usize {
-    PID_ALLOCATOR.lock().alloc()
-}
-
-#[derive(Debug)]
-pub struct PID(pub usize);
-
-impl Drop for PID {
-    fn drop(&mut self) {
-        PID_ALLOCATOR.lock().dealloc(self.0)
-    }
-}
 
 /// Global kernal stack allocator.
 static KSTACK_ALLOCATOR: Lazy<SpinLock<RecycleAllocator>> =
@@ -197,11 +179,7 @@ pub unsafe fn do_exit(exit_code: i32) {
         &curr.inner().ctx as *const TaskContext
     };
 
-    if !IS_TEST_ENV && curr.pid.0 == 0 {
-        panic!("All task exited!");
-    } else {
-        handle_zombie(curr);
-    }
+    handle_zombie(curr);
 
     __switch(curr_ctx, idle_ctx());
 }
@@ -267,7 +245,7 @@ pub fn handle_zombie(task: Arc<Task>) {
     }
     locked_inner.children.clear();
     locked_inner.state = TaskState::ZOMBIE;
-    if IS_TEST_ENV && task.tid == MAIN_TASK {
+    if IS_TEST_ENV && task.tid.0 == task.pid {
         finish_test(task.inner().exit_code, &task.name);
     }
 }

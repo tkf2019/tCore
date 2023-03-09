@@ -6,10 +6,9 @@ use alloc::{
 };
 use core::{cell::SyncUnsafeCell, fmt};
 use errno::Errno;
-use id_alloc::{IDAllocator, RecycleAllocator};
 use kernel_sync::{SpinLock, SpinLockGuard};
 use log::trace;
-use signal_defs::{SigActions, SigPending, SigSet};
+use signal_defs::{SigActions, SigPending, SigSet, SignalNo};
 use syscall_interface::AT_FDCWD;
 use vfs::{File, Path};
 
@@ -24,12 +23,12 @@ use crate::{
     fs::{FDManager, FSInfo},
     loader::from_elf,
     mm::{KERNEL_MM, MM},
-    task::{kstack_alloc, pid_alloc, schedule::Scheduler},
+    task::{kstack_alloc, schedule::Scheduler},
 };
 
 use super::{
     curr_ctx, curr_task, idle_ctx,
-    manager::{kstack_dealloc, kstack_vm_alloc, PID},
+    manager::{kstack_dealloc, kstack_vm_alloc},
     TASK_MANAGER,
 };
 
@@ -60,6 +59,24 @@ bitflags::bitflags! {
         /// When a task has completed its execution or is terminated, it will send the
         /// `SIGCHLD` signal to the parent task and go into the zombie state.
         const ZOMBIE = 1 << 5;
+    }
+}
+
+/// Task identifier tracker
+pub struct TID(pub usize);
+
+impl Drop for TID {
+    fn drop(&mut self) {
+        kstack_dealloc(self.0)
+    }
+}
+
+/// Trap frame tracker
+pub struct TrapFrameTracker(pub PhysAddr);
+
+impl Drop for TrapFrameTracker {
+    fn drop(&mut self) {
+        frame_dealloc(Frame::from(self.0).number(), 1);
     }
 }
 
@@ -119,7 +136,6 @@ unsafe impl Send for TaskLockedInner {}
 /// identification (called pid) and etc.
 ///
 /// We use four types of regions to maintain the task metadata:
-/// - Shared with other tasks and immutable: uses [`Arc<T>`]
 /// - Shared with other takss and mutable: uses [`Arc<SpinLock<T>>`]
 /// - Local and immutable: data initialized once when task created
 /// - Local and mutable fields that might be changed by other harts: uses [`SpinLock<TaskLockedInner>`] to wrap
@@ -131,27 +147,19 @@ pub struct Task {
     /// Name of this task (for debug).
     pub name: String,
 
-    /// Kernel stack identification.
-    pub kstack: usize,
+    /// Task identifier (system-wide unique)
+    pub tid: TID,
 
-    /// Task identification.
-    pub tid: usize,
+    /// Process identifier (same as the group leader)
+    pub pid: usize,
 
     /// Trapframe physical address.
-    pub trapframe_pa: PhysAddr,
+    pub trapframe: TrapFrameTracker,
 
-    /* Shared and immutable */
-    /// Process identification.
-    ///
-    /// Use `Arc` to track the ownership of pid. If all tasks holding
-    /// this pid exit and parent process release the resources through `wait()`,
-    /// the pid will be released.
-    pub pid: Arc<PID>,
+    /// Signal (usually SIGCHLD) sent when task exits.
+    pub exit_signal: SignalNo,
 
     /* Shared and mutable */
-    /// Task identification allocator.
-    pub tid_allocator: Arc<SpinLock<RecycleAllocator>>,
-
     /// Address space metadata.
     pub mm: Arc<SpinLock<MM>>,
 
@@ -183,15 +191,13 @@ impl Task {
         let sp = from_elf(elf_data, args, &mut mm)?;
         trace!("\nTask [{}]\n{:#?}", &name, mm);
 
-        // New process identification
-        let pid = pid_alloc();
-
         // New kernel stack for user task
         let kstack = kstack_alloc();
+        let tid = TID(kstack); // for unwinding
         let kstack_base = kstack_vm_alloc(kstack)?;
 
         // Init trapframe
-        let trapframe_pa = init_trapframe(&mut mm)?;
+        let trapframe_pa = init_trapframe(&mut mm, tid.0)?;
         let trapframe = TrapFrame::from(trapframe_pa);
         *trapframe = TrapFrame::new(
             KERNEL_MM.lock().page_table.satp(),
@@ -207,9 +213,19 @@ impl Task {
         let fd_manager = FDManager::new();
 
         let task = Self {
-            kstack,
-            tid: MAIN_TASK,
-            trapframe_pa,
+            name,
+            tid,
+            pid: kstack,
+            trapframe: TrapFrameTracker(trapframe_pa),
+            exit_signal: SignalNo::ERR,
+            mm: Arc::new(SpinLock::new(mm)),
+            fd_manager: Arc::new(SpinLock::new(fd_manager)),
+            fs_info: Arc::new(SpinLock::new(FSInfo {
+                umask: 0,
+                cwd: dir,
+                root: String::from("/"),
+            })),
+            sig_actions: Arc::new(SpinLock::new(SigActions::new())),
             inner: SyncUnsafeCell::new(TaskInner {
                 exit_code: 0,
                 ctx: TaskContext::new(user_trap_return as usize, kstack_base),
@@ -224,24 +240,13 @@ impl Task {
                 parent: None,
                 children: LinkedList::new(),
             }),
-            pid: Arc::new(PID(pid)),
-            tid_allocator: Arc::new(SpinLock::new(RecycleAllocator::new(MAIN_TASK + 1))),
-            mm: Arc::new(SpinLock::new(mm)),
-            fd_manager: Arc::new(SpinLock::new(fd_manager)),
-            fs_info: Arc::new(SpinLock::new(FSInfo {
-                umask: 0,
-                cwd: dir,
-                root: String::from("/"),
-            })),
-            sig_actions: Arc::new(SpinLock::new(SigActions::new())),
-            name,
         };
         Ok(task)
     }
 
     /// Returns the [`TrapFrame`] of this task
     pub fn trapframe(&self) -> &'static mut TrapFrame {
-        TrapFrame::from(self.trapframe_pa)
+        TrapFrame::from(self.trapframe.0)
     }
 
     /// Mutable access to [`TaskInner`].
@@ -278,12 +283,6 @@ impl Task {
 impl Drop for Task {
     fn drop(&mut self) {
         trace!("Drop {:?}", self);
-
-        kstack_dealloc(self.kstack);
-
-        self.tid_allocator.lock().dealloc(self.tid);
-
-        frame_dealloc(Frame::from(self.trapframe_pa).number(), 1);
     }
 }
 
@@ -292,7 +291,7 @@ impl fmt::Debug for Task {
         write!(
             f,
             "Task [{}] pid={} tid={}",
-            self.name, self.pid.0, self.tid
+            self.name, self.pid, self.tid.0
         )
     }
 }
@@ -305,10 +304,10 @@ pub fn trapframe_base(tid: usize) -> usize {
 }
 
 /// Initialize trapframe
-pub fn init_trapframe(mm: &mut MM) -> KernelResult<PhysAddr> {
+pub fn init_trapframe(mm: &mut MM, tid: usize) -> KernelResult<PhysAddr> {
     let trapframe = AllocatedFrame::new(true).map_err(|_| KernelError::FrameAllocFailed)?;
     let trapframe_pa = trapframe.start_address();
-    let trapframe_va: VirtAddr = trapframe_base(MAIN_TASK).into();
+    let trapframe_va: VirtAddr = trapframe_base(tid).into();
     mm.page_table
         .map(
             Page::from(trapframe_va),

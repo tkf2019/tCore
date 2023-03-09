@@ -1,10 +1,9 @@
 use core::cell::SyncUnsafeCell;
 
 use alloc::{collections::LinkedList, sync::Arc};
-use id_alloc::*;
 use kernel_sync::SpinLock;
 use log::trace;
-use signal_defs::{SigPending, SigSet};
+use signal_defs::{SigPending, SigSet, SignalNo};
 
 use crate::{
     arch::{
@@ -12,17 +11,19 @@ use crate::{
         trap::{user_trap_return, TrapFrame},
         TaskContext,
     },
-    config::MAIN_TASK,
     error::{KernelError, KernelResult},
+    task::{TID, TrapFrameTracker},
 };
 
 use super::{
-    init_trapframe, kstack_alloc, kstack_dealloc, kstack_vm_alloc, pid_alloc, schedule::Scheduler,
-    Task, TaskInner, TaskLockedInner, TaskState, PID, TASK_MANAGER,
+    init_trapframe, kstack_alloc, kstack_vm_alloc, schedule::Scheduler,
+    Task, TaskInner, TaskLockedInner, TaskState, TASK_MANAGER,
 };
 
 bitflags::bitflags! {
     pub struct CloneFlags: u32 {
+        /// Signal mask to be sent at exit.
+        const CSIGNAL = 0x000000ff;
         /// Set if vm shared between processes. In particular, memory writes performed by the calling process or
         /// by the child process are also visible in the other process.
         const CLONE_VM = 0x00000100;
@@ -82,6 +83,10 @@ pub fn do_clone(
 ) -> KernelResult<usize> {
     trace!("CLONE from {:?} {:?}", &task, flags);
 
+    if flags.contains(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_FS) {
+        return Err(KernelError::InvalidArgs);
+    }
+
     /*
      * Thread groups must share signals as well, and detached threads
      * can only be started up within the thread group.
@@ -107,44 +112,35 @@ pub fn do_clone(
         Arc::new(SpinLock::new(orig.clone()?))
     };
 
+    // New kernel stack
+    let kstack = kstack_alloc();
+    let tid = TID(kstack);
+    let kstack_base = kstack_vm_alloc(kstack)?;
+
     // Init trapframe
     let trapframe_pa = {
         let mut mm = mm.lock();
-        let trapframe_pa = init_trapframe(&mut mm)?;
+        let trapframe_pa = init_trapframe(&mut mm, kstack)?;
         let trapframe = TrapFrame::from(trapframe_pa);
-        trapframe.copy_from(TrapFrame::from(task.trapframe_pa), flags, stack, tls);
+        trapframe.copy_from(TrapFrame::from(task.trapframe.0), flags, stack, tls);
         trapframe_pa
     };
+    let trapframe = TrapFrameTracker(trapframe_pa); // for unwinding
 
-    // New kernel stack
-    let kstack = kstack_alloc();
-    let kstack_base = kstack_vm_alloc(kstack);
-    if kstack_base.is_err() {
-        kstack_dealloc(kstack);
-        return Err(kstack_base.unwrap_err());
-    }
-
-    // New task id
-    let tid = if flags.contains(CloneFlags::CLONE_THREAD) {
-        task.tid_allocator.lock().alloc()
-    } else {
-        MAIN_TASK
-    };
 
     let new_task = Arc::new(Task {
         name: task.name.clone(),
-        kstack,
         tid,
-        trapframe_pa,
         pid: if flags.contains(CloneFlags::CLONE_THREAD) {
-            task.pid.clone()
+            task.pid
         } else {
-            Arc::new(PID(pid_alloc()))
+            kstack
         },
-        tid_allocator: if flags.contains(CloneFlags::CLONE_THREAD) {
-            task.tid_allocator.clone()
+        trapframe,
+        exit_signal: if flags.contains(CloneFlags::CLONE_THREAD) {
+            SignalNo::ERR
         } else {
-            Arc::new(SpinLock::new(RecycleAllocator::new(MAIN_TASK + 1)))
+            SignalNo::try_from((flags & CloneFlags::CSIGNAL).bits() as usize).map_err(|_| KernelError::InvalidArgs)?
         },
         mm,
         fd_manager: if flags.contains(CloneFlags::CLONE_FILES) {
@@ -178,7 +174,7 @@ pub fn do_clone(
         }),
         inner: SyncUnsafeCell::new(TaskInner {
             exit_code: 0,
-            ctx: TaskContext::new(user_trap_return as usize, kstack_base.unwrap()),
+            ctx: TaskContext::new(user_trap_return as usize, kstack_base),
             set_child_tid: if flags.contains(CloneFlags::CLONE_CHILD_SETTID) {
                 ctid.value()
             } else {
@@ -194,13 +190,11 @@ pub fn do_clone(
         }),
     });
 
-    let pid = new_task.pid.0;
-
     // Set tid in parent address space
     if flags.contains(CloneFlags::CLONE_PARENT_SETTID) {
         let mut mm = task.mm.lock();
         let ptid = mm.alloc_frame(ptid)?.start_address() + ptid.page_offset();
-        unsafe { *(ptid.get_mut() as *mut i32) = tid as i32 };
+        unsafe { *(ptid.get_mut() as *mut i32) = kstack as i32 };
     }
 
     // Set tid in child address space (COW)
@@ -213,7 +207,7 @@ pub fn do_clone(
         };
         unsafe {
             *(ctid.get_mut() as *mut i32) = if flags.contains(CloneFlags::CLONE_CHILD_SETTID) {
-                tid as i32
+                kstack as i32
             } else {
                 0
             }
@@ -233,5 +227,5 @@ pub fn do_clone(
         }
     }
 
-    Ok(pid)
+    Ok(kstack)
 }

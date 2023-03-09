@@ -15,7 +15,7 @@ pub struct SyscallArgs(pub SyscallNO, pub [usize; 6]);
 pub struct SyscallImpl;
 
 pub fn syscall(args: SyscallArgs) -> SyscallResult {
-    trace!("[U] Syscall {:X?}", args);
+    trace!("    SYSCALL {:X?}", args);
     let id = args.0;
     let args = args.1;
     match id {

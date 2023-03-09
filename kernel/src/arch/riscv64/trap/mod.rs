@@ -136,7 +136,7 @@ pub fn user_trap_return() -> ! {
         let curr_mm = curr.mm.lock();
         (
             curr_mm.page_table.satp(),
-            trapframe_base(curr.tid),
+            trapframe_base(curr.tid.0),
             __userret as usize - __uservec as usize + TRAMPOLINE_VA,
         )
     };

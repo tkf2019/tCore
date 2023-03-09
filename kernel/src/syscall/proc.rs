@@ -38,17 +38,17 @@ impl SyscallProc for SyscallImpl {
     }
 
     fn getpid() -> SyscallResult {
-        Ok(curr_task().unwrap().pid.0)
+        Ok(curr_task().unwrap().pid)
     }
 
     fn gettid() -> SyscallResult {
-        Ok(curr_task().unwrap().tid)
+        Ok(curr_task().unwrap().tid.0)
     }
 
     fn set_tid_address(tidptr: usize) -> SyscallResult {
         let curr = curr_task().unwrap();
         curr.inner().clear_child_tid = tidptr;
-        Ok(curr.tid)
+        Ok(curr.tid.0)
     }
 
     fn brk(brk: usize) -> SyscallResult {
