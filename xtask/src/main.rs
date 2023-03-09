@@ -304,17 +304,17 @@ impl QemuArgs {
         let kernel = self.build.make();
 
         // Kernel binary for qemu
-        let kernel_bin = kernel.with_extension("bin");
-        Command::new("rust-objcopy")
-            .arg(format!(
-                "--binary-architecture={}",
-                self.build.arch.as_ref().unwrap().as_str()
-            ))
-            .arg(&kernel)
-            .args(&["--strip-all", "-O", "binary"])
-            .arg(&kernel_bin)
-            .status()
-            .expect("Failed to generate kernel binary file");
+        // let kernel_bin = kernel.with_extension("bin");
+        // Command::new("rust-objcopy")
+        //     .arg(format!(
+        //         "--binary-architecture={}",
+        //         self.build.arch.as_ref().unwrap().as_str()
+        //     ))
+        //     .arg(&kernel)
+        //     .args(&["--strip-all", "-O", "binary"])
+        //     .arg(&kernel_bin)
+        //     .status()
+        //     .expect("Failed to generate kernel binary file");
         // Run Qemu
         let mut cmd = Command::new(format!(
             "{}qemu-system-{}",
@@ -327,7 +327,7 @@ impl QemuArgs {
             .arg("-nographic")
             .args(&["-bios", "default"])
             .arg("-kernel")
-            .arg(&kernel_bin)
+            .arg(&kernel)
             .args(&["-serial", "mon:stdio"])
             .args(&[
                 "-drive",

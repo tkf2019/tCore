@@ -63,6 +63,7 @@ bitflags::bitflags! {
 }
 
 /// Task identifier tracker
+#[derive(Debug, PartialEq, Eq)]
 pub struct TID(pub usize);
 
 impl Drop for TID {
@@ -125,6 +126,8 @@ pub struct TaskLockedInner {
     /// These tasks will be adopted by INIT task to avoid being dropped when the reference
     /// counter becomes 0.
     pub children: LinkedList<Arc<Task>>,
+    // /// Linkage in my parent's children list
+    // pub sibling: Option<CursorMut<'static, Arc<Task>>>,
 }
 
 unsafe impl Send for TaskLockedInner {}
@@ -142,6 +145,22 @@ unsafe impl Send for TaskLockedInner {}
 /// the data together
 /// - Local and mutable files that cannot be accessed by multiple harts at the same time: uses
 /// [`SyncUnsafeCell<TaskInner>`]
+///
+/// # Thread Group
+///
+/// The threads within a group can be distinguished by their (system-wide) unique thread IDs (TID).
+/// A new thread's TID is available as the function result returned to the caller, and a thread can
+/// obtain its own TID using gettid(2).
+///
+/// If any of the threads in a thread group performs an execve(2), then all threads other than the thread
+/// group leader are terminated, and the new program is executed in the thread group leader.
+///
+/// If one of the threads in a thread group creates a child using fork(2), then any thread in the group
+/// can wait(2) for that child.
+///
+/// Signal dispositions and actions are process-wide: if an unhandled signal is delivered to a thread,
+/// then it will affect (terminate, stop, continue, be ignored in) all members of the thread group.
+/// Each thread has its own signal mask, as set by sigprocmask(2).
 pub struct Task {
     /* Local and immutable */
     /// Name of this task (for debug).

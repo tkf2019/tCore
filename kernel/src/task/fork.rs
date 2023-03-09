@@ -12,15 +12,16 @@ use crate::{
         TaskContext,
     },
     error::{KernelError, KernelResult},
-    task::{TID, TrapFrameTracker},
+    task::{TrapFrameTracker, TID},
 };
 
 use super::{
-    init_trapframe, kstack_alloc, kstack_vm_alloc, schedule::Scheduler,
-    Task, TaskInner, TaskLockedInner, TaskState, TASK_MANAGER,
+    init_trapframe, kstack_alloc, kstack_vm_alloc, schedule::Scheduler, Task, TaskInner,
+    TaskLockedInner, TaskState, TASK_MANAGER,
 };
 
 bitflags::bitflags! {
+    /// A bit mask that allows the caller to specify what is shared between the calling process and the child process.
     pub struct CloneFlags: u32 {
         /// Signal mask to be sent at exit.
         const CSIGNAL = 0x000000ff;
@@ -73,6 +74,7 @@ bitflags::bitflags! {
     }
 }
 
+/// A helper for [`syscall_interface::SyscallProc::clone`]
 pub fn do_clone(
     task: &Arc<Task>,
     flags: CloneFlags,
@@ -127,10 +129,15 @@ pub fn do_clone(
     };
     let trapframe = TrapFrameTracker(trapframe_pa); // for unwinding
 
-
     let new_task = Arc::new(Task {
         name: task.name.clone(),
         tid,
+        /*
+         * When a clone call is made without specifying CLONE_THREAD,
+         * then the resulting thread is placed in a new thread group
+         * whose TGID is the same as the thread's TID. This thread
+         * is the leader of the new thread group.
+         */
         pid: if flags.contains(CloneFlags::CLONE_THREAD) {
             task.pid
         } else {
@@ -140,7 +147,8 @@ pub fn do_clone(
         exit_signal: if flags.contains(CloneFlags::CLONE_THREAD) {
             SignalNo::ERR
         } else {
-            SignalNo::try_from((flags & CloneFlags::CSIGNAL).bits() as usize).map_err(|_| KernelError::InvalidArgs)?
+            SignalNo::try_from((flags & CloneFlags::CSIGNAL).bits() as usize)
+                .map_err(|_| KernelError::InvalidArgs)?
         },
         mm,
         fd_manager: if flags.contains(CloneFlags::CLONE_FILES) {
@@ -155,7 +163,7 @@ pub fn do_clone(
             let orig = task.fs_info.lock();
             Arc::new(SpinLock::new(orig.clone()))
         },
-        sig_actions: if flags.contains(CloneFlags::CLONE_SIGHAND | CloneFlags::CLONE_THREAD) {
+        sig_actions: if flags.intersects(CloneFlags::CLONE_SIGHAND | CloneFlags::CLONE_THREAD) {
             task.sig_actions.clone()
         } else {
             let orig = task.sig_actions.lock();
@@ -164,7 +172,7 @@ pub fn do_clone(
         locked_inner: SpinLock::new(TaskLockedInner {
             state: TaskState::RUNNABLE,
             sleeping_on: None,
-            parent: if flags.contains(CloneFlags::CLONE_PARENT) {
+            parent: if flags.intersects(CloneFlags::CLONE_PARENT | CloneFlags::CLONE_THREAD) {
                 let locked = task.locked_inner();
                 locked.parent.clone()
             } else {
@@ -222,8 +230,8 @@ pub fn do_clone(
     let locked = unsafe { &mut *new_task.locked_inner.as_mut_ptr() };
     if let Some(parent) = &locked.parent {
         if let Some(parent) = parent.upgrade() {
-            let mut locked = parent.locked_inner();
-            locked.children.push_back(new_task);
+            let mut parent = parent.locked_inner();
+            parent.children.push_back(new_task);
         }
     }
 

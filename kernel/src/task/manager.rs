@@ -245,6 +245,15 @@ pub fn handle_zombie(task: Arc<Task>) {
     }
     locked_inner.children.clear();
     locked_inner.state = TaskState::ZOMBIE;
+
+    if let Some(parent) = &locked_inner.parent {
+        let parent = parent.upgrade().unwrap();
+        let mut locked_inner = parent.locked_inner();
+        locked_inner
+            .children
+            .drain_filter(|child| child.tid == task.tid);
+    }
+
     if IS_TEST_ENV && task.tid.0 == task.pid {
         finish_test(task.inner().exit_code, &task.name);
     }
