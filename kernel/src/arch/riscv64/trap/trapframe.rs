@@ -54,7 +54,7 @@ impl TrapFrame {
     }
 
     /// Copies from the old one when we clone a task and initialize its trap frame.
-    pub fn copy_from(&mut self, orig: &mut TrapFrame, flags: CloneFlags, stack: usize, tls: usize) {
+    pub fn copy_from(&mut self, orig: &TrapFrame, flags: CloneFlags, stack: usize, tls: usize) {
         *self = *orig;
 
         // Child task returns zero

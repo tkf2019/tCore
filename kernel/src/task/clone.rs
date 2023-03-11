@@ -130,7 +130,7 @@ pub fn do_clone(
     let trapframe = TrapFrameTracker(trapframe_pa); // for unwinding
 
     let new_task = Arc::new(Task {
-        name: task.name.clone(),
+        name: task.name.clone() + " (CLONED)",
         tid,
         /*
          * When a clone call is made without specifying CLONE_THREAD,
@@ -209,7 +209,7 @@ pub fn do_clone(
     }
 
     // Set tid in child address space (COW)
-    if flags.contains(CloneFlags::CLONE_CHILD_SETTID | CloneFlags::CLONE_CHILD_CLEARTID) {
+    if flags.intersects(CloneFlags::CLONE_CHILD_SETTID | CloneFlags::CLONE_CHILD_CLEARTID) {
         let mut mm = new_task.mm.lock();
         let ctid = if flags.contains(CloneFlags::CLONE_VM) {
             mm.alloc_frame(ctid)?.start_address() + ctid.page_offset()

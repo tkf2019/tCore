@@ -6,7 +6,6 @@ use alloc::{
 };
 use core::cell::SyncUnsafeCell;
 use kernel_sync::{CPUs, SpinLock};
-use log::warn;
 use oscomp::fetch_test;
 use spin::Lazy;
 
@@ -53,7 +52,7 @@ impl Scheduler for QueueScheduler {
         if self.queue.is_empty() && IS_TEST_ENV {
             if let Some(args) = fetch_test() {
                 return from_args(String::from(ROOT_DIR), args)
-                    .map_err(|_| warn!("TEST NOT FOUND"))
+                    .map_err(|_| log::warn!("TEST NOT FOUND"))
                     .ok();
             }
             None
