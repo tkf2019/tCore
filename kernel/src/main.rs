@@ -6,7 +6,7 @@
 #![feature(core_intrinsics)]
 #![feature(sync_unsafe_cell)]
 #![feature(drain_filter)]
-#![allow(dead_code)]
+// #![allow(dead_code)]
 
 mod config;
 mod cons;

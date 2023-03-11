@@ -23,14 +23,10 @@ use crate::{
     fs::{FDManager, FSInfo},
     loader::from_elf,
     mm::{KERNEL_MM, MM},
-    task::{kstack_alloc, schedule::Scheduler},
+    task::{kstack_alloc, sched::Scheduler},
 };
 
-use super::{
-    curr_ctx, curr_task, idle_ctx,
-    manager::{kstack_dealloc, kstack_vm_alloc},
-    TASK_MANAGER,
-};
+use super::{curr_ctx, curr_task, idle_ctx, kstack_dealloc, kstack_vm_alloc, TASK_MANAGER};
 
 bitflags::bitflags! {
     /// Five-state model:

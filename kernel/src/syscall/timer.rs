@@ -4,7 +4,7 @@ use time_subsys::{TimeSpec, TimeVal};
 
 use crate::{
     arch::{mm::VirtAddr, timer::get_time_sec_f64},
-    task::manager::curr_task,
+    task::curr_task,
 };
 
 use super::SyscallImpl;

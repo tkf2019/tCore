@@ -16,7 +16,7 @@ use crate::{
 };
 
 use super::{
-    init_trapframe, kstack_alloc, kstack_vm_alloc, schedule::Scheduler, Task, TaskInner,
+    init_trapframe, kstack_alloc, kstack_vm_alloc, sched::Scheduler, Task, TaskInner,
     TaskLockedInner, TaskState, TASK_MANAGER,
 };
 

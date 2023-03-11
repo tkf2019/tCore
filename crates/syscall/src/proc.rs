@@ -19,6 +19,26 @@ pub trait SyscallProc {
         Ok(0)
     }
 
+    /// Wait for process to change state and obtain information about it.
+    ///
+    /// A state change is considered to be:
+    /// 1. a child terminated; in the case of a terminated child, performing a wait allows
+    /// the system to release the resources associated with the child; if a wait is not performed,
+    /// then the terminated child remains in a `Zombie` state.
+    /// 2. a child was stopped by a signal;
+    /// 3. a child was resumed by a signal.
+    ///
+    /// # Argument
+    ///
+    /// The value of pid can be: 
+    /// - `< -1`: meaning wait for any child process whose process group ID is equal to the absolute value of pid.
+    /// - `-1`: meaning wait for any child process.
+    /// - `0`: meaning wait for any child process whose process group ID is equal to that of the calling process.
+    /// - `> 0`: meaning wait for the child whose process ID is equal the value of `pid`.
+    fn wait4(pid: usize, wstatus: usize, options: usize, rusage: usize) -> SyscallResult {
+        Ok(0)
+    }
+
     /// Get process identification, always successfully
     fn getpid() -> SyscallResult {
         Ok(0)

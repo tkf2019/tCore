@@ -70,6 +70,7 @@ numeric_enum! {
         EXECVE = 221,
         MMAP = 222,
         MPROTECT = 226,
+        WAIT4 = 260,
     }
 }
 
