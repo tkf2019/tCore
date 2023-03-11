@@ -15,7 +15,8 @@ use crate::{
     println,
     syscall::syscall,
     task::do_exit,
-    task::{manager::curr_task, trapframe_base},
+    task::{do_yield, manager::curr_task, trapframe_base},
+    timer::set_next_trigger,
 };
 
 use self::trapframe::KernelTrapContext;
@@ -37,6 +38,12 @@ pub fn set_kernel_trap() {
 /// Set user trap entry.
 pub fn set_user_trap() {
     unsafe { stvec::write(TRAMPOLINE_VA as usize, TrapMode::Direct) };
+}
+
+pub fn enable_timer_intr() {
+    unsafe {
+        sie::set_stimer();
+    }
 }
 
 /// User trap handler manages the task according to the cause:
@@ -101,6 +108,13 @@ pub fn user_trap_handler() -> ! {
                 drop(curr_mm);
                 drop(curr);
                 unsafe { do_exit(-1) };
+            }
+        }
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            trap_info();
+            set_next_trigger();
+            unsafe {
+                do_yield();
             }
         }
         _ => {

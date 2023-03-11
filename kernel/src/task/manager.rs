@@ -2,7 +2,6 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 use core::cell::SyncUnsafeCell;
 use id_alloc::{IDAllocator, RecycleAllocator};
 use kernel_sync::{CPUs, SpinLock};
-use log::trace;
 use oscomp::{fetch_test, finish_test};
 use spin::Lazy;
 
@@ -153,6 +152,7 @@ pub unsafe fn idle() -> ! {
                 locked_inner.state = TaskState::RUNNING;
                 &task.inner().ctx as *const TaskContext
             };
+            log::info!("Run {:?}", task);
             // Ownership moved to `current`.
             cpu_ctx.current = Some(task);
 
@@ -171,7 +171,7 @@ pub unsafe fn idle() -> ! {
 /// Unsafe context switch will be called in this function.
 pub unsafe fn do_exit(exit_code: i32) {
     let curr = curr_task().take().unwrap();
-    trace!("{:#?} exited with code {}", curr, exit_code);
+    log::info!("{:?} exited with code {}", curr, exit_code);
     let curr_ctx = {
         let mut locked_inner = curr.locked_inner();
         curr.inner().exit_code = exit_code;
@@ -191,7 +191,7 @@ pub unsafe fn do_exit(exit_code: i32) {
 /// Unsafe context switch will be called in this function.
 pub unsafe fn do_yield() {
     let curr = curr_task().take().unwrap();
-    trace!("{:#?} suspended", curr);
+    log::info!("{:#?} suspended", curr);
     let curr_ctx = {
         let mut locked_inner = curr.locked_inner();
         locked_inner.state = TaskState::RUNNABLE;

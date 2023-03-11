@@ -23,6 +23,7 @@ mod tests;
 #[path = "arch/riscv64/mod.rs"]
 #[cfg(target_arch = "riscv64")]
 mod arch;
+mod timer;
 
 extern crate alloc;
 
@@ -64,6 +65,10 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
             arch::start_hart(cpu_id, entry, 0);
         }
     }
+
+    arch::trap::enable_timer_intr();
+    timer::set_next_trigger();
+
     // IDLE loop
     unsafe { task::idle() };
 }

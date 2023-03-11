@@ -34,6 +34,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
         SyscallNO::CLOCK_GET_TIME => SyscallImpl::clock_gettime(args[0], args[1]),
         SyscallNO::SIGACTION => SyscallImpl::sigaction(args[0], args[1], args[2]),
         SyscallNO::SIGPROCMASK => SyscallImpl::sigprocmask(args[0], args[1], args[2], args[3]),
+        SyscallNO::SIGTIMEDWAIT => SyscallImpl::sigtimedwait(args[0], args[1], args[2]),
         SyscallNO::GET_TIME_OF_DAY => SyscallImpl::gettimeofday(args[0]),
         SyscallNO::GETPID => SyscallImpl::getpid(),
         SyscallNO::GETTID => SyscallImpl::gettid(),

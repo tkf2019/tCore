@@ -22,3 +22,9 @@ pub fn get_time_ms() -> usize {
 pub fn get_time_us() -> usize {
     time::read() / (CLOCK_FREQ / USEC_PER_SEC)
 }
+
+#[inline]
+pub fn set_timer(stime_value: u64) {
+    sbi_rt::set_timer(stime_value);
+}
+

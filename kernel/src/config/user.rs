@@ -10,7 +10,7 @@ pub const USER_HEAP_SIZE: usize = 0x40_0000;
 pub const USER_HEAP_PAGES: usize = USER_HEAP_SIZE >> PAGE_SIZE_BITS;
 
 /// User stack size
-pub const USER_STACK_SIZE: usize = 0x2_0000;
+pub const USER_STACK_SIZE: usize = 0x20_0000;
 
 /// User stack pages
 pub const USER_STACK_PAGES: usize = USER_STACK_SIZE >> PAGE_SIZE_BITS;

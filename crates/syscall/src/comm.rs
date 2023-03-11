@@ -32,6 +32,16 @@ pub trait SyscallComm {
         Ok(0)
     }
 
+    /// The set of blocked signals is the union of the current set and the set argument.
+    const SIG_BLOCK: usize = 0;
+
+    /// The signals in set are removed from the current set of blocked signals. It is permissible
+    /// to attempt to unblock a signal which is not blocked.
+    const SIG_UNBLOCK: usize = 1;
+
+    /// The set of blocked signals is set to the argument set.
+    const SIG_SETMASK: usize = 2;
+
     /// Sigprocmask() is used to fetch and/or change the signal mask of the calling
     /// thread. The signal mask is the set of signals whose delivery is currently
     /// blocked for the caller (see also signal(7) for more details).
@@ -71,6 +81,26 @@ pub trait SyscallComm {
     /// - `EFAULT`: The `set` argument points outside the process's allocated
     /// address space.
     fn sigpending(set: usize) -> SyscallResult {
+        Ok(0)
+    }
+
+
+    /// The sigtimedwait() function shall be equivalent to sigwaitinfo() except that if none of the signals
+    /// specified by set are pending, sigtimedwait() shall wait for the time interval specified in the timespec
+    /// structure referenced by timeout. If the timespec structure pointed to by timeout is zero-valued and if
+    /// none of the signals specified by set are pending, then sigtimedwait() shall return immediately with an error.
+    /// If timeout is the null pointer, the behavior is unspecified.
+    /// 
+    /// The sigwaitinfo() function selects the pending signal from the set specified by set. Should any of multiple
+    /// pending signals in the range SIGRTMIN to SIGRTMAX be selected, it shall be the lowest numbered one.
+    /// The selection order between realtime and non-realtime signals, or between multiple pending non-realtime signals,
+    /// is unspecified. If no signal in set is pending at the time of the call, the calling thread shall be suspended
+    /// until one or more signals in set become pending or until it is interrupted by an unblocked, caught signal.
+    /// 
+    /// # Return
+    /// Upon successful completion (that is, one of the signals specified by set is pending or is generated) sigwaitinfo()
+    /// and sigtimedwait() shall return the selected signal number. 
+    fn sigtimedwait(set: usize, info: usize, timeout: usize) -> SyscallResult {
         Ok(0)
     }
 }

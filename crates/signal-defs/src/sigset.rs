@@ -28,9 +28,19 @@ impl SigSet {
         self.0 |= 1 << kth;
     }
 
+    /// Sets bits in mask
+    pub fn set_mask(&mut self, mask: u64) {
+        self.0 |= mask;
+    }
+
     /// Unsets the bit.
     pub fn unset(&mut self, kth: usize) {
         self.0 &= !(1 << kth);
+    }
+
+    /// Unsets bits in mask
+    pub fn unset_mask(&mut self, mask: u64) {
+        self.0 &= !mask;
     }
 
     /// Gets union.
@@ -47,8 +57,6 @@ impl SigSet {
     pub fn difference(&mut self, other: &SigSet) {
         self.0 &= !other.0;
     }
-
-    
 }
 
 impl From<u64> for SigSet {

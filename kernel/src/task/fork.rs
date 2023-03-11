@@ -3,7 +3,7 @@ use core::cell::SyncUnsafeCell;
 use alloc::{collections::LinkedList, sync::Arc};
 use kernel_sync::SpinLock;
 use log::trace;
-use signal_defs::{SigPending, SigSet, SignalNo};
+use signal_defs::{sigvalid, SigPending, SigSet, SIGNONE};
 
 use crate::{
     arch::{
@@ -145,10 +145,13 @@ pub fn do_clone(
         },
         trapframe,
         exit_signal: if flags.contains(CloneFlags::CLONE_THREAD) {
-            SignalNo::ERR
+            SIGNONE
         } else {
-            SignalNo::try_from((flags & CloneFlags::CSIGNAL).bits() as usize)
-                .map_err(|_| KernelError::InvalidArgs)?
+            let sig = (flags & CloneFlags::CSIGNAL).bits() as usize;
+            if !sigvalid(sig) {
+                return Err(KernelError::InvalidArgs);
+            }
+            sig
         },
         mm,
         fd_manager: if flags.contains(CloneFlags::CLONE_FILES) {

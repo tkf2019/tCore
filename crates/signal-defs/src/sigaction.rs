@@ -121,20 +121,6 @@ impl SigAction {
         Self::default()
     }
 
-    /// Gets the programmer defined signal handler.
-    ///
-    /// Returns None if `SA_SIGINFO` is set or default action is used or the signal is ignored.
-    pub fn get_handler(&self) -> Option<usize> {
-        if self.flags.contains(SigActionFlags::SA_SIGINFO)
-            || self.handler == SIG_DFL
-            || self.handler == SIG_IGN
-        {
-            None
-        } else {
-            Some(self.handler)
-        }
-    }
-
     /// Returns if the signal will be ignored.
     pub fn is_ignored(&self) -> bool {
         !self.flags.contains(SigActionFlags::SA_SIGINFO) && self.handler == SIG_IGN
@@ -166,33 +152,4 @@ pub enum SigActionDefault {
 
 pub const NSIG: usize = 64;
 
-#[derive(Debug, Clone, Copy)]
-pub struct SigActions(pub [Option<SigAction>; NSIG]);
-
-impl SigActions {
-    /// Creates a new `SigActions`.
-    pub fn new() -> Self {
-        Self([None; NSIG])
-    }
-
-    /// Gets an immutable reference of the `SigAction` by `signum`.
-    pub fn get_ref(&mut self, signum: usize) -> &SigAction {
-        self.0[signum - 1] = Some(SigAction::new());
-        self.0[signum - 1].as_ref().unwrap()
-    }
-
-    /// Gets a mutable reference of the `SigAction` by `signum`.
-    pub fn get_mut(&mut self, signum: usize) -> &mut SigAction {
-        self.0[signum - 1] = Some(SigAction::new());
-        self.0[signum - 1].as_mut().unwrap()
-    }
-
-    /// Gets the programmer defined signal handler.
-    ///
-    /// Returns None if `SA_SIGINFO` is set or default action is used or the signal is ignored.
-    pub fn get_handler(&self, signum: usize) -> Option<usize> {
-        self.0[signum - 1]
-            .as_ref()
-            .and_then(|action| action.get_handler())
-    }
-}
+pub type SigActions = [SigAction; NSIG];

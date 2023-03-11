@@ -88,3 +88,6 @@ cfg_if::cfg_if! {
         pub const TEST_UINTR: bool = false;
     }
 }
+
+/// Timer interrupt per second
+pub const INTR_PER_SEC: usize = 10;

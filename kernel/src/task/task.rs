@@ -8,7 +8,7 @@ use core::{cell::SyncUnsafeCell, fmt};
 use errno::Errno;
 use kernel_sync::{SpinLock, SpinLockGuard};
 use log::trace;
-use signal_defs::{SigActions, SigPending, SigSet, SignalNo};
+use signal_defs::*;
 use syscall_interface::AT_FDCWD;
 use vfs::{File, Path};
 
@@ -176,7 +176,7 @@ pub struct Task {
     pub trapframe: TrapFrameTracker,
 
     /// Signal (usually SIGCHLD) sent when task exits.
-    pub exit_signal: SignalNo,
+    pub exit_signal: usize,
 
     /* Shared and mutable */
     /// Address space metadata.
@@ -236,7 +236,7 @@ impl Task {
             tid,
             pid: kstack,
             trapframe: TrapFrameTracker(trapframe_pa),
-            exit_signal: SignalNo::ERR,
+            exit_signal: SIGNONE,
             mm: Arc::new(SpinLock::new(mm)),
             fd_manager: Arc::new(SpinLock::new(fd_manager)),
             fs_info: Arc::new(SpinLock::new(FSInfo {
@@ -244,7 +244,7 @@ impl Task {
                 cwd: dir,
                 root: String::from("/"),
             })),
-            sig_actions: Arc::new(SpinLock::new(SigActions::new())),
+            sig_actions: Arc::new(SpinLock::new([SigAction::default(); NSIG])),
             inner: SyncUnsafeCell::new(TaskInner {
                 exit_code: 0,
                 ctx: TaskContext::new(user_trap_return as usize, kstack_base),
@@ -378,5 +378,22 @@ impl kernel_sync::SleepLockSched for TaskLockedInner {
                 inner.state = TaskState::RUNNABLE;
             }
         });
+    }
+}
+
+impl Task {
+    /// Signal is ignored for this task.
+    pub fn sig_ignored(&self, sig_actions: &SigActions, sig: usize) -> bool {
+        /*
+         * Blocked signals are never ignored, since the
+         * signal handler may change by the time it is
+         * unblocked.
+         */
+        if self.inner().sig_blocked.get(sig - 1) {
+            return false;
+        }
+
+        sig_actions[sig - 1].handler == SIG_IGN
+            || (sig_actions[sig - 1].handler == SIG_DFL && sig_kernel_ignore(sig))
     }
 }

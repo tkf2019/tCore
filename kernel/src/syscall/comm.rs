@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use core::mem::size_of;
 use errno::Errno;
-use signal_defs::{SigAction, SigActionFlags, SigSet, SignalNo, NSIG};
+use signal_defs::*;
 use syscall_interface::{SyscallComm, SyscallResult};
 
 use crate::{arch::mm::VirtAddr, fs::Pipe, task::curr_task, user_buf_next, user_buf_next_mut};
@@ -44,29 +44,21 @@ impl SyscallComm for SyscallImpl {
     }
 
     fn sigaction(signum: usize, act: usize, oldact: usize) -> SyscallResult {
-        if act != 0
-            && (signum == SignalNo::SIGKILL.into()
-                || signum == SignalNo::SIGSTOP.into()
-                || signum >= NSIG)
-        {
-            return Err(Errno::EINVAL);
-        }
-
-        let sig_action_size = size_of::<SigAction>();
-        if act & (sig_action_size - 1) != 0 || oldact & (sig_action_size - 1) != 0 {
+        if !sigvalid(signum) || (act != 0 && sig_kernel_only(signum)) {
             return Err(Errno::EINVAL);
         }
 
         let curr = curr_task().unwrap();
         let mut curr_mm = curr.mm.lock();
         let mut sig_actions = curr.sig_actions.lock();
+        let sig_action_size = size_of::<SigAction>();
 
         if oldact != 0 {
             let oldact = curr_mm
                 .get_buf_mut(oldact.into(), sig_action_size)
                 .map_err(|_| Errno::EFAULT)?;
             let mut iter = oldact.into_iter().step_by(size_of::<usize>());
-            let old_sig_action = sig_actions.get_ref(signum);
+            let old_sig_action = &sig_actions[signum - 1];
             *user_buf_next_mut!(iter, usize) = old_sig_action.handler;
             *user_buf_next_mut!(iter, SigActionFlags) = old_sig_action.flags;
             *user_buf_next_mut!(iter, usize) = old_sig_action.restorer;
@@ -78,21 +70,39 @@ impl SyscallComm for SyscallImpl {
                 .get_buf_mut(act.into(), sig_action_size)
                 .map_err(|_| Errno::EFAULT)?;
             let mut iter = act.into_iter().step_by(size_of::<usize>());
-            let sig_action = sig_actions.get_mut(signum);
-            sig_action.handler = *user_buf_next!(iter, usize);
+
+            /*
+             * POSIX 3.3.1.3:
+             *  "Setting a signal action to SIG_IGN for a signal that is
+             *   pending shall cause the pending signal to be discarded,
+             *   whether or not it is blocked."
+             *
+             *  "Setting a signal action to SIG_DFL for a signal that is
+             *   pending and whose default action is to ignore the signal
+             *   (for example, SIGCHLD), shall cause the pending signal to
+             *   be discarded, whether or not it is blocked"
+             */
+            let handler = *user_buf_next!(iter, usize);
+            if handler == SIG_IGN || (handler == SIG_DFL && sig_kernel_ignore(signum)) {
+                // TODO!
+            }
+
+            let sig_action = &mut sig_actions[signum - 1];
+            sig_action.handler = handler;
             sig_action.flags = *user_buf_next!(iter, SigActionFlags);
             sig_action.restorer = *user_buf_next!(iter, usize);
             sig_action.mask = *user_buf_next!(iter, SigSet);
+            sig_action
+                .mask
+                .unset_mask(sigmask(SIGKILL) | sigmask(SIGSTOP));
         }
 
         Ok(0)
     }
 
-    fn sigpending(set: usize) -> SyscallResult {
-        Ok(0)
-    }
-
     fn sigprocmask(how: usize, set: usize, oldset: usize, sigsetsize: usize) -> SyscallResult {
+
+
         Ok(0)
     }
 }
