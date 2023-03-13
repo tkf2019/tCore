@@ -1,7 +1,6 @@
 mod file;
 mod flags;
 mod kernel;
-mod user_buf;
 pub mod vma;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
@@ -9,19 +8,18 @@ use core::{fmt, mem::size_of, slice};
 use errno::Errno;
 use log::{trace, warn};
 use syscall_interface::SyscallResult;
+use ubuf::UserBuffer;
 
 use crate::{
     arch::{mm::*, trap::__trampoline},
     config::*,
     error::*,
-    mm::UserBuffer,
     task::Task,
 };
 
 pub use file::MmapFile;
 pub use flags::*;
 pub use kernel::KERNEL_MM;
-pub use user_buf::*;
 use vma::VMArea;
 
 pub struct MM {
@@ -102,7 +100,7 @@ impl MM {
         for vma in self.vma_list.iter() {
             if let Some(vma) = vma {
                 let mut new_vma = VMArea {
-                    flags: vma.flags,
+                    flags: vma.flags | VMFlags::CLONED,
                     start_va: vma.start_va,
                     end_va: vma.end_va,
                     frames: vma.frames.clone(),
@@ -113,8 +111,9 @@ impl MM {
                 flags.remove(PTEFlags::WRITABLE);
                 new_vma.map_all(&mut page_table, flags, false)?;
                 new_vma_list.push(Some(new_vma));
+            } else {
+                new_vma_list.push(None);
             }
-            new_vma_list.push(None);
         }
         page_table
             .map(
@@ -355,7 +354,7 @@ impl MM {
     /// - `va`: starting virtual address.
     pub fn alloc_frame(&mut self, va: VirtAddr) -> KernelResult<Frame> {
         self.get_vma(va, |vma, pt, _| {
-            vma.alloc_frame(Page::from(va), pt, false)
+            vma.alloc_frame(Page::from(va), pt, vma.flags.contains(VMFlags::CLONED))
                 .map(|(frame, _)| frame)
         })
     }
@@ -513,6 +512,30 @@ pub fn page_range(start_va: VirtAddr, end_va: VirtAddr) -> PageRange {
         start: Page::from(start_va),
         end: Page::from(end_va - 1) + 1,
     }
+}
+
+/// Reads a type from user address space.
+#[macro_export]
+macro_rules! read_user {
+    ($mm:expr, $addr:expr, $item:expr, $ty:ty) => {{
+        let ubuf = $mm
+            .get_buf_mut($addr, core::mem::size_of::<$ty>())
+            .map_err(|_| Errno::EFAULT)?;
+        ubuf::read_user_buf!(ubuf, $ty, $item);
+        Ok::<(), Errno>(())
+    }};
+}
+
+/// Writes a type to user address space.
+#[macro_export]
+macro_rules! write_user {
+    ($mm:expr, $addr:expr, $item:expr, $ty:ty) => {{
+        let ubuf = $mm
+            .get_buf_mut($addr, core::mem::size_of::<$ty>())
+            .map_err(|_| Errno::EFAULT)?;
+        ubuf::write_user_buf!(ubuf, $ty, $item);
+        Ok::<(), Errno>(())
+    }};
 }
 
 /// A helper for [`syscall_interface::SyscallProc::brk`].

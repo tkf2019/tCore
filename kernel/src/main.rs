@@ -6,6 +6,7 @@
 #![feature(core_intrinsics)]
 #![feature(sync_unsafe_cell)]
 #![feature(drain_filter)]
+#![feature(linked_list_remove)]
 // #![allow(dead_code)]
 
 mod config;
@@ -21,7 +22,7 @@ mod task;
 mod tests;
 
 #[path = "arch/riscv64/mod.rs"]
-#[cfg(target_arch = "riscv64")]
+// #[cfg(target_arch = "riscv64")]
 mod arch;
 mod timer;
 

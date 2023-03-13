@@ -1,5 +1,17 @@
 use crate::SyscallResult;
 
+/// Wait for any child; id is ignored.
+pub const P_ALL: usize = 0;
+/// Wait for the child whose process ID matches id.
+pub const P_PID: usize = 1;
+/// Wait for any child whose process group ID matches id. Since Linux 5.4,
+/// if id is zero, then wait for any child that is in the same process group
+/// as the caller's process group at the time of the call
+pub const P_PGID: usize = 2;
+/// Wait for the child referred to by the PID file descriptor specified in id.
+/// (See pidfd_open(2) for further information on PID file descriptors.)
+pub const P_PIDFD: usize = 3;
+
 pub trait SyscallProc {
     /// Terminate the calling process.
     fn exit(status: usize) -> !;
@@ -35,7 +47,12 @@ pub trait SyscallProc {
     /// - `-1`: meaning wait for any child process.
     /// - `0`: meaning wait for any child process whose process group ID is equal to that of the calling process.
     /// - `> 0`: meaning wait for the child whose process ID is equal the value of `pid`.
-    fn wait4(pid: usize, wstatus: usize, options: usize, rusage: usize) -> SyscallResult {
+    fn wait4(pid: isize, wstatus: usize, options: usize, rusage: usize) -> SyscallResult {
+        Ok(0)
+    }
+
+    /// Provides more precise control over which child state changes to wait for.
+    fn waittid(idtype: usize, id: isize, infop: usize, options: usize) -> SyscallResult {
         Ok(0)
     }
 

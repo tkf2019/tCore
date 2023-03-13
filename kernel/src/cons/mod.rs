@@ -18,18 +18,22 @@ impl Stdin {
 
 struct Stdout;
 
-impl Stdout {
-    #[inline]
-    #[allow(deprecated)]
-    pub fn putchar(&self, c: u8) {
-        sbi_rt::legacy::console_putchar(c as _);
-    }
+#[inline]
+#[allow(deprecated)]
+pub fn putchar(c: u8) {
+    sbi_rt::legacy::console_putchar(c as _);
 }
 
 impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for c in s.bytes() {
-            self.putchar(c);
+            if c == 127 {
+                putchar(8);
+                putchar(b' ');
+                putchar(8);
+            } else {
+                putchar(c);
+            }
         }
         Ok(())
     }
@@ -44,25 +48,25 @@ pub fn getchar() -> u8 {
     STDIN.lock().getchar()
 }
 
-/// Stderr has higher priority than Stdout.
 #[inline]
-pub fn puts(args: Arguments, err: bool) {
-    if err {
-        let _ = STDOUT.try_lock();
-        STDERR.lock().write_fmt(args).unwrap();
-    } else {
-        STDOUT.lock().write_fmt(args).unwrap();
-    }
+pub fn stdout_puts(args: Arguments) {
+    STDOUT.lock().write_fmt(args).unwrap();
+}
+
+#[inline]
+pub fn stderr_puts(args: Arguments) {
+    let _stdout = STDOUT.try_lock();
+    STDERR.lock().write_fmt(args).unwrap();
 }
 
 #[inline]
 pub fn print(args: Arguments) {
-    puts(args, false);
+    stdout_puts(args);
 }
 
 #[inline]
 pub fn eprint(args: Arguments) {
-    puts(args, true);
+    stderr_puts(args);
 }
 
 #[macro_export]

@@ -14,3 +14,18 @@ pub struct SigInfo {
     /// Signal code
     pub code: i32,
 }
+
+/* SIGCHLD si_codes */
+/// child has exited
+pub const CLD_EXITED: usize = 1;
+/// child was killed
+pub const CLD_KILLED: usize = 2;
+/// child terminated abnormally
+pub const CLD_DUMPED: usize = 3;
+/// traced child has trapped
+pub const CLD_TRAPPED: usize = 4;
+/// child has stopped
+pub const CLD_STOPPED: usize = 5;
+/// stopped child has continued
+pub const CLD_CONTINUED: usize = 6;
+pub const NSIGCHLD: usize = 6;

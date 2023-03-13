@@ -1,4 +1,4 @@
-use crate::arch::mm::PTEFlags;
+use crate::{arch::mm::PTEFlags, task::CloneFlags};
 
 bitflags::bitflags! {
     /// Flags in [`VMArea`].
@@ -18,10 +18,13 @@ bitflags::bitflags! {
 
         /* Unstandard flags */
 
+        /// Cloned with [`CloneFlags::CLONE_VM`].
+        const CLONED = 1 << 61;
+
         /// Identical memory maps with no frame allocated
         const IDENTICAL = 1 << 62;
 
-        /// User accessible 
+        /// User accessible
         const USER = 1 << 63;
     }
 }

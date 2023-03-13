@@ -74,7 +74,7 @@ impl Scheduler for QueueScheduler {
 /// Reserved for future SMP usage.
 pub struct CPUContext {
     /// Current task.
-    pub current: Option<Arc<Task>>,
+    pub curr: Option<Arc<Task>>,
 
     /// Idle task context.
     pub idle_ctx: TaskContext,
@@ -84,7 +84,7 @@ impl CPUContext {
     /// A hart joins to run tasks
     pub fn new() -> Self {
         Self {
-            current: None,
+            curr: None,
             idle_ctx: TaskContext::zero(),
         }
     }
@@ -110,7 +110,7 @@ pub fn cpu() -> &'static mut CPUContext {
 
 /// Gets current task running on this CPU.
 pub fn curr_task() -> Option<Arc<Task>> {
-    cpu().current.as_ref().map(Arc::clone)
+    cpu().curr.as_ref().map(Arc::clone)
 }
 
 /// IDLE task context on this CPU.
@@ -136,7 +136,7 @@ pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
     };
     let init_task = from_args(String::from(ROOT_DIR), args).unwrap();
     // Update task manager
-    cpu().current = Some(init_task.clone());
+    cpu().curr = Some(init_task.clone());
     TASK_MANAGER.lock().add(init_task.clone());
     init_task
 });
@@ -164,7 +164,7 @@ pub unsafe fn idle() -> ! {
             };
             log::info!("Run {:?}", task);
             // Ownership moved to `current`.
-            cpu().current = Some(task);
+            cpu().curr = Some(task);
 
             // Release the lock.
             drop(task_manager);
@@ -180,7 +180,7 @@ pub unsafe fn idle() -> ! {
 ///
 /// Unsafe context switch will be called in this function.
 pub unsafe fn do_yield() {
-    let curr = curr_task().take().unwrap();
+    let curr = cpu().curr.take().unwrap();
     log::info!("{:#?} suspended", curr);
     let curr_ctx = {
         let mut locked_inner = curr.locked_inner();

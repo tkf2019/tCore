@@ -55,6 +55,9 @@ bitflags::bitflags! {
         /// When a task has completed its execution or is terminated, it will send the
         /// `SIGCHLD` signal to the parent task and go into the zombie state.
         const ZOMBIE = 1 << 5;
+
+        /// Task dead
+        const DEAD = 1 << 6;
     }
 }
 
@@ -291,6 +294,17 @@ impl Task {
             } else {
                 Err(KernelError::Errno(Errno::ENOTDIR))
             }
+        }
+    }
+
+    /// Returns the task state if the inner lock is not held, otherwise returns
+    /// [`TaskState::RUNNING`] or [`TaskState::INTERRUPTIBLE`].
+    /// In our implementations, the inner lock might be held in sleep lock context.
+    pub fn get_state(&self) -> TaskState {
+        if let Some(inner) = self.locked_inner.try_lock() {
+            inner.state
+        } else {
+            TaskState::RUNNING | TaskState::INTERRUPTIBLE
         }
     }
 }

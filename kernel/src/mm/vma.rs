@@ -238,6 +238,9 @@ impl VMArea {
                 // copy on write
                 new.as_slice_mut().copy_from_slice(old.as_slice());
 
+                // no cow from now on
+                self.flags.remove(VMFlags::CLONED);
+
                 new
             } else {
                 self.get_frame(index, true)?

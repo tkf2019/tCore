@@ -6,10 +6,10 @@ pub const AT_FDCWD: usize = -100isize as usize;
 /// Remove directory instead of unlinking file.
 pub const AT_REMOVEDIR: usize = 0x200;
 
-#[repr(C)]
 /// Used in readv and writev.
 ///
 /// Defined in sys/uio.h.
+#[repr(C)]
 pub struct IoVec {
     /// Starting address
     pub iov_base: usize,

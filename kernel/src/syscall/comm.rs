@@ -3,8 +3,9 @@ use core::mem::size_of;
 use errno::Errno;
 use signal_defs::*;
 use syscall_interface::{SyscallComm, SyscallResult};
+use ubuf::{read_user_buf, write_user_buf};
 
-use crate::{arch::mm::VirtAddr, fs::Pipe, task::curr_task, user_buf_next, user_buf_next_mut};
+use crate::{arch::mm::VirtAddr, fs::Pipe, read_user, task::curr_task, write_user};
 
 use super::SyscallImpl;
 
@@ -23,22 +24,9 @@ impl SyscallComm for SyscallImpl {
         let fd_write = fd_manager.push(Arc::new(pipe_write)).unwrap();
         drop(fd_manager);
 
+        let fd_data = ((fd_write << 32) | (fd_read & 0xffffffff)) as u64;
         let mut curr_mm = curr.mm.lock();
-
-        let fd_size = size_of::<u32>();
-        let fd_addr = VirtAddr::from(pipefd as usize);
-        if fd_addr.value() & (fd_size - 1) != 0 {
-            return Err(Errno::EFAULT);
-        }
-
-        let buf = curr_mm
-            .get_buf_mut(fd_addr, 2 * fd_size)
-            .map_err(|_| Errno::EFAULT)?;
-        drop(curr_mm);
-
-        let mut iter = buf.into_iter().step_by(fd_size);
-        *user_buf_next_mut!(iter, u32) = fd_read as u32;
-        *user_buf_next_mut!(iter, u32) = fd_write as u32;
+        write_user!(curr_mm, VirtAddr::from(pipefd as usize), fd_data, u64)?;
 
         Ok(0)
     }
@@ -51,25 +39,14 @@ impl SyscallComm for SyscallImpl {
         let curr = curr_task().unwrap();
         let mut curr_mm = curr.mm.lock();
         let mut sig_actions = curr.sig_actions.lock();
-        let sig_action_size = size_of::<SigAction>();
 
         if oldact != 0 {
-            let oldact = curr_mm
-                .get_buf_mut(oldact.into(), sig_action_size)
-                .map_err(|_| Errno::EFAULT)?;
-            let mut iter = oldact.into_iter().step_by(size_of::<usize>());
-            let old_sig_action = &sig_actions[signum - 1];
-            *user_buf_next_mut!(iter, usize) = old_sig_action.handler;
-            *user_buf_next_mut!(iter, SigActionFlags) = old_sig_action.flags;
-            *user_buf_next_mut!(iter, usize) = old_sig_action.restorer;
-            *user_buf_next_mut!(iter, SigSet) = old_sig_action.mask;
+            write_user!(curr_mm, oldact.into(), sig_actions[signum - 1], SigAction)?;
         }
 
         if act != 0 {
-            let act = curr_mm
-                .get_buf_mut(act.into(), sig_action_size)
-                .map_err(|_| Errno::EFAULT)?;
-            let mut iter = act.into_iter().step_by(size_of::<usize>());
+            let mut new_act = SigAction::new();
+            read_user!(curr_mm, act.into(), new_act, SigAction)?;
 
             /*
              * POSIX 3.3.1.3:
@@ -82,16 +59,13 @@ impl SyscallComm for SyscallImpl {
              *   (for example, SIGCHLD), shall cause the pending signal to
              *   be discarded, whether or not it is blocked"
              */
-            let handler = *user_buf_next!(iter, usize);
+            let handler = new_act.handler;
             if handler == SIG_IGN || (handler == SIG_DFL && sig_kernel_ignore(signum)) {
                 // TODO!
             }
 
             let sig_action = &mut sig_actions[signum - 1];
-            sig_action.handler = handler;
-            sig_action.flags = *user_buf_next!(iter, SigActionFlags);
-            sig_action.restorer = *user_buf_next!(iter, usize);
-            sig_action.mask = *user_buf_next!(iter, SigSet);
+            *sig_action = new_act;
             sig_action
                 .mask
                 .unset_mask(sigmask(SIGKILL) | sigmask(SIGSTOP));
@@ -101,8 +75,6 @@ impl SyscallComm for SyscallImpl {
     }
 
     fn sigprocmask(how: usize, set: usize, oldset: usize, sigsetsize: usize) -> SyscallResult {
-
-
         Ok(0)
     }
 }

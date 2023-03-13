@@ -1,10 +1,10 @@
 use errno::Errno;
-use mm_rv::VirtAddr;
 use syscall_interface::*;
 
 use crate::{
+    arch::mm::VirtAddr,
     mm::{do_brk, do_mmap, do_mprotect, do_munmap, MmapFlags, MmapProt},
-    task::{curr_task, do_clone, do_exit, CloneFlags},
+    task::{curr_task, do_clone, do_exit, do_wait, CloneFlags, WaitOptions},
 };
 
 use super::SyscallImpl;
@@ -16,21 +16,41 @@ impl SyscallProc for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        let curr = curr_task().unwrap();
         do_clone(
-            &curr,
             flags.unwrap(),
             stack,
             tls,
             VirtAddr::from(ptid),
             VirtAddr::from(ctid),
         )
-        .map_err(|err| err.into())
     }
 
     fn exit(status: usize) -> ! {
         unsafe { do_exit(status as i32) };
         unreachable!()
+    }
+
+    fn wait4(pid: isize, wstatus: usize, options: usize, rusage: usize) -> SyscallResult {
+        let options = WaitOptions::from_bits(options as u32);
+        if options.is_none() {
+            return Err(Errno::EINVAL);
+        }
+        let options = options.unwrap();
+        if !options
+            .difference(
+                WaitOptions::WNONHANG
+                    | WaitOptions::WUNTRACED
+                    | WaitOptions::WCONTINUED
+                    | WaitOptions::__WALL
+                    | WaitOptions::__WNOTHREAD
+                    | WaitOptions::__WCLONE,
+            )
+            .is_empty()
+        {
+            return Err(Errno::EINVAL);
+        }
+
+        do_wait(pid, options | WaitOptions::WEXITED, 0, wstatus, rusage)
     }
 
     fn execve(pathname: usize, argv: usize, envp: usize) -> SyscallResult {

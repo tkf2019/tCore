@@ -28,8 +28,9 @@ signal-defs = { path = "../crates/signal-defs" }
 syscall-interface = { path = "../crates/syscall" }
 time-subsys = { path = "../crates/time-subsys" }
 vfs = { path = "../crates/vfs" }
+ubuf = { path = "../crates/ubuf" }
 
-[target.'cfg(target_arch = "riscv64")'.dependencies]
+# [target.'cfg(target_arch = "riscv64")'.dependencies]
 riscv = "0.10"
 sbi-rt = { version = "0.0.2", features = ["legacy"] }
 
