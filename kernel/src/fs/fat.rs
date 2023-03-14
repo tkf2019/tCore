@@ -174,9 +174,6 @@ pub struct FSFileInner {
 
     /// Last change of attributes.
     pub ctime: TimeSpec,
-
-    /// Close-on-exec
-    pub cloexec: bool,
 }
 
 /// A wrapper for [`FatFile`] to implement [`File`].
@@ -186,11 +183,7 @@ pub struct FSFileInner {
 /// - Shared and mutable: uses [`Arc<SpinLock<T>>`].
 /// - Local and mutable: uses [`SpinLock<TaskInner>`] to wrap the data together.
 pub struct FSFile {
-    /// Able to read.
-    pub readable: bool,
-
-    /// Able to write.
-    pub writable: bool,
+    pub flags: OpenFlags,
 
     /// Real directory path and file name.
     pub path: Path,
@@ -203,22 +196,14 @@ pub struct FSFile {
 }
 
 impl FSFile {
-    pub fn new(
-        readable: bool,
-        writable: bool,
-        path: Path,
-        file: FatFile,
-        flags: OpenFlags,
-    ) -> Self {
+    pub fn new(path: Path, file: FatFile, flags: OpenFlags) -> Self {
         Self {
-            readable,
-            writable,
+            flags,
             path,
             inner: SpinLock::new(FSFileInner {
                 atime: TimeSpec::default(),
                 mtime: TimeSpec::default(),
                 ctime: TimeSpec::default(),
-                cloexec: flags.contains(OpenFlags::O_CLOEXEC),
             }),
             file: SyncUnsafeCell::new(file),
         }
@@ -245,7 +230,7 @@ impl Drop for FSFile {
 impl File for FSFile {
     fn read(&self, buf: &mut [u8]) -> Option<usize> {
         trace!("FSFile::read");
-        if !self.readable {
+        if !self.readable() {
             return None;
         }
         let len = buf.len();
@@ -275,7 +260,7 @@ impl File for FSFile {
 
     fn write(&self, buf: &[u8]) -> Option<usize> {
         trace!("FSFile::write");
-        if !self.writable {
+        if !self.writable() {
             return None;
         }
         let len = buf.len();
@@ -304,11 +289,11 @@ impl File for FSFile {
     }
 
     fn readable(&self) -> bool {
-        self.readable
+        self.flags.readable()
     }
 
     fn writable(&self) -> bool {
-        self.writable
+        self.flags.writable()
     }
 
     #[no_mangle]
@@ -363,6 +348,10 @@ impl File for FSFile {
         result
     }
 
+    fn open_flags(&self) -> OpenFlags {
+        self.flags
+    }
+
     fn get_stat(&self, stat_ptr: *mut Stat) -> bool {
         let mut stat = Stat::default();
         stat.st_mode =
@@ -402,7 +391,7 @@ impl File for FSFile {
     }
 
     fn read_ready(&self) -> bool {
-        if !self.readable {
+        if !self.readable() {
             return false;
         }
         let _guard = GLOBAL_FS.lock();
@@ -414,7 +403,7 @@ impl File for FSFile {
     }
 
     fn write_ready(&self) -> bool {
-        if !self.writable {
+        if !self.writable() {
             return false;
         }
         let _guard = GLOBAL_FS.lock();
@@ -501,7 +490,6 @@ impl VFS for FileSystem {
         ori_path.extend(name);
         trace!("FileSystem::open {:x?}", ori_path);
 
-        let (readable, writable) = flags.read_write();
         let root = FAT_FS.root_dir();
         // Find in the root directory
         let pdir = if pdir.is_root() {
@@ -521,7 +509,7 @@ impl VFS for FileSystem {
                     if flags.contains(OpenFlags::O_CREAT | OpenFlags::O_EXCL) {
                         Err(Errno::EEXIST)
                     } else {
-                        let file = FSFile::new(readable, writable, ori_path, file, flags);
+                        let file = FSFile::new(ori_path, file, flags);
                         if flags.contains(OpenFlags::O_CREAT) {
                             file.clear();
                         }
@@ -532,9 +520,7 @@ impl VFS for FileSystem {
                     // Create if the file not existing
                     if flags.contains(OpenFlags::O_CREAT) {
                         let file = pdir.create_file(name).unwrap();
-                        Ok(Arc::new(FSFile::new(
-                            readable, writable, ori_path, file, flags,
-                        )))
+                        Ok(Arc::new(FSFile::new(ori_path, file, flags)))
                     } else {
                         Err(Errno::ENOENT)
                     }

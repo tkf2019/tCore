@@ -10,7 +10,7 @@ use kernel_sync::{SpinLock, SpinLockGuard};
 use log::trace;
 use signal_defs::*;
 use syscall_interface::AT_FDCWD;
-use vfs::{File, Path};
+use vfs::Path;
 
 use crate::{
     arch::{
@@ -26,7 +26,7 @@ use crate::{
     task::{kstack_alloc, sched::Scheduler},
 };
 
-use super::{curr_ctx, curr_task, idle_ctx, kstack_dealloc, kstack_vm_alloc, TASK_MANAGER};
+use super::*;
 
 bitflags::bitflags! {
     /// Five-state model:
@@ -104,6 +104,13 @@ pub struct TaskInner {
 
     /// Blocked signals.
     pub sig_blocked: SigSet,
+
+    /* Shared and mutable */
+    /// Address space metadata.
+    pub mm: Arc<SpinLock<MM>>,
+
+    /// File descriptor table.
+    pub files: Arc<SpinLock<FDManager>>,
 }
 
 unsafe impl Send for TaskInner {}
@@ -178,12 +185,6 @@ pub struct Task {
     pub exit_signal: usize,
 
     /* Shared and mutable */
-    /// Address space metadata.
-    pub mm: Arc<SpinLock<MM>>,
-
-    /// File descriptor table.
-    pub fd_manager: Arc<SpinLock<FDManager>>,
-
     /// Filesystem info
     pub fs_info: Arc<SpinLock<FSInfo>>,
 
@@ -236,8 +237,6 @@ impl Task {
             pid: kstack,
             trapframe: TrapFrameTracker(trapframe_pa),
             exit_signal: SIGNONE,
-            mm: Arc::new(SpinLock::new(mm)),
-            fd_manager: Arc::new(SpinLock::new(fd_manager)),
             fs_info: Arc::new(SpinLock::new(FSInfo {
                 umask: 0,
                 cwd: dir,
@@ -251,6 +250,8 @@ impl Task {
                 clear_child_tid: 0,
                 sig_pending: SigPending::new(),
                 sig_blocked: SigSet::new(),
+                mm: Arc::new(SpinLock::new(mm)),
+                files: Arc::new(SpinLock::new(fd_manager)),
             }),
             locked_inner: SpinLock::new(TaskLockedInner {
                 state: TaskState::RUNNABLE,
@@ -277,10 +278,14 @@ impl Task {
         self.locked_inner.lock()
     }
 
-    /// Gets the reference of a file object by file descriptor `fd`.
-    pub fn get_file(&self, fd: usize) -> KernelResult<Arc<dyn File>> {
-        let fd_manager = self.fd_manager.lock();
-        fd_manager.get(fd)
+    /// Acquires inner lock to modify [`MM`].
+    pub fn mm(&self) -> SpinLockGuard<MM> {
+        self.inner().mm.lock()
+    }
+
+    /// Acquires inner lock to modify [`FDManager`].
+    pub fn files(&self) -> SpinLockGuard<FDManager> {
+        self.inner().files.lock()
     }
 
     /// Gets the directory name from a file descriptor.
@@ -288,7 +293,7 @@ impl Task {
         if dirfd == AT_FDCWD {
             Ok(Path::new(self.fs_info.lock().cwd.as_str()))
         } else {
-            let dir = self.fd_manager.lock().get(dirfd)?;
+            let dir = self.files().get(dirfd)?;
             if dir.is_dir() {
                 Ok(dir.get_path().unwrap())
             } else {
@@ -363,7 +368,9 @@ pub fn ustack_layout(tid: usize) -> (usize, usize) {
 impl kernel_sync::SleepLockSched for TaskLockedInner {
     unsafe fn sched(guard: SpinLockGuard<Self>) {
         // Lock might be released after the task is pushed back to the scheduler.
-        TASK_MANAGER.lock().add(curr_task().take().unwrap());
+        TASK_MANAGER
+            .lock()
+            .add(cpu().curr.clone().unwrap());
         drop(guard);
 
         __switch(curr_ctx(), idle_ctx());

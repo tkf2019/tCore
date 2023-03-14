@@ -10,7 +10,7 @@ use crate::{
     write_user,
 };
 
-use super::{cpu, curr_task, do_yield, idle_ctx, Task, TaskState, INIT_TASK};
+use super::*;
 
 /// Current task exits. Run next task.
 ///
@@ -161,7 +161,7 @@ pub fn do_wait(
         let mut flag = false;
         let mut need_sched = false;
         let mut child: usize = 0;
-        let curr = curr_task().unwrap();
+        let curr = cpu().curr.as_ref().unwrap();
         let mut locked = curr.locked_inner();
         for (index, task) in locked.children.iter().enumerate() {
             if !valid_child(pid, options, &task) {
@@ -199,7 +199,6 @@ pub fn do_wait(
 
             // schedule current task
             drop(locked);
-            drop(curr);
             unsafe { do_yield() };
         } else {
             // reclaim resources
@@ -207,9 +206,8 @@ pub fn do_wait(
 
             // store status information
             if stat_addr != 0 {
-                let mut curr_mm = curr.mm.lock();
                 write_user!(
-                    curr_mm,
+                    curr.mm(),
                     VirtAddr::from(stat_addr),
                     (child.inner().exit_code << 8) as i32,
                     i32

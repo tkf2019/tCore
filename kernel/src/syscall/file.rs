@@ -9,7 +9,7 @@ use crate::{
     arch::mm::VirtAddr,
     error::KernelResult,
     fs::{open, unlink},
-    task::{curr_task, Task},
+    task::{cpu, Task},
 };
 
 use super::SyscallImpl;
@@ -35,18 +35,13 @@ pub fn resolve_path(task: &Task, dirfd: usize, pathname: String) -> KernelResult
 
 impl SyscallFile for SyscallImpl {
     fn write(fd: usize, buf: *const u8, count: usize) -> SyscallResult {
-        let curr = curr_task().unwrap();
-        let mut curr_mm = curr.mm.lock();
+        let curr = cpu().curr.as_ref().unwrap();
 
         // Translate user buffer into kernel string.
-        let buf = curr_mm
-            .get_buf_mut(VirtAddr::from(buf as usize), count)
-            .map_err(|_| Errno::EFAULT)?;
-        drop(curr_mm);
+        let buf = curr.mm().get_buf_mut(VirtAddr::from(buf as usize), count)?;
 
         // Get the file with the given file descriptor.
-        let file = curr.fd_manager.lock().get(fd).map_err(|_| Errno::EBADF)?;
-        drop(curr);
+        let file = curr.files().get(fd)?;
 
         let mut write_len = 0;
         for bytes in buf.inner {
@@ -60,18 +55,13 @@ impl SyscallFile for SyscallImpl {
     }
 
     fn read(fd: usize, buf: *mut u8, count: usize) -> SyscallResult {
-        let curr = curr_task().unwrap();
-        let mut curr_mm = curr.mm.lock();
+        let curr = cpu().curr.as_ref().unwrap();
 
         // Get the real buffer translated into physical address.
-        let buf = curr_mm
-            .get_buf_mut(VirtAddr::from(buf as usize), count)
-            .map_err(|_| Errno::EFAULT)?;
-        drop(curr_mm);
+        let buf = curr.mm().get_buf_mut(VirtAddr::from(buf as usize), count)?;
 
         // Get the file with the given file descriptor.
-        let file = curr.fd_manager.lock().get(fd).map_err(|_| Errno::EBADF)?;
-        drop(curr);
+        let file = curr.files().get(fd)?;
 
         let mut read_len = 0;
         for bytes in buf.inner {
@@ -85,11 +75,7 @@ impl SyscallFile for SyscallImpl {
     }
 
     fn close(fd: usize) -> SyscallResult {
-        let curr = curr_task().unwrap();
-        curr.fd_manager
-            .lock()
-            .remove(fd)
-            .map_err(|err| Errno::from(err))?;
+        cpu().curr.as_ref().unwrap().files().remove(fd)?;
         Ok(0)
     }
 
@@ -100,7 +86,7 @@ impl SyscallFile for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        let curr = curr_task().unwrap();
+        let curr = cpu().curr.as_ref().unwrap();
         let flags = flags.unwrap();
 
         if flags.contains(OpenFlags::O_CREAT) && mode.is_none()
@@ -109,15 +95,16 @@ impl SyscallFile for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        let mut mm = curr.mm.lock();
-        let path = resolve_path(&curr, dirfd, mm.get_str(VirtAddr::from(pathname as usize))?)?;
+        let mut curr_mm = curr.mm();
+        let path = resolve_path(
+            &curr,
+            dirfd,
+            curr_mm.get_str(VirtAddr::from(pathname as usize))?,
+        )?;
 
         trace!("OPEN {:?} {:?}", path, flags);
 
-        let mut fd_manager = curr.fd_manager.lock();
-        fd_manager
-            .push(open(path, flags)?)
-            .map_err(|err| err.into())
+        Ok(curr.files().push(open(path, flags)?)?)
     }
 
     fn lseek(fd: usize, off: usize, whence: usize) -> SyscallResult {
@@ -127,8 +114,7 @@ impl SyscallFile for SyscallImpl {
                 return Err(Errno::EINVAL);
             }
 
-            let curr = curr_task().unwrap();
-            let file = curr.fd_manager.lock().get(fd).map_err(|_| Errno::EBADF)?;
+            let file = cpu().curr.as_ref().unwrap().files().get(fd)?;
 
             if usize::MAX - file.get_off() < off {
                 return Err(Errno::EINVAL);
@@ -152,11 +138,12 @@ impl SyscallFile for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        let curr = curr_task().unwrap();
-        let mut curr_mm = curr.mm.lock();
-        let buf = curr_mm.get_buf_mut(iov, iovcnt * iov_size)?;
-        drop(curr_mm);
-        drop(curr);
+        let buf = cpu()
+            .curr
+            .as_ref()
+            .unwrap()
+            .mm()
+            .get_buf_mut(iov, iovcnt * iov_size)?;
 
         let mut read_len = 0;
         for bytes in buf.into_iter().step_by(iov_size) {
@@ -176,11 +163,12 @@ impl SyscallFile for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        let curr = curr_task().unwrap();
-        let mut curr_mm = curr.mm.lock();
-        let buf = curr_mm.get_buf_mut(iov, iovcnt * iov_size)?;
-        drop(curr_mm);
-        drop(curr);
+        let buf = cpu()
+            .curr
+            .as_ref()
+            .unwrap()
+            .mm()
+            .get_buf_mut(iov, iovcnt * iov_size)?;
 
         let mut write_len = 0;
         for bytes in buf.into_iter().step_by(iov_size) {
@@ -194,16 +182,19 @@ impl SyscallFile for SyscallImpl {
     }
 
     fn unlinkat(dirfd: usize, pathname: *const u8, flags: usize) -> SyscallResult {
-        // curr.do_unlinkat(dirfd, pathname, flags)
-        // .map_err(|err| Errno::from(err))?;
         if flags == AT_REMOVEDIR {
             unimplemented!()
         } else if flags == 0 {
             {
-                let curr = curr_task().unwrap();
-                let mut mm = curr.mm.lock();
-                let path =
-                    { resolve_path(&curr, dirfd, mm.get_str(VirtAddr::from(pathname as usize))?)? };
+                let curr = cpu().curr.as_ref().unwrap();
+                let mut curr_mm = curr.mm();
+                let path = {
+                    resolve_path(
+                        &curr,
+                        dirfd,
+                        curr_mm.get_str(VirtAddr::from(pathname as usize))?,
+                    )?
+                };
 
                 trace!("UNLINKAT {:?}", path);
 

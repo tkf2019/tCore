@@ -14,8 +14,7 @@ use crate::{
     mm::{do_handle_page_fault, VMFlags},
     println,
     syscall::syscall,
-    task::do_exit,
-    task::{do_yield, trapframe_base, cpu},
+    task::*,
     timer::set_next_trigger,
 };
 
@@ -94,8 +93,7 @@ pub fn user_trap_handler() -> ! {
         }
         Trap::Exception(Exception::StorePageFault) => {
             let curr = cpu().curr.as_ref().unwrap();
-            let mut curr_mm = curr.mm.lock();
-            // show_trapframe(&current.trapframe());
+            let mut curr_mm = curr.mm();
             trap_info();
             if let Err(err) = do_handle_page_fault(
                 &mut curr_mm,
@@ -143,7 +141,7 @@ pub fn user_trap_return() -> ! {
     }
     let (satp, trapframe_base, userret) = {
         let curr = cpu().curr.as_ref().unwrap();
-        let curr_mm = curr.mm.lock();
+        let curr_mm = curr.mm();
         (
             curr_mm.page_table.satp(),
             trapframe_base(curr.tid.0),

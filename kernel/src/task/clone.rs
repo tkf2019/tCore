@@ -1,25 +1,24 @@
 use core::cell::SyncUnsafeCell;
 
-use alloc::{collections::LinkedList, sync::Arc};
+use alloc::{collections::LinkedList, string::String, sync::Arc, vec::Vec};
 use errno::Errno;
 use kernel_sync::SpinLock;
-use log::trace;
-use signal_defs::{sigvalid, SigPending, SigSet, SIGNONE};
+use signal_defs::*;
 use syscall_interface::SyscallResult;
 
 use crate::{
     arch::{
         mm::VirtAddr,
-        trap::{user_trap_return, TrapFrame},
+        trap::{user_trap_handler, user_trap_return, TrapFrame},
         TaskContext,
     },
-    task::{curr_task, TrapFrameTracker, TID},
+    error::KernelResult,
+    loader::from_elf,
+    mm::{KERNEL_MM, MM},
+    task::{TrapFrameTracker, TID},
 };
 
-use super::{
-    init_trapframe, kstack_alloc, kstack_vm_alloc, sched::Scheduler, Task, TaskInner,
-    TaskLockedInner, TaskState, TASK_MANAGER,
-};
+use super::*;
 
 bitflags::bitflags! {
     /// A bit mask that allows the caller to specify what is shared between the calling process and the child process.
@@ -83,8 +82,8 @@ pub fn do_clone(
     ptid: VirtAddr,
     ctid: VirtAddr,
 ) -> SyscallResult {
-    let curr = curr_task().unwrap();
-    trace!("CLONE {:?} {:?}", &curr, flags);
+    let curr = cpu().curr.as_ref().unwrap();
+    log::trace!("CLONE {:?} {:?}", &curr, flags);
 
     if flags.intersects(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_FS) {
         return Err(Errno::EINVAL);
@@ -109,10 +108,9 @@ pub fn do_clone(
 
     // Clone address space
     let mm = if flags.contains(CloneFlags::CLONE_VM) {
-        curr.mm.clone()
+        curr.inner().mm.clone()
     } else {
-        let mut orig = curr.mm.lock();
-        Arc::new(SpinLock::new(orig.clone()?))
+        Arc::new(SpinLock::new(curr.mm().clone()?))
     };
 
     // New kernel stack
@@ -160,13 +158,6 @@ pub fn do_clone(
             }
             sig
         },
-        mm,
-        fd_manager: if flags.contains(CloneFlags::CLONE_FILES) {
-            curr.fd_manager.clone()
-        } else {
-            let orig = curr.fd_manager.lock();
-            Arc::new(SpinLock::new(orig.clone()))
-        },
         fs_info: if flags.contains(CloneFlags::CLONE_FS) {
             curr.fs_info.clone()
         } else {
@@ -205,21 +196,24 @@ pub fn do_clone(
             },
             sig_pending: SigPending::new(),
             sig_blocked: SigSet::new(),
+            mm,
+            files: if flags.contains(CloneFlags::CLONE_FILES) {
+                curr.inner().files.clone()
+            } else {
+                Arc::new(SpinLock::new(curr.files().clone()))
+            },
         }),
     });
 
     // Set tid in parent address space
     if flags.contains(CloneFlags::CLONE_PARENT_SETTID) {
-        let mut mm = curr.mm.lock();
-        let ptid = mm.alloc_frame(ptid)?.start_address() + ptid.page_offset();
+        let ptid = curr.mm().alloc_frame(ptid)?.start_address() + ptid.page_offset();
         unsafe { *(ptid.get_mut() as *mut i32) = kstack as i32 };
     }
-    drop(curr);
 
     // Set tid in child address space (COW)
     if flags.intersects(CloneFlags::CLONE_CHILD_SETTID | CloneFlags::CLONE_CHILD_CLEARTID) {
-        let mut mm = new_task.mm.lock();
-        let ctid = mm.alloc_frame(ctid)?.start_address() + ctid.page_offset();
+        let ctid = new_task.mm().alloc_frame(ctid)?.start_address() + ctid.page_offset();
         unsafe {
             *(ctid.get_mut() as *mut i32) = if flags.contains(CloneFlags::CLONE_CHILD_SETTID) {
                 kstack as i32
@@ -243,4 +237,45 @@ pub fn do_clone(
     }
 
     Ok(kstack)
+}
+
+/// A helper for [`syscall_interface::SyscallProc::execve`]
+pub fn do_exec(dir: String, elf_data: &[u8], args: Vec<String>) -> KernelResult {
+    let curr = cpu().curr.as_ref().unwrap();
+    log::trace!("EXEC {:?} DIR [{}] {:?}", &curr, &dir, &args);
+
+    // memory mappings are not preserved
+    let mut mm = MM::new()?;
+    let sp = from_elf(elf_data, args, &mut mm)?;
+
+    // re-initialize trapframe
+    let kstack_base = kstack_layout(curr.tid.0).1;
+    let trapframe = curr.trapframe();
+    *trapframe = TrapFrame::new(
+        KERNEL_MM.lock().page_table.satp(),
+        kstack_base,
+        user_trap_handler as usize,
+        mm.entry.value(),
+        sp.into(),
+        // CPU id will be saved when the user task is restored.
+        usize::MAX,
+    );
+
+    curr.inner().mm = Arc::new(SpinLock::new(mm));
+
+    // the dispositions of any signals that are being caught are reset to the default
+    *curr.sig_actions.lock() = [SigAction::default(); NSIG];
+
+    /*
+     * The file descriptor table is unshared, undoing the effect of the
+     * CLONE_FILES flag of clone(2). By default, file descriptors remain
+     * open across an execve(). File descriptors that are marked close-on-exec
+     * are closed; see the description of FD_CLOEXEC in fcntl(2).
+     */
+    curr.inner().files = Arc::new(SpinLock::new(curr.files().clone()));
+    unsafe { &mut *curr.inner().files.as_mut_ptr() }.cloexec();
+
+    curr.inner().ctx = TaskContext::new(user_trap_return as usize, kstack_base);
+
+    Ok(())
 }

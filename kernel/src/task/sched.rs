@@ -108,23 +108,18 @@ pub fn cpu() -> &'static mut CPUContext {
     unsafe { &mut (*CPU_LIST.get())[get_cpu_id()] }
 }
 
-/// Gets current task running on this CPU.
-pub fn curr_task() -> Option<Arc<Task>> {
-    cpu().curr.as_ref().map(Arc::clone)
-}
-
-/// IDLE task context on this CPU.
-pub fn idle_ctx() -> *const TaskContext {
-    &cpu().idle_ctx as _
-}
-
 /// Gets current task context.
 ///
 /// # Safety
 ///
 /// [`TaskContext`] cannot be modified by other tasks, thus we can access it with raw pointer.
 pub unsafe fn curr_ctx() -> *const TaskContext {
-    &curr_task().unwrap().inner().ctx
+    &cpu().curr.as_ref().unwrap().inner().ctx
+}
+
+/// IDLE task context on this CPU.
+pub fn idle_ctx() -> *const TaskContext {
+    &cpu().idle_ctx as _
 }
 
 pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {

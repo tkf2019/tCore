@@ -511,9 +511,7 @@ pub fn page_range(start_va: VirtAddr, end_va: VirtAddr) -> PageRange {
 #[macro_export]
 macro_rules! read_user {
     ($mm:expr, $addr:expr, $item:expr, $ty:ty) => {{
-        let ubuf = $mm
-            .get_buf_mut($addr, core::mem::size_of::<$ty>())
-            .map_err(|_| Errno::EFAULT)?;
+        let ubuf = $mm.get_buf_mut($addr, core::mem::size_of::<$ty>())?;
         ubuf::read_user_buf!(ubuf, $ty, $item);
         Ok::<(), Errno>(())
     }};
@@ -523,9 +521,7 @@ macro_rules! read_user {
 #[macro_export]
 macro_rules! write_user {
     ($mm:expr, $addr:expr, $item:expr, $ty:ty) => {{
-        let ubuf = $mm
-            .get_buf_mut($addr, core::mem::size_of::<$ty>())
-            .map_err(|_| Errno::EFAULT)?;
+        let ubuf = $mm.get_buf_mut($addr, core::mem::size_of::<$ty>())?;
         ubuf::write_user_buf!(ubuf, $ty, $item);
         Ok::<(), Errno>(())
     }};
@@ -683,7 +679,7 @@ pub fn do_mmap(
         return Err(Errno::EINVAL);
     }
 
-    let mut mm = task.mm.lock();
+    let mut mm = task.mm();
     if mm.map_count() >= MAX_MAP_COUNT {
         return Err(Errno::ENOMEM);
     }
@@ -704,7 +700,7 @@ pub fn do_mmap(
     }
 
     // Map to backend file.
-    if let Ok(file) = task.fd_manager.lock().get(fd) {
+    if let Ok(file) = task.files().get(fd) {
         if !file.is_reg() || !file.read_ready() {
             return Err(Errno::EACCES);
         }

@@ -55,6 +55,18 @@ pub trait SyscallProc {
     /// This causes the program that is currently being run by the calling
     /// process to be replaced with a new program, with newly initialized
     /// stack, heap, and (initialized and uninitialized) data segments.
+    /// 
+    /// # Error
+    /// 
+    /// - `EACCESS`: 
+    ///     - Search permission is denied on a component of the path prefix of pathname or the name
+    ///     of a script interpreter.
+    ///     - The file or a script interpreter is not a regular file.
+    ///     - Execute permission is denied for the file or a script or ELF interpreter.
+    ///     - The filesystem is mounted noexec.
+    /// - `EFAULT`: pathname or one of the pointers in the vectors argv or envp points outside your
+    /// accessible address space.
+    /// - `EINVAL`: An ELF executable had more than one PT_INTERP segment.
     fn execve(pathname: usize, argv: usize, envp: usize) -> SyscallResult {
         Ok(0)
     }

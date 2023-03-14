@@ -1,5 +1,5 @@
 use alloc::{fmt, sync::Arc, vec::Vec};
-use vfs::File;
+use vfs::{File, OpenFlags};
 
 use crate::{
     config::DEFAULT_FD_LIMIT,
@@ -105,6 +105,21 @@ impl FDManager {
     /// Returns true if the number of file descriptors exceeds the limit.
     pub fn is_full(&self) -> bool {
         self.count() >= self.limit
+    }
+
+    /// Close files when sys_exec called
+    pub fn cloexec(&mut self) {
+        for file in &mut self.list {
+            if file.is_some()
+                && file
+                    .as_ref()
+                    .unwrap()
+                    .open_flags()
+                    .contains(OpenFlags::O_CLOEXEC)
+            {
+                file.take();
+            }
+        }
     }
 }
 

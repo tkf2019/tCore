@@ -1,10 +1,14 @@
+use alloc::{string::String, vec::Vec};
 use errno::Errno;
 use syscall_interface::*;
+use vfs::{OpenFlags, Path};
 
 use crate::{
-    arch::mm::VirtAddr,
+    arch::{__switch, mm::VirtAddr},
+    fs::open,
     mm::{do_brk, do_mmap, do_mprotect, do_munmap, MmapFlags, MmapProt},
-    task::{curr_task, do_clone, do_exit, do_prlimit, do_wait, CloneFlags, WaitOptions},
+    read_user,
+    task::*,
 };
 
 use super::SyscallImpl;
@@ -61,36 +65,68 @@ impl SyscallProc for SyscallImpl {
         }
     }
 
-    fn execve(pathname: usize, argv: usize, envp: usize) -> SyscallResult {
-        todo!()
+    fn execve(pathname: usize, argv: usize, _envp: usize) -> SyscallResult {
+        let curr = cpu().curr.as_ref().unwrap();
+
+        // get relative path under current working directory
+        let rela_path = curr.mm().get_str(VirtAddr::from(pathname))?;
+
+        // get absolute path of the file to execute
+        let fs_info = curr.fs_info.lock();
+        let mut path = Path::from(fs_info.cwd.clone() + "/" + rela_path.as_str());
+        drop(fs_info);
+
+        // read file from disk
+        let file = open(path.clone(), OpenFlags::O_RDONLY)?;
+        if !file.is_reg() {
+            return Err(Errno::EACCES);
+        }
+        let elf_data = unsafe { file.read_all() };
+
+        // get argument list
+        let mut args = Vec::new();
+        args.push(path.pop().unwrap()); // unwrap a regular filename freely
+        let mut argv = argv;
+        let mut argc: usize = 0;
+        let mut curr_mm = curr.mm();
+        loop {
+            read_user!(curr_mm, VirtAddr::from(argv), argc, usize)?;
+            if argc == 0 {
+                break;
+            }
+            args.push(curr_mm.get_str(VirtAddr::from(argc))?);
+            argv += core::mem::size_of::<usize>();
+        }
+        drop(curr_mm);
+
+        do_exec(String::from(path.as_str()), elf_data.as_slice(), args)?;
+
+        unsafe { __switch(idle_ctx(), curr_ctx()) };
+
+        unreachable!()
     }
 
     fn getpid() -> SyscallResult {
-        Ok(curr_task().unwrap().pid)
+        Ok(cpu().curr.as_ref().unwrap().pid)
     }
 
     fn gettid() -> SyscallResult {
-        Ok(curr_task().unwrap().tid.0)
+        Ok(cpu().curr.as_ref().unwrap().tid.0)
     }
 
     fn set_tid_address(tidptr: usize) -> SyscallResult {
-        let curr = curr_task().unwrap();
+        let curr = cpu().curr.as_ref().unwrap();
         curr.inner().clear_child_tid = tidptr;
         Ok(curr.tid.0)
     }
 
     fn brk(brk: usize) -> SyscallResult {
-        let curr = curr_task().unwrap();
-        let mut curr_mm = curr.mm.lock();
-        do_brk(&mut curr_mm, brk.into())
+        do_brk(&mut cpu().curr.as_ref().unwrap().mm(), brk.into())
     }
 
     fn munmap(addr: usize, len: usize) -> SyscallResult {
-        let curr = curr_task().unwrap();
-        let mut curr_mm = curr.mm.lock();
-        do_munmap(&mut curr_mm, addr.into(), len)
-            .map(|_| 0)
-            .map_err(|err| err.into())
+        do_munmap(&mut cpu().curr.as_ref().unwrap().mm(), addr.into(), len)?;
+        Ok(0)
     }
 
     fn mmap(
@@ -107,9 +143,8 @@ impl SyscallProc for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        let curr = curr_task().unwrap();
         do_mmap(
-            &curr,
+            cpu().curr.as_ref().unwrap(),
             addr.into(),
             len,
             prot.unwrap(),
@@ -125,10 +160,12 @@ impl SyscallProc for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        let curr = curr_task().unwrap();
-        let mut curr_mm = curr.mm.lock();
-        do_mprotect(&mut curr_mm, addr.into(), len, prot.unwrap())
-            .map(|_| 0)
-            .map_err(|err| err.into())
+        do_mprotect(
+            &mut cpu().curr.as_ref().unwrap().mm(),
+            addr.into(),
+            len,
+            prot.unwrap(),
+        )?;
+        Ok(0)
     }
 }

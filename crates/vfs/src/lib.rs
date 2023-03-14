@@ -4,8 +4,8 @@
 mod flags;
 mod link;
 mod path;
-mod stat;
 pub mod ring_buf;
+mod stat;
 
 extern crate alloc;
 
@@ -94,6 +94,11 @@ pub trait File: Send + Sync + AsAny {
     /// See `<https://man7.org/linux/man-pages/man2/lseek.2.html>`.
     fn seek(&self, offset: usize, whence: SeekWhence) -> Option<usize> {
         None
+    }
+
+    /// Open flags
+    fn open_flags(&self) -> OpenFlags {
+        OpenFlags::empty()
     }
 
     /// Gets file `stat`.

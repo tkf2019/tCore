@@ -7,7 +7,7 @@ use crate::{
     read_user, write_user,
 };
 
-use super::cpu;
+use super::*;
 
 pub fn do_prlimit(resource: i32, new_limit: usize, old_limit: usize) -> SyscallResult {
     let curr = cpu().curr.as_ref().unwrap();
@@ -15,8 +15,7 @@ pub fn do_prlimit(resource: i32, new_limit: usize, old_limit: usize) -> SyscallR
     let mut new_rlimit = Rlimit::default();
 
     if new_limit != 0 {
-        let mut mm = curr.mm.lock();
-        read_user!(mm, VirtAddr::from(new_limit), new_rlimit, Rlimit)?;
+        read_user!(curr.mm(), VirtAddr::from(new_limit), new_rlimit, Rlimit)?;
         if new_rlimit.rlim_cur > new_rlimit.rlim_max {
             return Err(Errno::EINVAL);
         }
@@ -30,15 +29,13 @@ pub fn do_prlimit(resource: i32, new_limit: usize, old_limit: usize) -> SyscallR
             };
         }
         RLIMIT_NOFILE => {
-            let limit = curr.fd_manager.lock().get_limit() as u64;
+            let limit = curr.files().get_limit() as u64;
             old_rlimit = Rlimit {
                 rlim_cur: limit,
                 rlim_max: limit,
             };
             if new_limit != 0 {
-                curr.fd_manager
-                    .lock()
-                    .set_limit(new_rlimit.rlim_cur as usize);
+                curr.files().set_limit(new_rlimit.rlim_cur as usize);
             }
         }
         RLIMIT_AS => {
@@ -53,8 +50,7 @@ pub fn do_prlimit(resource: i32, new_limit: usize, old_limit: usize) -> SyscallR
     }
 
     if old_limit != 0 {
-        let mut mm = curr.mm.lock();
-        write_user!(mm, VirtAddr::from(old_limit), old_rlimit, Rlimit)?;
+        write_user!(curr.mm(), VirtAddr::from(old_limit), old_rlimit, Rlimit)?;
     }
 
     Ok(0)

@@ -3,28 +3,27 @@ use errno::Errno;
 use signal_defs::*;
 use syscall_interface::{SyscallComm, SyscallResult};
 
-use crate::{arch::mm::VirtAddr, fs::Pipe, read_user, task::curr_task, write_user};
+use crate::{arch::mm::VirtAddr, fs::Pipe, read_user, task::cpu, write_user};
 
 use super::SyscallImpl;
 
 impl SyscallComm for SyscallImpl {
     fn pipe(pipefd: *const u32, _flags: usize) -> SyscallResult {
-        let curr = curr_task().unwrap();
+        let curr = cpu().curr.as_ref().unwrap();
 
-        let mut fd_manager = curr.fd_manager.lock();
+        let mut files = curr.files();
         let (pipe_read, pipe_write) = Pipe::new();
 
-        if fd_manager.count() + 2 > fd_manager.get_limit() {
+        if files.count() + 2 > files.get_limit() {
             return Err(Errno::EMFILE);
         }
 
-        let fd_read = fd_manager.push(Arc::new(pipe_read)).unwrap();
-        let fd_write = fd_manager.push(Arc::new(pipe_write)).unwrap();
-        drop(fd_manager);
+        let fd_read = files.push(Arc::new(pipe_read)).unwrap();
+        let fd_write = files.push(Arc::new(pipe_write)).unwrap();
+        drop(files);
 
         let fd_data = ((fd_write << 32) | (fd_read & 0xffffffff)) as u64;
-        let mut curr_mm = curr.mm.lock();
-        write_user!(curr_mm, VirtAddr::from(pipefd as usize), fd_data, u64)?;
+        write_user!(curr.mm(), VirtAddr::from(pipefd as usize), fd_data, u64)?;
 
         Ok(0)
     }
@@ -34,8 +33,8 @@ impl SyscallComm for SyscallImpl {
             return Err(Errno::EINVAL);
         }
 
-        let curr = curr_task().unwrap();
-        let mut curr_mm = curr.mm.lock();
+        let curr = cpu().curr.as_ref().unwrap();
+        let mut curr_mm = curr.mm();
         let mut sig_actions = curr.sig_actions.lock();
 
         if oldact != 0 {

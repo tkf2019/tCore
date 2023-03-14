@@ -84,7 +84,9 @@ impl From<KernelError> for Errno {
             KernelError::InvalidArgs => Errno::EINVAL,
             KernelError::FDNotFound => Errno::EBADF,
             KernelError::VMANotFound | KernelError::VMAAllocFailed => Errno::ENOMEM,
-            _ => Errno::NONE,
+            
+            // TODO
+            _ => Errno::EINVAL,
         }
     }
 }
