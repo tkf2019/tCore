@@ -86,7 +86,7 @@ pub fn do_clone(
     let curr = curr_task().unwrap();
     trace!("CLONE {:?} {:?}", &curr, flags);
 
-    if flags.contains(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_FS) {
+    if flags.intersects(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_FS) {
         return Err(Errno::EINVAL);
     }
 
@@ -111,7 +111,7 @@ pub fn do_clone(
     let mm = if flags.contains(CloneFlags::CLONE_VM) {
         curr.mm.clone()
     } else {
-        let orig = curr.mm.lock();
+        let mut orig = curr.mm.lock();
         Arc::new(SpinLock::new(orig.clone()?))
     };
 
@@ -125,7 +125,13 @@ pub fn do_clone(
         let mut mm = mm.lock();
         let trapframe_pa = init_trapframe(&mut mm, kstack)?;
         let trapframe = TrapFrame::from(trapframe_pa);
-        trapframe.copy_from(TrapFrame::from(curr.trapframe.0), flags, stack, tls);
+        trapframe.copy_from(
+            TrapFrame::from(curr.trapframe.0),
+            flags,
+            stack,
+            tls,
+            kstack_base,
+        );
         trapframe_pa
     };
     let trapframe = TrapFrameTracker(trapframe_pa); // for unwinding

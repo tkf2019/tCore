@@ -15,7 +15,7 @@ use crate::{
     println,
     syscall::syscall,
     task::do_exit,
-    task::{do_yield, curr_task, trapframe_base},
+    task::{do_yield, curr_task, trapframe_base, cpu},
     timer::set_next_trigger,
 };
 
@@ -81,11 +81,10 @@ pub fn user_trap_handler() -> ! {
     match scause.cause() {
         Trap::Exception(Exception::UserEnvCall) => {
             // pc + 4
-            let curr = curr_task().unwrap();
+            let curr = cpu().curr.as_ref().unwrap();
             let trapframe = curr.trapframe();
             trapframe.next_epc();
-            // Syscall may change the flow
-            drop(curr);
+            trap_info();
             match syscall(trapframe.syscall_args().unwrap()) {
                 Ok(ret) => trapframe.set_a0(ret),
                 Err(errno) => {
@@ -95,7 +94,7 @@ pub fn user_trap_handler() -> ! {
             };
         }
         Trap::Exception(Exception::StorePageFault) => {
-            let curr = curr_task().unwrap();
+            let curr = cpu().curr.as_ref().unwrap();
             let mut curr_mm = curr.mm.lock();
             // show_trapframe(&current.trapframe());
             trap_info();
@@ -106,7 +105,6 @@ pub fn user_trap_handler() -> ! {
             ) {
                 fatal_info(err);
                 drop(curr_mm);
-                drop(curr);
                 unsafe { do_exit(-1) };
             }
         }
@@ -118,10 +116,9 @@ pub fn user_trap_handler() -> ! {
             }
         }
         _ => {
-            let curr = curr_task().unwrap();
+            let curr = cpu().curr.as_ref().unwrap();
             show_trapframe(curr.trapframe());
             trap_info();
-            drop(curr);
             unsafe { do_exit(-1) };
         }
     }
@@ -146,7 +143,8 @@ pub fn user_trap_return() -> ! {
         fn __userret();
     }
     let (satp, trapframe_base, userret) = {
-        let curr = curr_task().unwrap();
+        let curr = cpu().curr.as_ref().unwrap();
+        log::info!("Trap Return {:?} {:x?}", &curr, curr.trapframe());
         let curr_mm = curr.mm.lock();
         (
             curr_mm.page_table.satp(),

@@ -18,9 +18,6 @@ bitflags::bitflags! {
 
         /* Unstandard flags */
 
-        /// Cloned with [`CloneFlags::CLONE_VM`].
-        const CLONED = 1 << 61;
-
         /// Identical memory maps with no frame allocated
         const IDENTICAL = 1 << 62;
 

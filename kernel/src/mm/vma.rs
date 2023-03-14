@@ -158,9 +158,9 @@ impl VMArea {
         if self.flags.contains(VMFlags::IDENTICAL) {
             let start = Frame::from(Page::from(self.start_va).number());
             Ok(FrameRange::new(start, start + self.size_in_pages())
-            .range()
-            .map(|frame| Some(frame))
-            .collect())
+                .range()
+                .map(|frame| Some(frame))
+                .collect())
         } else {
             let mut v = Vec::new();
             for frame in &mut self.frames {
@@ -223,24 +223,18 @@ impl VMArea {
         &mut self,
         page: Page,
         pt: &mut PageTable,
-        overwrite: bool,
     ) -> KernelResult<(Frame, bool)> {
         let (pte_pa, mut pte) = pt.create(page).map_err(|_| KernelError::PageTableInvalid)?;
-        if !pte.flags().is_valid() || overwrite {
+        if !pte.flags().is_valid()
+            || (!pte.flags().contains(PTEFlags::WRITABLE) && self.flags.contains(VMFlags::WRITE)) // COW
+        {
             let index = page.number() - Page::from(self.start_va).number();
 
-            // reclaims the old frame
             let frame = if pte.flags().is_valid() {
                 let old = self.get_frame(index, false)?;
-                self.reclaim_frame(index);
+                self.reclaim_frame(index); // drop rc to old frame
                 let new = self.get_frame(index, true)?;
-
-                // copy on write
                 new.as_slice_mut().copy_from_slice(old.as_slice());
-
-                // no cow from now on
-                self.flags.remove(VMFlags::CLONED);
-
                 new
             } else {
                 self.get_frame(index, true)?

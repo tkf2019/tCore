@@ -11,7 +11,7 @@ pub const GUARD_PAGE: usize = PAGE_SIZE;
 pub const TRAMPOLINE_VA: usize = MAX_VA - PAGE_SIZE + 1;
 
 /// CPUs
-pub const CPU_NUM: usize = 4;
+pub const CPU_NUM: usize = 1;
 
 /// Use cpu0 as main hart
 pub const MAIN_HART: usize = 0;

@@ -94,23 +94,29 @@ impl MM {
     ///
     /// Uses the copy-on-write technique (COW) to prevent all data of the parent process from being copied
     /// when fork is executed.
-    pub fn clone(&self) -> KernelResult<Self> {
+    pub fn clone(&mut self) -> KernelResult<Self> {
         let mut page_table = PageTable::new().map_err(|_| KernelError::FrameAllocFailed)?;
         let mut new_vma_list = Vec::new();
-        for vma in self.vma_list.iter() {
+        for vma in self.vma_list.iter_mut() {
             if let Some(vma) = vma {
                 let mut new_vma = VMArea {
-                    flags: vma.flags | VMFlags::CLONED,
+                    flags: vma.flags,
                     start_va: vma.start_va,
                     end_va: vma.end_va,
                     frames: vma.frames.clone(),
                     file: vma.file.clone(),
                 };
+
+                // read-only
                 let mut flags = PTEFlags::from(vma.flags);
-                // Read-only for new area.
                 flags.remove(PTEFlags::WRITABLE);
+                
+                // map the new vma of child process
                 new_vma.map_all(&mut page_table, flags, false)?;
                 new_vma_list.push(Some(new_vma));
+
+                // remap the old vma of parent process
+                vma.map_all(&mut page_table, flags, false)?;
             } else {
                 new_vma_list.push(None);
             }
@@ -354,18 +360,7 @@ impl MM {
     /// - `va`: starting virtual address.
     pub fn alloc_frame(&mut self, va: VirtAddr) -> KernelResult<Frame> {
         self.get_vma(va, |vma, pt, _| {
-            vma.alloc_frame(Page::from(va), pt, vma.flags.contains(VMFlags::CLONED))
-                .map(|(frame, _)| frame)
-        })
-    }
-
-    /// Forces to allocate a frame, overwriting the page table with the new frame if the map already exists in the page table.
-    ///
-    /// This function is mainly used for Copy-on-Write (COW) mechanism.
-    pub fn force_alloc_frame(&mut self, va: VirtAddr) -> KernelResult<Frame> {
-        self.get_vma(va, |vma, pt, _| {
-            vma.alloc_frame(Page::from(va), pt, true)
-                .map(|(frame, _)| frame)
+            vma.alloc_frame(Page::from(va), pt).map(|(frame, _)| frame)
         })
     }
 
@@ -382,10 +377,8 @@ impl MM {
         let mut frames = Vec::new();
         for page in PageRange::from_virt_addr(start_va, (end_va - start_va).value()) {
             frames.push(
-                self.get_vma(page.start_address(), |vma, pt, _| {
-                    vma.alloc_frame(page, pt, false)
-                })
-                .map(|(frame, _)| frame)?,
+                self.get_vma(page.start_address(), |vma, pt, _| vma.alloc_frame(page, pt))
+                    .map(|(frame, _)| frame)?,
             );
         }
         Ok(frames)
@@ -752,7 +745,7 @@ pub fn do_handle_page_fault(mm: &mut MM, va: VirtAddr, flags: VMFlags) -> Kernel
             return Err(KernelError::FatalPageFault);
         }
 
-        let (_, alloc) = vma.alloc_frame(Page::from(va), pt, true)?;
+        let (_, alloc) = vma.alloc_frame(Page::from(va), pt)?;
 
         if !alloc {
             return Err(KernelError::FatalPageFault);

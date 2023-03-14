@@ -72,9 +72,17 @@ pub fn handle_zombie(task: Arc<Task>) {
     locked_inner.children.clear();
     locked_inner.state = TaskState::ZOMBIE;
 
+    let orphan = locked_inner.parent.is_none();
+    drop(locked_inner);
+
     #[cfg(feature = "test")]
     if task.tid.0 == task.pid {
         finish_test(task.inner().exit_code, &task.name);
+    }
+
+    if orphan {
+        let mut init = INIT_TASK.locked_inner();
+        init.children.push_back(task);
     }
 }
 
@@ -207,6 +215,8 @@ pub fn do_wait(
                     i32
                 )?;
             }
+
+            break;
         }
     }
 

@@ -147,6 +147,12 @@ pub fn init() {
     INIT_TASK.clone();
 }
 
+/// Reclaim resources delegated to [`INIT_TASK`].
+pub fn init_reclaim() {
+    let mut init = INIT_TASK.locked_inner();
+    init.children.clear();
+}
+
 /// IDLE task:
 ///
 /// 1. Each cpu tries to acquire the lock of global task manager.
@@ -154,6 +160,8 @@ pub fn init() {
 /// 3. Handle the final state after a task finishes `do_yield` or `do_exit`.
 pub unsafe fn idle() -> ! {
     loop {
+        init_reclaim();
+
         let mut task_manager = TASK_MANAGER.lock();
 
         if let Some(task) = task_manager.fetch() {

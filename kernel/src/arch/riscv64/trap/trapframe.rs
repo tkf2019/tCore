@@ -54,8 +54,18 @@ impl TrapFrame {
     }
 
     /// Copies from the old one when we clone a task and initialize its trap frame.
-    pub fn copy_from(&mut self, orig: &TrapFrame, flags: CloneFlags, stack: usize, tls: usize) {
+    pub fn copy_from(
+        &mut self,
+        orig: &TrapFrame,
+        flags: CloneFlags,
+        stack: usize,
+        tls: usize,
+        kstack: usize,
+    ) {
         *self = *orig;
+
+        // Sets new kernel stack
+        self.kernel_sp = kstack;
 
         // Child task returns zero
         self.set_a0(0);
