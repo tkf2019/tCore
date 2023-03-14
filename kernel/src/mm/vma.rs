@@ -141,7 +141,7 @@ impl VMArea {
     }
 
     /// Reclaims the frame by index, writing back to file if before the [`AllocatedFrame`] dropped.
-    pub fn reclaim_frame(&mut self, index: usize) {
+    pub fn reclaim_frame(&mut self, index: usize) -> Option<Arc<AllocatedFrame>> {
         if let Some(frame) = self.frames[index].take() {
             if self.file.is_some() && Arc::strong_count(&frame) == 1 {
                 // TODO: wirte if dirty
@@ -150,6 +150,9 @@ impl VMArea {
                     .unwrap()
                     .write(index * PAGE_SIZE, frame.as_slice());
             }
+            Some(frame)
+        } else {
+            None
         }
     }
 
@@ -219,21 +222,21 @@ impl VMArea {
     /// Allocates a frame for mapped page.
     ///
     /// Returns true if a new frame is really allocated.
-    pub fn alloc_frame(
-        &mut self,
-        page: Page,
-        pt: &mut PageTable,
-    ) -> KernelResult<(Frame, bool)> {
+    pub fn alloc_frame(&mut self, page: Page, pt: &mut PageTable) -> KernelResult<(Frame, bool)> {
         let (pte_pa, mut pte) = pt.create(page).map_err(|_| KernelError::PageTableInvalid)?;
         if !pte.flags().is_valid()
-            || (!pte.flags().contains(PTEFlags::WRITABLE) && self.flags.contains(VMFlags::WRITE)) // COW
+            || (!pte.flags().contains(PTEFlags::WRITABLE) && self.flags.contains(VMFlags::WRITE))
         {
             let index = page.number() - Page::from(self.start_va).number();
 
             let frame = if pte.flags().is_valid() {
                 let old = self.get_frame(index, false)?;
-                self.reclaim_frame(index); // drop rc to old frame
+                // we don't drop the old frame immediately, for it can be allocated again as new frame
+                let need_drop = self.reclaim_frame(index);
                 let new = self.get_frame(index, true)?;
+                // drop rc to old frame
+                drop(need_drop);
+                log::warn!("COW old={:x?} new={:x?}", &old, &new);
                 new.as_slice_mut().copy_from_slice(old.as_slice());
                 new
             } else {

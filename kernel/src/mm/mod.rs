@@ -116,7 +116,7 @@ impl MM {
                 new_vma_list.push(Some(new_vma));
 
                 // remap the old vma of parent process
-                vma.map_all(&mut page_table, flags, false)?;
+                vma.map_all(&mut self.page_table, flags, false)?;
             } else {
                 new_vma_list.push(None);
             }

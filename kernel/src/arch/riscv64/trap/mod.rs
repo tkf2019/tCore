@@ -84,7 +84,6 @@ pub fn user_trap_handler() -> ! {
             let curr = cpu().curr.as_ref().unwrap();
             let trapframe = curr.trapframe();
             trapframe.next_epc();
-            trap_info();
             match syscall(trapframe.syscall_args().unwrap()) {
                 Ok(ret) => trapframe.set_a0(ret),
                 Err(errno) => {
@@ -144,7 +143,6 @@ pub fn user_trap_return() -> ! {
     }
     let (satp, trapframe_base, userret) = {
         let curr = cpu().curr.as_ref().unwrap();
-        log::info!("Trap Return {:?} {:x?}", &curr, curr.trapframe());
         let curr_mm = curr.mm.lock();
         (
             curr_mm.page_table.satp(),
