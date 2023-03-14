@@ -71,6 +71,7 @@ numeric_enum! {
         MMAP = 222,
         MPROTECT = 226,
         WAIT4 = 260,
+        PRLIMIT64 = 261,
     }
 }
 

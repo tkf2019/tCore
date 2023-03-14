@@ -21,8 +21,6 @@ pub struct FDManager {
 
     /// Maximum file descriptor limit.
     limit: usize,
-
-    
 }
 
 impl FDManager {
@@ -90,18 +88,23 @@ impl FDManager {
     }
 
     /// Returns the number of file descriptors.
-    pub fn fd_count(&self) -> usize {
+    pub fn count(&self) -> usize {
         self.list.len() - self.recycled.len()
     }
 
     /// Returns the limit of number.
-    pub fn fd_limit(&self) -> usize {
+    pub fn get_limit(&self) -> usize {
         self.limit
+    }
+
+    /// Sets the limit of number.
+    pub fn set_limit(&mut self, limit: usize) {
+        self.limit = limit;
     }
 
     /// Returns true if the number of file descriptors exceeds the limit.
     pub fn is_full(&self) -> bool {
-        self.fd_count() >= self.limit
+        self.count() >= self.limit
     }
 }
 

@@ -1,9 +1,7 @@
 use alloc::sync::Arc;
-use core::mem::size_of;
 use errno::Errno;
 use signal_defs::*;
 use syscall_interface::{SyscallComm, SyscallResult};
-use ubuf::{read_user_buf, write_user_buf};
 
 use crate::{arch::mm::VirtAddr, fs::Pipe, read_user, task::curr_task, write_user};
 
@@ -16,7 +14,7 @@ impl SyscallComm for SyscallImpl {
         let mut fd_manager = curr.fd_manager.lock();
         let (pipe_read, pipe_write) = Pipe::new();
 
-        if fd_manager.fd_count() + 2 > fd_manager.fd_limit() {
+        if fd_manager.count() + 2 > fd_manager.get_limit() {
             return Err(Errno::EMFILE);
         }
 

@@ -4,7 +4,7 @@ use syscall_interface::*;
 use crate::{
     arch::mm::VirtAddr,
     mm::{do_brk, do_mmap, do_mprotect, do_munmap, MmapFlags, MmapProt},
-    task::{curr_task, do_clone, do_exit, do_wait, CloneFlags, WaitOptions},
+    task::{curr_task, do_clone, do_exit, do_prlimit, do_wait, CloneFlags, WaitOptions},
 };
 
 use super::SyscallImpl;
@@ -51,6 +51,14 @@ impl SyscallProc for SyscallImpl {
         }
 
         do_wait(pid, options | WaitOptions::WEXITED, 0, wstatus, rusage)
+    }
+
+    fn prlimit64(pid: isize, resource: i32, new_limit: usize, old_limit: usize) -> SyscallResult {
+        if pid == 0 {
+            do_prlimit(resource, new_limit, old_limit)
+        } else {
+            Err(Errno::ESRCH)
+        }
     }
 
     fn execve(pathname: usize, argv: usize, envp: usize) -> SyscallResult {

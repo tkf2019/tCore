@@ -12,6 +12,34 @@ pub const P_PGID: usize = 2;
 /// (See pidfd_open(2) for further information on PID file descriptors.)
 pub const P_PIDFD: usize = 3;
 
+/// `rlimit` structure.
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct Rlimit {
+    /// The soft limit is the value that the kernel enforces for the corresponding resource.
+    pub rlim_cur: u64,
+    
+    /// The hard limit acts as a ceiling for the soft limit: an unprivileged process may set
+    /// only its soft limit to a value in the range from 0 up to the hard limit, and (irreversibly)
+    /// lower its hard limit.
+    pub rlim_max: u64,
+}
+
+/// This is the maximum size of the process stack, in bytes. Upon reaching this limit, a SIGSEGV
+/// signal is generated. To handle this signal, a process must employ an alternate signal stack.
+/// 
+/// Since Linux 2.6.23, this limit also determines the amount of space used for the process's
+/// command-line arguments and environment variables; for details, see execve(2).
+pub const RLIMIT_STACK: i32 = 3;
+/// This specifies a value one greater than the maximum file descriptor number that can be opened
+/// by this process. Attempts (open(2), pipe(2), dup(2), etc.) to exceed this limit yield the error
+/// EMFILE. (Historically, this limit was named RLIMIT_OFILE on BSD.)
+pub const RLIMIT_NOFILE: i32 = 7;
+/// This is the maximum size of the process's virtual memory (address space). The limit is specified
+/// in bytes, and is rounded down to the system page size. This limit affects calls to brk(2), mmap(2),
+/// and mremap(2), which fail with the error ENOMEM upon exceeding this limit.
+pub const RLIMIT_AS: i32 = 9;
+
 pub trait SyscallProc {
     /// Terminate the calling process.
     fn exit(status: usize) -> !;
@@ -42,12 +70,25 @@ pub trait SyscallProc {
     ///
     /// # Argument
     ///
-    /// The value of pid can be: 
+    /// The value of pid can be:
     /// - `< -1`: meaning wait for any child process whose process group ID is equal to the absolute value of pid.
     /// - `-1`: meaning wait for any child process.
     /// - `0`: meaning wait for any child process whose process group ID is equal to that of the calling process.
     /// - `> 0`: meaning wait for the child whose process ID is equal the value of `pid`.
     fn wait4(pid: isize, wstatus: usize, options: usize, rusage: usize) -> SyscallResult {
+        Ok(0)
+    }
+
+    /// Sets and gets the resource limits of an arbitrary process.
+    /// 
+    /// If the new_limit argument is not NULL, then the rlimit structure to which it points is used to set new
+    /// values for the soft and hard limits for resource. If the old_limit argument is not NULL, then a successful
+    /// call to prlimit() places the previous soft and hard limits for resource in the rlimit structure pointed to
+    /// by old_limit.
+    /// 
+    /// The pid argument specifies the ID of the process on which the call is to operate. If pid is 0, then the call
+    /// applies to the calling process.
+    fn prlimit64(pid: isize, resource: i32, new_limit: usize, old_limit: usize) -> SyscallResult {
         Ok(0)
     }
 
@@ -162,20 +203,20 @@ pub trait SyscallProc {
 
     /// Changes the access protections for the calling process's memory pages containing any part
     /// of the address range in the interval `[addr, addr+len-1]`.  addr must be aligned to a page boundary.
-    /// 
+    ///
     /// If the calling process tries to access memory in a manner that violates the protections, then the
     /// kernel generates a `SIGSEGV` signal for the process.
-    /// 
+    ///
     /// # Error
     /// - `EACCESS`: The memory cannot be given the specified access. This can happen, for example, if you mmap
     /// (2) a file to which you have read-only access, then ask mprotect() to mark it PROT_WRITE.
-    /// - `EINVAL`: Addr is not a valid pointer, or not a multiple of the system page size. Invalid flags 
+    /// - `EINVAL`: Addr is not a valid pointer, or not a multiple of the system page size. Invalid flags
     /// specified in prot.
-    /// - `ENOMEM`: 
+    /// - `ENOMEM`:
     ///   - Internal kernel structures could not be allocated.
-    ///   - Addresses in the range `[addr, addr+len-1]` are invalid for the address space of the process, or 
+    ///   - Addresses in the range `[addr, addr+len-1]` are invalid for the address space of the process, or
     /// specify one or more pages that are not mapped.
-    ///   - Changing the protection of a memory region would result in the total number of mappings with 
+    ///   - Changing the protection of a memory region would result in the total number of mappings with
     /// distinct attributes (e.g., read versus read/write protection) exceeding the allowed maximum.
     fn mprotect(addr: usize, len: usize, prot: usize) -> SyscallResult {
         Ok(0)

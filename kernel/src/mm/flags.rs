@@ -1,4 +1,4 @@
-use crate::{arch::mm::PTEFlags, task::CloneFlags};
+use crate::arch::mm::PTEFlags;
 
 bitflags::bitflags! {
     /// Flags in [`VMArea`].

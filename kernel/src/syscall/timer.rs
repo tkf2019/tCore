@@ -22,14 +22,6 @@ impl SyscallTimer for SyscallImpl {
         Ok(0)
     }
 
-    fn getitimer(which: usize, curr_value: usize) -> SyscallResult {
-        Ok(0)
-    }
-
-    fn setitimer(which: usize, new_value: usize, old_value: usize) -> SyscallResult {
-        Ok(0)
-    }
-
     fn gettimeofday(tv: usize) -> SyscallResult {
         let curr = curr_task().unwrap();
         let mut curr_mm = curr.mm.lock();

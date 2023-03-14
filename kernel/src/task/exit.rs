@@ -7,11 +7,10 @@ use syscall_interface::SyscallResult;
 
 use crate::{
     arch::{TaskContext, __switch},
-    error::KernelResult,
     write_user,
 };
 
-use super::{cpu, curr_ctx, curr_task, do_yield, idle_ctx, Task, TaskState, INIT_TASK};
+use super::{cpu, curr_task, do_yield, idle_ctx, Task, TaskState, INIT_TASK};
 
 /// Current task exits. Run next task.
 ///
@@ -152,9 +151,9 @@ fn valid_child(pid: isize, options: WaitOptions, task: &Task) -> bool {
 pub fn do_wait(
     pid: isize,
     options: WaitOptions,
-    infop: usize,
+    _infop: usize,
     stat_addr: usize,
-    rusage: usize,
+    _rusage: usize,
 ) -> SyscallResult {
     log::trace!("WAIT4 {} {:?}", pid, options);
 
@@ -194,6 +193,7 @@ pub fn do_wait(
         }
         if !flag {
             if options.contains(WaitOptions::WNONHANG) || !need_sched {
+                log::info!("{:?}", locked.children);
                 return Err(Errno::ECHILD);
             }
 

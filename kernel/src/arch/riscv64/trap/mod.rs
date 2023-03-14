@@ -15,7 +15,7 @@ use crate::{
     println,
     syscall::syscall,
     task::do_exit,
-    task::{do_yield, curr_task, trapframe_base, cpu},
+    task::{do_yield, trapframe_base, cpu},
     timer::set_next_trigger,
 };
 
