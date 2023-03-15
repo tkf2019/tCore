@@ -3,6 +3,7 @@ use core::cell::SyncUnsafeCell;
 use alloc::{collections::LinkedList, string::String, sync::Arc, vec::Vec};
 use errno::Errno;
 use kernel_sync::SpinLock;
+use mm_rv::{Frame, PTEFlags, Page};
 use signal_defs::*;
 use syscall_interface::SyscallResult;
 
@@ -12,7 +13,7 @@ use crate::{
         trap::{user_trap_handler, user_trap_return, TrapFrame},
         TaskContext,
     },
-    error::KernelResult,
+    error::*,
     loader::from_elf,
     mm::{KERNEL_MM, MM},
     task::{TrapFrameTracker, TID},
@@ -123,16 +124,9 @@ pub fn do_clone(
         let mut mm = mm.lock();
         let trapframe_pa = init_trapframe(&mut mm, kstack)?;
         let trapframe = TrapFrame::from(trapframe_pa);
-        trapframe.copy_from(
-            TrapFrame::from(curr.trapframe.0),
-            flags,
-            stack,
-            tls,
-            kstack_base,
-        );
+        trapframe.copy_from(curr.trapframe(), flags, stack, tls, kstack_base);
         trapframe_pa
     };
-    let trapframe = TrapFrameTracker(trapframe_pa); // for unwinding
 
     let new_task = Arc::new(Task {
         name: curr.name.clone() + " (CLONED)",
@@ -148,7 +142,7 @@ pub fn do_clone(
         } else {
             kstack
         },
-        trapframe,
+        trapframe: Some(TrapFrameTracker(trapframe_pa)),
         exit_signal: if flags.contains(CloneFlags::CLONE_THREAD) {
             SIGNONE
         } else {
@@ -260,7 +254,13 @@ pub fn do_exec(dir: String, elf_data: &[u8], args: Vec<String>) -> KernelResult 
         // CPU id will be saved when the user task is restored.
         usize::MAX,
     );
-
+    mm.page_table
+        .map(
+            Page::from(VirtAddr::from(trapframe_base(curr.tid.0))),
+            Frame::from(curr.trapframe.as_ref().unwrap().0),
+            PTEFlags::READABLE | PTEFlags::WRITABLE | PTEFlags::VALID,
+        )
+        .map_err(|_| KernelError::PageTableInvalid)?;
     curr.inner().mm = Arc::new(SpinLock::new(mm));
 
     // the dispositions of any signals that are being caught are reset to the default

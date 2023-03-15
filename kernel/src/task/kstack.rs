@@ -10,7 +10,7 @@ use crate::{
 
 /// Global kernal stack allocator.
 static KSTACK_ALLOCATOR: Lazy<SpinLock<RecycleAllocator>> =
-    Lazy::new(|| SpinLock::new(RecycleAllocator::new(0)));
+    Lazy::new(|| SpinLock::new(RecycleAllocator::new(1)));
 
 /// Allocate new kernel stack identification.
 pub fn kstack_alloc() -> usize {

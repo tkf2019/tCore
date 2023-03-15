@@ -7,7 +7,7 @@
 #![feature(sync_unsafe_cell)]
 #![feature(drain_filter)]
 #![feature(linked_list_remove)]
-// #![allow(dead_code)]
+#![feature(linked_list_cursors)]
 
 mod config;
 mod cons;
@@ -56,20 +56,16 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
     if IS_TEST_ENV {
         oscomp::init(oscomp::testcases::FORMAT_LIBC_STATIC);
     }
-    // Initialize the first task.
-    task::init();
     // Wake up other harts.
     for cpu_id in 0..CPU_NUM {
         if cpu_id != hartid {
-            let entry = arch::__entry_others as usize;
             info!("Try to start hart {}", cpu_id);
-            arch::start_hart(cpu_id, entry, 0);
+            arch::start_hart(cpu_id, arch::__entry_others as usize, 0);
         }
     }
-
+    // Enable timer interrupt
     arch::trap::enable_timer_intr();
     timer::set_next_trigger();
-
     // IDLE loop
     unsafe { task::idle() };
 }

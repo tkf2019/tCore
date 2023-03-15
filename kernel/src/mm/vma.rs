@@ -236,7 +236,6 @@ impl VMArea {
                 let new = self.get_frame(index, true)?;
                 // drop rc to old frame
                 drop(need_drop);
-                log::warn!("COW old={:x?} new={:x?}", &old, &new);
                 new.as_slice_mut().copy_from_slice(old.as_slice());
                 new
             } else {

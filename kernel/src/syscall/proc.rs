@@ -4,7 +4,7 @@ use syscall_interface::*;
 use vfs::{OpenFlags, Path};
 
 use crate::{
-    arch::{__switch, mm::VirtAddr},
+    arch::{__move_to_next, mm::VirtAddr},
     fs::open,
     mm::{do_brk, do_mmap, do_mprotect, do_munmap, MmapFlags, MmapProt},
     read_user,
@@ -85,7 +85,6 @@ impl SyscallProc for SyscallImpl {
 
         // get argument list
         let mut args = Vec::new();
-        args.push(path.pop().unwrap()); // unwrap a regular filename freely
         let mut argv = argv;
         let mut argc: usize = 0;
         let mut curr_mm = curr.mm();
@@ -99,9 +98,10 @@ impl SyscallProc for SyscallImpl {
         }
         drop(curr_mm);
 
+        path.pop().unwrap(); // unwrap a regular filename freely
         do_exec(String::from(path.as_str()), elf_data.as_slice(), args)?;
 
-        unsafe { __switch(idle_ctx(), curr_ctx()) };
+        unsafe { __move_to_next(curr_ctx()) };
 
         unreachable!()
     }

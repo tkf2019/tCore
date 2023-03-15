@@ -179,7 +179,7 @@ pub struct Task {
     pub pid: usize,
 
     /// Trapframe physical address.
-    pub trapframe: TrapFrameTracker,
+    pub trapframe: Option<TrapFrameTracker>,
 
     /// Signal (usually SIGCHLD) sent when task exits.
     pub exit_signal: usize,
@@ -200,6 +200,39 @@ pub struct Task {
 }
 
 impl Task {
+    /// Returns an empty task without address space. trap frame and task context,
+    /// which will not be scheduled.
+    pub fn init() -> KernelResult<Self> {
+        Ok(Self {
+            name: String::from("init"),
+            tid: TID(0),
+            pid: 0,
+            trapframe: None,
+            exit_signal: SIGNONE,
+            fs_info: Arc::new(SpinLock::new(FSInfo {
+                umask: 0,
+                cwd: String::from("/"),
+                root: String::from("/"),
+            })),
+            sig_actions: Arc::new(SpinLock::new([SigAction::default(); NSIG])),
+            locked_inner: SpinLock::new(TaskLockedInner {
+                state: TaskState::RUNNABLE,
+                sleeping_on: None,
+                parent: None,
+                children: LinkedList::new(),
+            }),
+            inner: SyncUnsafeCell::new(TaskInner {
+                exit_code: 0,
+                ctx: TaskContext::zero(),
+                set_child_tid: 0,
+                clear_child_tid: 0,
+                sig_pending: SigPending::new(),
+                sig_blocked: SigSet::new(),
+                mm: Arc::new(SpinLock::new(MM::new()?)),
+                files: Arc::new(SpinLock::new(FDManager::new())),
+            }),
+        })
+    }
     /// Create a new task from ELF data.
     pub fn new(dir: String, elf_data: &[u8], args: Vec<String>) -> KernelResult<Self> {
         // Get task name
@@ -235,7 +268,7 @@ impl Task {
             name,
             tid,
             pid: kstack,
-            trapframe: TrapFrameTracker(trapframe_pa),
+            trapframe: Some(TrapFrameTracker(trapframe_pa)),
             exit_signal: SIGNONE,
             fs_info: Arc::new(SpinLock::new(FSInfo {
                 umask: 0,
@@ -265,7 +298,7 @@ impl Task {
 
     /// Returns the [`TrapFrame`] of this task
     pub fn trapframe(&self) -> &'static mut TrapFrame {
-        TrapFrame::from(self.trapframe.0)
+        TrapFrame::from(self.trapframe.as_ref().unwrap().0)
     }
 
     /// Mutable access to [`TaskInner`].
@@ -368,9 +401,7 @@ pub fn ustack_layout(tid: usize) -> (usize, usize) {
 impl kernel_sync::SleepLockSched for TaskLockedInner {
     unsafe fn sched(guard: SpinLockGuard<Self>) {
         // Lock might be released after the task is pushed back to the scheduler.
-        TASK_MANAGER
-            .lock()
-            .add(cpu().curr.clone().unwrap());
+        TASK_MANAGER.lock().add(cpu().curr.clone().unwrap());
         drop(guard);
 
         __switch(curr_ctx(), idle_ctx());

@@ -122,25 +122,8 @@ pub fn idle_ctx() -> *const TaskContext {
     &cpu().idle_ctx as _
 }
 
-pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| {
-    // Init task
-    let args = if IS_TEST_ENV {
-        fetch_test().unwrap()
-    } else {
-        Vec::from([String::from(INIT_TASK_PATH)])
-    };
-    let init_task = from_args(String::from(ROOT_DIR), args).unwrap();
-    // Update task manager
-    cpu().curr = Some(init_task.clone());
-    TASK_MANAGER.lock().add(init_task.clone());
-    init_task
-});
-
-/// Initialize  [`INIT_TASK`] manually.
-#[allow(unused)]
-pub fn init() {
-    INIT_TASK.clone();
-}
+/// Kernel init task which will never be dropped.
+pub static INIT_TASK: Lazy<Arc<Task>> = Lazy::new(|| Arc::new(Task::init().unwrap()));
 
 /// Reclaim resources delegated to [`INIT_TASK`].
 pub fn init_reclaim() {
@@ -153,6 +136,7 @@ pub fn init_reclaim() {
 /// 1. Each cpu tries to acquire the lock of global task manager.
 /// 2. Each cpu runs the task fetched from schedule queue.
 /// 3. Handle the final state after a task finishes `do_yield` or `do_exit`.
+/// 4. Reclaim resources handled by [`INIT_TASK`].
 pub unsafe fn idle() -> ! {
     loop {
         init_reclaim();

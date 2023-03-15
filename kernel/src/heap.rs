@@ -8,7 +8,7 @@ static HEAP_ALLOCATOR: LockedHeap<KERNEL_HEAP_ORDER> = LockedHeap::<KERNEL_HEAP_
 
 #[alloc_error_handler]
 pub fn handle_alloc_error(layout: core::alloc::Layout) -> ! {
-    error!("[kernel] Heap allocation error: {:?}", layout);
+    error!("[kernel] Heap allocation error: {:x?}", layout);
     panic!()
 }
 

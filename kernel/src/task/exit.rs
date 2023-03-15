@@ -6,7 +6,7 @@ use signal_defs::*;
 use syscall_interface::SyscallResult;
 
 use crate::{
-    arch::{TaskContext, __switch},
+    arch::{TaskContext, __move_to_next},
     write_user,
 };
 
@@ -29,7 +29,7 @@ pub unsafe fn do_exit(exit_code: i32) {
 
     handle_zombie(curr);
 
-    __switch(curr_ctx, idle_ctx());
+    __move_to_next(idle_ctx());
 }
 
 // Handle zombie tasks.
@@ -152,10 +152,10 @@ pub fn do_wait(
     pid: isize,
     options: WaitOptions,
     _infop: usize,
-    stat_addr: usize,
+    wstatus: usize,
     _rusage: usize,
 ) -> SyscallResult {
-    log::trace!("WAIT4 {} {:?}", pid, options);
+    log::trace!("WAIT4 {} {:?} status=0x{:x}", pid, options, wstatus);
 
     loop {
         let mut flag = false;
@@ -205,18 +205,12 @@ pub fn do_wait(
             let child = locked.children.remove(child);
 
             // store status information
-            if stat_addr != 0 {
-                write_user!(
-                    curr.mm(),
-                    VirtAddr::from(stat_addr),
-                    (child.inner().exit_code << 8) as i32,
-                    i32
-                )?;
+            if wstatus != 0 {
+                let status = (child.inner().exit_code << 8) as i32;
+                write_user!(curr.mm(), VirtAddr::from(wstatus), status, i32)?;
             }
 
-            break;
+            return Ok(child.pid);
         }
     }
-
-    Ok(0)
 }
