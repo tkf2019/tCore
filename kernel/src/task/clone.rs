@@ -19,6 +19,9 @@ use crate::{
     task::{TrapFrameTracker, TID},
 };
 
+#[cfg(feature = "uintr")]
+use crate::arch::uintr::*;
+
 use super::*;
 
 bitflags::bitflags! {
@@ -197,6 +200,8 @@ pub fn do_clone(
                 Arc::new(SpinLock::new(curr.files().clone()))
             },
         }),
+        #[cfg(feature = "uintr")]
+        uintr_inner: SyncUnsafeCell::new(TaskUIntrInner::new()),
     });
 
     // Set tid in parent address space
@@ -276,6 +281,13 @@ pub fn do_exec(dir: String, elf_data: &[u8], args: Vec<String>) -> KernelResult 
     unsafe { &mut *curr.inner().files.as_mut_ptr() }.cloexec();
 
     curr.inner().ctx = TaskContext::new(user_trap_return as usize, kstack_base);
+
+    #[cfg(feature = "uintr")]
+    {
+        curr.uintr_inner().uist = Some(UIntrSender::new(1));
+        curr.uintr_inner().uirs = Some(UIntrReceiverTracker::new());
+        curr.uintr_inner().mask = 0;
+    }
 
     Ok(())
 }

@@ -72,6 +72,11 @@ numeric_enum! {
         MPROTECT = 226,
         WAIT4 = 260,
         PRLIMIT64 = 261,
+
+        // UINTR
+        UINTR_REGISTER_RECEIVER = 300,
+        UINTR_REGISTER_SENDER = 301,
+        UINTR_CREATE_FD = 302,
     }
 }
 

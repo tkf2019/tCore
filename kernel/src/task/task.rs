@@ -4,6 +4,7 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
+use bit_field::BitField;
 use core::{cell::SyncUnsafeCell, fmt};
 use errno::Errno;
 use kernel_sync::{SpinLock, SpinLockGuard};
@@ -25,6 +26,9 @@ use crate::{
     mm::{KERNEL_MM, MM},
     task::{kstack_alloc, sched::Scheduler},
 };
+
+#[cfg(feature = "uintr")]
+use crate::arch::uintr::*;
 
 use super::*;
 
@@ -136,6 +140,42 @@ pub struct TaskLockedInner {
     // pub sibling: Option<CursorMut<'static, Arc<Task>>>,
 }
 
+/// Task inner member for user interrupt status.
+#[cfg(feature = "uintr")]
+pub struct TaskUIntrInner {
+    /// Sender status
+    pub uist: Option<UIntrSender>,
+
+    /// Receiver status
+    pub uirs: Option<UIntrReceiverTracker>,
+
+    /// Sender vector mask
+    pub mask: u64,
+}
+
+#[cfg(feature = "uintr")]
+impl TaskUIntrInner {
+    pub fn new() -> Self {
+        Self {
+            uist: None,
+            uirs: None,
+            mask: 0,
+        }
+    }
+
+    /// Allocates a sender vector.
+    pub fn alloc(&mut self) -> usize {
+        let i = self.mask.leading_ones() as usize;
+        self.mask.set_bit(i, true);
+        i
+    }
+
+    /// Deallocates a sender vector
+    pub fn dealloc(&mut self, i: usize) {
+        self.mask.set_bit(i, false);
+    }
+}
+
 unsafe impl Send for TaskLockedInner {}
 
 /// In conventional opinion, process is the minimum unit of resource allocation, while task (or
@@ -197,6 +237,10 @@ pub struct Task {
 
     /// Inner data wrapped by [`SyncUnsafeCell`].
     pub inner: SyncUnsafeCell<TaskInner>,
+
+    /// Inner data wrapped by [`SyncUnsafeCell`].
+    #[cfg(feature = "uintr")]
+    pub uintr_inner: SyncUnsafeCell<TaskUIntrInner>,
 }
 
 impl Task {
@@ -231,6 +275,8 @@ impl Task {
                 mm: Arc::new(SpinLock::new(MM::new()?)),
                 files: Arc::new(SpinLock::new(FDManager::new())),
             }),
+            #[cfg(feature = "uintr")]
+            uintr_inner: SyncUnsafeCell::new(TaskUIntrInner::new()),
         })
     }
     /// Create a new task from ELF data.
@@ -292,6 +338,8 @@ impl Task {
                 parent: None,
                 children: LinkedList::new(),
             }),
+            #[cfg(feature = "uintr")]
+            uintr_inner: SyncUnsafeCell::new(TaskUIntrInner::new()),
         };
         Ok(task)
     }
@@ -309,6 +357,12 @@ impl Task {
     /// Acquires inner lock to modify the metadata in [`TaskLockedInner`].
     pub fn locked_inner(&self) -> SpinLockGuard<TaskLockedInner> {
         self.locked_inner.lock()
+    }
+
+    /// Mutable access to [`TaskUIntrInner`].
+    #[cfg(feature = "uintr")]
+    pub fn uintr_inner(&self) -> &mut TaskUIntrInner {
+        unsafe { &mut *self.uintr_inner.get() }
     }
 
     /// Acquires inner lock to modify [`MM`].

@@ -4,6 +4,7 @@ pub mod mm {
 mod context;
 pub mod timer;
 pub mod trap;
+#[cfg(feature = "uintr")]
 pub mod uintr;
 
 pub use context::*;
@@ -17,7 +18,7 @@ use crate::{
 };
 
 #[cfg(feature = "uintr")]
-use self::uintr::{test_uintr, UINTC_BASE, UINTC_SIZE};
+use self::uintr::*;
 
 /// Initialize kernel stack in .bss section.
 #[link_section = ".bss.stack"]
@@ -122,8 +123,8 @@ pub fn init(hartid: usize, is_main: bool) {
     flush_tlb(None);
 
     // Test user interrupt supports.
-    #[cfg(feature = "uintr")]
-    unsafe {
-        test_uintr(hartid)
-    };
+    // #[cfg(feature = "uintr")]
+    // unsafe {
+    //     test_uintr(hartid)
+    // };
 }

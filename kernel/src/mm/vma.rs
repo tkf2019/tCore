@@ -234,9 +234,9 @@ impl VMArea {
                 // we don't drop the old frame immediately, for it can be allocated again as new frame
                 let need_drop = self.reclaim_frame(index);
                 let new = self.get_frame(index, true)?;
+                new.as_slice_mut().copy_from_slice(old.as_slice());
                 // drop rc to old frame
                 drop(need_drop);
-                new.as_slice_mut().copy_from_slice(old.as_slice());
                 new
             } else {
                 self.get_frame(index, true)?

@@ -20,6 +20,9 @@ use crate::{
 
 use self::trapframe::KernelTrapContext;
 
+#[cfg(feature = "uintr")]
+use crate::arch::uintr::*;
+
 /// Set kernel trap entry.
 pub fn set_kernel_trap() {
     extern "C" {
@@ -83,13 +86,14 @@ pub fn user_trap_handler() -> ! {
             let curr = cpu().curr.as_ref().unwrap();
             let trapframe = curr.trapframe();
             trapframe.next_epc();
+
             match syscall(trapframe.syscall_args().unwrap()) {
                 Ok(ret) => trapframe.set_a0(ret),
                 Err(errno) => {
                     trace!("{:#?} {:#?}", trapframe.syscall_args().unwrap().0, errno);
                     trapframe.set_a0(-isize::from(errno) as usize)
                 }
-            };
+            }
         }
         Trap::Exception(Exception::StorePageFault) => {
             let curr = cpu().curr.as_ref().unwrap();
@@ -108,9 +112,7 @@ pub fn user_trap_handler() -> ! {
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             trap_info();
             set_next_trigger();
-            unsafe {
-                do_yield();
-            }
+            unsafe { do_yield() };
         }
         _ => {
             let curr = cpu().curr.as_ref().unwrap();
@@ -134,6 +136,8 @@ pub fn user_trap_handler() -> ! {
 #[no_mangle]
 pub fn user_trap_return() -> ! {
     // crate::tests::sleeplock::test();
+
+    uintr_return();
 
     extern "C" {
         fn __uservec();

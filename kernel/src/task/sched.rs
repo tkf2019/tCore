@@ -49,24 +49,30 @@ impl Scheduler for QueueScheduler {
     }
 
     fn fetch(&mut self) -> Option<Arc<Task>> {
-        if self.queue.is_empty() && IS_TEST_ENV {
+        if IS_TEST_ENV && self.queue.is_empty() {
             if let Some(args) = fetch_test() {
-                return from_args(String::from(ROOT_DIR), args)
+                if let Some(task) = from_args(String::from(ROOT_DIR), args)
                     .map_err(|_| log::warn!("TEST NOT FOUND"))
-                    .ok();
+                    .ok()
+                {
+                    self.queue.push_back(task);
+                }
             }
+        }
+
+        if self.queue.is_empty() {
+            return None;
+        }
+
+        let task = self.queue.pop_front().unwrap();
+
+        // State cannot be set to other states except [`TaskState::Runnable`] by other harts,
+        // e.g. this task is waken up by another task that releases the resources.
+        if task.locked_inner().state != TaskState::RUNNABLE {
+            self.queue.push_back(task);
             None
         } else {
-            let task = self.queue.pop_front().unwrap();
-
-            // State cannot be set to other states except [`TaskState::Runnable`] by other harts,
-            // e.g. this task is waken up by another task that releases the resources.
-            if task.locked_inner().state != TaskState::RUNNABLE {
-                self.queue.push_back(task);
-                None
-            } else {
-                Some(task)
-            }
+            Some(task)
         }
     }
 }
@@ -149,7 +155,7 @@ pub unsafe fn idle() -> ! {
                 locked_inner.state = TaskState::RUNNING;
                 &task.inner().ctx as *const TaskContext
             };
-            log::info!("Run {:?}", task);
+            log::trace!("Run {:?}", task);
             // Ownership moved to `current`.
             cpu().curr = Some(task);
 
@@ -168,7 +174,7 @@ pub unsafe fn idle() -> ! {
 /// Unsafe context switch will be called in this function.
 pub unsafe fn do_yield() {
     let curr = cpu().curr.take().unwrap();
-    log::info!("{:#?} suspended", curr);
+    log::trace!("{:#?} suspended", curr);
     let curr_ctx = {
         let mut locked_inner = curr.locked_inner();
         locked_inner.state = TaskState::RUNNABLE;

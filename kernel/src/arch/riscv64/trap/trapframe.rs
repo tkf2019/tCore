@@ -80,6 +80,11 @@ impl TrapFrame {
         }
     }
 
+    /// Gets syscall number.
+    pub fn syscall_no(&self) -> usize {
+        self.user_regs[16]
+    }
+
     /// Get syscall arguments in registers in user trap frame.
     ///
     /// Returns error if syscall number not supported.

@@ -38,7 +38,11 @@ bitflags::bitflags! {
 
         /// Write operations on the file will complete according to the requirements of
         /// synchronized I/O data integrity completion.
-        const O_DSYNC = 0o200000;
+        const O_DSYNC = 0o10000;
+
+        /// Allow files whose sizes cannot be represented in an off_t (but can be represented in
+        /// an off64_t) to be opened.
+        const O_LARGEFILE = 0o100000;
 
         /// If pathname is not a directory, cause the open to fail.
         const O_DIRECTORY = 0o200000;
@@ -50,6 +54,9 @@ bitflags::bitflags! {
         /// an open fails because there are too many symbolic links found while resolving
         ///  components in the prefix part of the pathname.)
         const O_NOFOLLOW = 0o400000;
+        
+        /// Do not update the file last access time (st_atime in the inode) when the file is read(2).
+        const O_NOATIME = 0o1000000;
 
         /// Close-on-exec
         const O_CLOEXEC = 0o2000000;
@@ -100,4 +107,3 @@ numeric_enum_macro::numeric_enum! {
         End = 2,
     }
 }
-

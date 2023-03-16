@@ -19,7 +19,7 @@ use super::*;
 /// Unsafe context switch will be called in this function.
 pub unsafe fn do_exit(exit_code: i32) {
     let curr = cpu().curr.take().unwrap();
-    log::info!("{:?} exited with code {}", curr, exit_code);
+    log::trace!("{:?} exited with code {}", curr, exit_code);
     let curr_ctx = {
         let mut locked_inner = curr.locked_inner();
         curr.inner().exit_code = exit_code;

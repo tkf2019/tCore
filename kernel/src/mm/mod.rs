@@ -110,7 +110,7 @@ impl MM {
                 // read-only
                 let mut flags = PTEFlags::from(vma.flags);
                 flags.remove(PTEFlags::WRITABLE);
-                
+
                 // map the new vma of child process
                 new_vma.map_all(&mut page_table, flags, false)?;
                 new_vma_list.push(Some(new_vma));
@@ -348,7 +348,7 @@ impl MM {
         // Find the areas whose starting virtual address is in the given range.
         // These areas must overlap with the given range.
         self.vma_map
-            .range(start..end)
+            .range(start + 1..end)
             .for_each(|(_, index)| v.push(*index));
 
         Ok(v)

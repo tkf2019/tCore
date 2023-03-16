@@ -135,6 +135,10 @@ pub trait File: Send + Sync + AsAny {
     fn get_path(&self) -> Option<Path> {
         None
     }
+
+    fn is_uintr(&self) -> bool {
+        false
+    }
 }
 
 pub trait AsAny {

@@ -11,7 +11,7 @@ pub const GUARD_PAGE: usize = PAGE_SIZE;
 pub const TRAMPOLINE_VA: usize = MAX_VA - PAGE_SIZE + 1;
 
 /// CPUs
-pub const CPU_NUM: usize = 1;
+pub const CPU_NUM: usize = 4;
 
 /// Use cpu0 as main hart
 pub const MAIN_HART: usize = 0;
@@ -29,7 +29,7 @@ pub const KERNEL_STACK_SIZE: usize = 0x1_0000;
 pub const KERNEL_STACK_PAGES: usize = KERNEL_STACK_SIZE >> PAGE_SIZE_BITS;
 
 /// Kernel heap size
-pub const KERNEL_HEAP_SIZE: usize = 0x80_0000;
+pub const KERNEL_HEAP_SIZE: usize = 0x200_0000;
 
 /// Kernel heap pages
 pub const KERNEL_HEAP_PAGES: usize = KERNEL_HEAP_SIZE >> PAGE_SIZE_BITS;
@@ -79,15 +79,6 @@ pub const MAX_MAP_COUNT: usize = 256;
 
 /// Maximum size of  pipe buffer.
 pub const MAX_PIPE_BUF: usize = PAGE_SIZE;
-
-/// User interrupt tests.
-cfg_if::cfg_if! {
-    if #[cfg(feature = "uintr")] {
-        pub const TEST_UINTR: bool = true;
-    } else {
-        pub const TEST_UINTR: bool = false;
-    }
-}
 
 /// Timer interrupt per second
 pub const INTR_PER_SEC: usize = 10;

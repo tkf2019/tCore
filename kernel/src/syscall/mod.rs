@@ -43,9 +43,19 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
         SyscallNO::CLONE => SyscallImpl::clone(args[0], args[1], args[2], args[3], args[4]),
         SyscallNO::EXECVE => SyscallImpl::execve(args[0], args[1], args[2]),
         SyscallNO::WAIT4 => SyscallImpl::wait4(args[0] as isize, args[1], args[2], args[3]),
-        SyscallNO::PRLIMIT64 => SyscallImpl::prlimit64(args[0] as isize, args[1] as i32, args[2], args[3]),
+        SyscallNO::PRLIMIT64 => {
+            SyscallImpl::prlimit64(args[0] as isize, args[1] as i32, args[2], args[3])
+        }
         SyscallNO::MMAP => SyscallImpl::mmap(args[0], args[1], args[2], args[3], args[4], args[5]),
         SyscallNO::MPROTECT => SyscallImpl::mprotect(args[0], args[1], args[2]),
+
+        // UINTR
+        #[cfg(feature = "uintr")]
+        SyscallNO::UINTR_REGISTER_RECEIVER => SyscallImpl::uintr_register_receier(),
+        #[cfg(feature = "uintr")]
+        SyscallNO::UINTR_REGISTER_SENDER => SyscallImpl::uintr_register_sender(args[0]),
+        #[cfg(feature = "uintr")]
+        SyscallNO::UINTR_CREATE_FD => SyscallImpl::uintr_create_fd(args[0]),
         _ => {
             unimplemented!("{:?}", id)
         }
