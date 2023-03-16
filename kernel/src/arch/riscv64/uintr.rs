@@ -238,45 +238,6 @@ pub fn uintc_set_active(index: usize) {
     unsafe { *(pa as *mut u64) = 0x1 };
 }
 
-/// Test user interrupt implementation.
-/// 1. Test CSRs: suicfg, suirs, suist
-/// 2. Test UINTC: Write to UINTC directly
-/// 3. Test UIPI: READ, WRITE, SEND
-#[allow(unused)]
-pub unsafe fn test_uintr(hartid: usize) {
-    suicfg::write(UINTC_BASE);
-    assert_eq!(suicfg::read(), UINTC_BASE);
-
-    // Enable receiver status.
-    let uirs_index = hartid;
-    // Receiver on hart hartid
-    *((UINTC_BASE + uirs_index * 0x20 + 8) as *mut u64) = ((hartid << 16) as u64) | 3;
-    suirs::write((1 << 63) | uirs_index);
-    assert_eq!(suirs::read().bits(), (1 << 63) | uirs_index);
-    // Write to high bits
-    uipi_write(0x00010000);
-    assert!(uipi_read() == 0x00010000);
-
-    // Enable sender status.
-    let frame = AllocatedFrame::new(true).unwrap();
-    suist::write((1 << 63) | (1 << 44) | frame.number());
-    assert_eq!(suist::read().bits(), (1 << 63) | (1 << 44) | frame.number());
-    // valid entry, uirs index = hartid, sender vector = hartid
-    *(frame.start_address().value() as *mut u64) = ((hartid << 48) | (hartid << 16) | 1) as u64;
-    // Send uipi with first uist entry
-    log::info!("Send UIPI!");
-    uipi_send(0);
-
-    loop {
-        if uintr::sip::read().usoft() {
-            log::info!("Receive UINT!");
-            uintr::sip::clear_usoft();
-            assert!(uipi_read() == (0x00010000 | (1 << hartid)));
-            break;
-        }
-    }
-}
-
 mod syscall {
     use alloc::sync::Arc;
     use bit_field::BitField;
@@ -406,3 +367,49 @@ mod syscall {
         }
     }
 }
+
+/// Test user interrupt implementation.
+/// 1. Test CSRs: suicfg, suirs, suist
+/// 2. Test UINTC: Write to UINTC directly
+/// 3. Test UIPI: READ, WRITE, SEND
+#[allow(unused)]
+pub unsafe fn test_uintr(hartid: usize) {
+    suicfg::write(UINTC_BASE);
+    assert_eq!(suicfg::read(), UINTC_BASE);
+
+    // Enable receiver status.
+    let uirs_index = hartid;
+    // Receiver on hart hartid
+    *((UINTC_BASE + uirs_index * 0x20 + 8) as *mut u64) = ((hartid << 16) as u64) | 3;
+    suirs::write((1 << 63) | uirs_index);
+    assert_eq!(suirs::read().bits(), (1 << 63) | uirs_index);
+    // Write to high bits
+    uipi_write(0x00010000);
+    assert!(uipi_read() == 0x00010000);
+
+    // Enable sender status.
+    let frame = AllocatedFrame::new(true).unwrap();
+    suist::write((1 << 63) | (1 << 44) | frame.number());
+    assert_eq!(suist::read().bits(), (1 << 63) | (1 << 44) | frame.number());
+    // valid entry, uirs index = hartid, sender vector = hartid
+    *(frame.start_address().value() as *mut u64) = ((hartid << 48) | (hartid << 16) | 1) as u64;
+    // Send uipi with first uist entry
+    log::info!("Send UIPI!");
+    uipi_send(0);
+
+    loop {
+        if uintr::sip::read().usoft() {
+            log::info!("Receive UINT!");
+            uintr::sip::clear_usoft();
+            assert!(uipi_read() == (0x00010000 | (1 << hartid)));
+            break;
+        }
+    }
+}
+
+pub const UINTR_TESTCASES: &[&str] = &[
+    "argv",
+    "uipi_sample",
+    "pthread_cancel_points",
+    "pthread_cancel",
+];

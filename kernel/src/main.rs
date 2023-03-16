@@ -54,7 +54,10 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
     arch::init(hartid, true);
     // Initialize oscomp testcases, which will be loaded from disk.
     if IS_TEST_ENV {
+        #[cfg(not(feature = "uintr"))]
         oscomp::init(oscomp::testcases::FORMAT_LIBC_STATIC);
+        #[cfg(feature = "uintr")]
+        oscomp::init(crate::arch::uintr::UINTR_TESTCASES);
     }
     // Wake up other harts.
     for cpu_id in 0..CPU_NUM {
