@@ -11,7 +11,7 @@ pub const GUARD_PAGE: usize = PAGE_SIZE;
 pub const TRAMPOLINE_VA: usize = MAX_VA - PAGE_SIZE + 1;
 
 /// CPUs
-pub const CPU_NUM: usize = 1;
+pub const CPU_NUM: usize = 4;
 
 /// Use cpu0 as main hart
 pub const MAIN_HART: usize = 0;
@@ -23,7 +23,7 @@ pub const BOOT_STACK_SIZE: usize = 0x4_0000;
 pub const TOTAL_BOOT_STACK_SIZE: usize = BOOT_STACK_SIZE * CPU_NUM;
 
 /// Kernel stack size
-pub const KERNEL_STACK_SIZE: usize = 0x1_0000;
+pub const KERNEL_STACK_SIZE: usize = 0x8_0000;
 
 /// Kernel stack pages
 pub const KERNEL_STACK_PAGES: usize = KERNEL_STACK_SIZE >> PAGE_SIZE_BITS;

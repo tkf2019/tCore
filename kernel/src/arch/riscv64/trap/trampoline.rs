@@ -89,6 +89,13 @@ pub unsafe extern "C" fn __trampoline() {
         "csrw sscratch, a0",
         // Save cpu id
         "sd tp, 288(a0)",
+        // Restore sepc and sstatus
+        "
+        ld t0, 24(a0)
+        ld t1, 32(a0)
+        csrw sepc, t0
+        csrw sstatus, t1
+        ",
         // Restore user registers
         "
         ld ra, 40(a0)
@@ -122,13 +129,7 @@ pub unsafe extern "C" fn __trampoline() {
         ld t5, 272(a0)
         ld t6, 280(a0)
         ",
-        // Restore sepc and sstatus
-        "
-        ld t0, 24(a0)
-        ld t1, 32(a0)
-        csrw sepc, t0
-        csrw sstatus, t1
-        ",
+        
         // Finally restore a0
         "ld a0, 112(a0)",
         // Return to user context
