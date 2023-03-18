@@ -256,8 +256,6 @@ pub fn do_exec(dir: String, elf_data: &[u8], args: Vec<String>) -> KernelResult 
         user_trap_handler as usize,
         mm.entry.value(),
         sp.into(),
-        // CPU id will be saved when the user task is restored.
-        usize::MAX,
     );
     mm.page_table
         .map(

@@ -4,7 +4,6 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
-use bit_field::BitField;
 use core::{cell::SyncUnsafeCell, fmt};
 use errno::Errno;
 use kernel_sync::{SpinLock, SpinLockGuard};
@@ -140,42 +139,6 @@ pub struct TaskLockedInner {
     // pub sibling: Option<CursorMut<'static, Arc<Task>>>,
 }
 
-/// Task inner member for user interrupt status.
-#[cfg(feature = "uintr")]
-pub struct TaskUIntrInner {
-    /// Sender status
-    pub uist: Option<UIntrSender>,
-
-    /// Receiver status
-    pub uirs: Option<UIntrReceiverTracker>,
-
-    /// Sender vector mask
-    pub mask: u64,
-}
-
-#[cfg(feature = "uintr")]
-impl TaskUIntrInner {
-    pub fn new() -> Self {
-        Self {
-            uist: None,
-            uirs: None,
-            mask: 0,
-        }
-    }
-
-    /// Allocates a sender vector.
-    pub fn alloc(&mut self) -> usize {
-        let i = self.mask.leading_ones() as usize;
-        self.mask.set_bit(i, true);
-        i
-    }
-
-    /// Deallocates a sender vector
-    pub fn dealloc(&mut self, i: usize) {
-        self.mask.set_bit(i, false);
-    }
-}
-
 unsafe impl Send for TaskLockedInner {}
 
 /// In conventional opinion, process is the minimum unit of resource allocation, while task (or
@@ -303,8 +266,6 @@ impl Task {
             user_trap_handler as usize,
             mm.entry.value(),
             sp.into(),
-            // CPU id will be saved when the user task is restored.
-            usize::MAX,
         );
 
         // Init file descriptor table

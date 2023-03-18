@@ -1,16 +1,17 @@
 #![allow(unused)]
 
+use alloc::vec::Vec;
+use bit_field::BitField;
+use id_alloc::*;
+use kernel_sync::SpinLock;
+use spin::Lazy;
+pub use syscall::*;
+pub use uintr::*;
+
 use crate::{
     arch::mm::{AllocatedFrame, PAGE_SIZE},
     error::KernelError,
 };
-use alloc::vec::Vec;
-use id_alloc::*;
-use kernel_sync::SpinLock;
-use spin::Lazy;
-use uintr::*;
-
-pub use syscall::*;
 
 const DEFAULT_UIST_SIZE: usize = 1;
 
@@ -195,43 +196,43 @@ pub const UINTC_LOW_OFF: usize = 0x08;
 pub const UINTC_HIGH_OFF: usize = 0x10;
 pub const UINTC_ACT_OFF: usize = 0x18;
 
-#[inline(always)]
+#[inline(never)]
 pub fn uintc_send_uipi(index: usize) {
     assert!(index < UINTC_ENTRY_NUM);
     let pa = UINTC_BASE + index * UINTC_WIDTH + UINTC_SEND_OFF;
     unsafe { *(pa as *mut u64) = 1 };
 }
-#[inline(always)]
+#[inline(never)]
 pub fn uintc_read_low(index: usize) -> u64 {
     assert!(index < UINTC_ENTRY_NUM);
     let pa = UINTC_BASE + index * UINTC_WIDTH + UINTC_LOW_OFF;
     unsafe { *(pa as *const u64) }
 }
-#[inline(always)]
+#[inline(never)]
 pub fn uintc_write_low(index: usize, data: u64) {
     assert!(index < UINTC_ENTRY_NUM);
     let pa = UINTC_BASE + index * UINTC_WIDTH + UINTC_LOW_OFF;
     unsafe { *(pa as *mut u64) = data };
 }
-#[inline(always)]
+#[inline(never)]
 pub fn uintc_read_high(index: usize) -> u64 {
     assert!(index < UINTC_ENTRY_NUM);
     let pa = UINTC_BASE + index * UINTC_WIDTH + UINTC_HIGH_OFF;
     unsafe { *(pa as *const u64) }
 }
-#[inline(always)]
+#[inline(never)]
 pub fn uintc_write_high(index: usize, data: u64) {
     assert!(index < UINTC_ENTRY_NUM);
     let pa = UINTC_BASE + index * UINTC_WIDTH + UINTC_HIGH_OFF;
     unsafe { *(pa as *mut u64) = data };
 }
-#[inline(always)]
+#[inline(never)]
 pub fn uintc_get_active(index: usize) -> bool {
     assert!(index < UINTC_ENTRY_NUM);
     let pa = UINTC_BASE + index * UINTC_WIDTH + UINTC_ACT_OFF;
     unsafe { *(pa as *const u64) == 0x1 }
 }
-#[inline(always)]
+#[inline(never)]
 pub fn uintc_set_active(index: usize) {
     assert!(index < UINTC_ENTRY_NUM);
     let pa = UINTC_BASE + index * UINTC_WIDTH + UINTC_ACT_OFF;
@@ -244,6 +245,7 @@ mod syscall {
     use errno::Errno;
     use riscv::register::sstatus;
     use syscall_interface::SyscallResult;
+    use uintr::utvec::Utvec;
     use vfs::File;
 
     use crate::{
@@ -257,13 +259,25 @@ mod syscall {
     impl SyscallImpl {
         pub fn uintr_register_receier() -> SyscallResult {
             let curr = cpu().curr.as_ref().unwrap();
+
+            if curr.uintr_inner().uirs.is_some() {
+                return Err(Errno::EINVAL);
+            }
+
             curr.uintr_inner().uirs = Some(UIntrReceiverTracker::new());
 
             // Flush pending bits (low bits will be set during trap return).
-            let index = curr.uintr_inner().uirs.as_ref().unwrap().0;
+            let uintr_inner = curr.uintr_inner();
+
+            // Initialize receiver status in UINTC
+            let index = uintr_inner.uirs.as_ref().unwrap().0;
             let mut uirs = UIntrReceiver::from(index);
-            uirs.irq = 0;
+            uirs.irq = 1; // TODO
             uirs.sync(index);
+
+            // Save user status
+            uintr_inner.utvec = utvec::read().bits();
+            uintr_inner.uscratch = uscratch::read();
 
             Ok(0)
         }
@@ -296,11 +310,11 @@ mod syscall {
                 let uist = curr.uintr_inner().uist.as_mut().unwrap();
                 if let Some(index) = uist.alloc() {
                     let uiste = uist.get(index).unwrap();
-                    // uiste.set_index()
                     let file = file.as_any().downcast_ref::<UIntrFile>().unwrap();
                     uiste.set_valid(true);
                     uiste.set_vec(file.vector);
                     uiste.set_index(file.uirs_index);
+                    return Ok(index);
                 } else {
                     return Err(Errno::EINVAL);
                 }
@@ -311,25 +325,36 @@ mod syscall {
 
     /// Synchronize receiver status to UINTC and raise user interrupt if kernel returns to
     /// a receiver with pending interrupt requests.
-    pub fn uirs_sync() {
-        let curr = cpu().curr.as_ref().unwrap();
-        if let Some(uirs) = &curr.uintr_inner().uirs {
+    pub unsafe fn uirs_sync() {
+        let uintr_inner = cpu().curr.as_ref().unwrap().uintr_inner();
+        if let Some(uirs) = &uintr_inner.uirs {
             let index = uirs.0;
             let mut uirs = UIntrReceiver::from(index);
             uirs.hartid = get_cpu_id() as u16;
-            uirs.mode |= 0x3;
+            uirs.mode |= 0x2; // 64 bits
             uirs.sync(index);
 
-            log::trace!("uirs_sync index={:x} uirs={:x?}", index, uirs);
+            log::trace!("uirs_sync {:x} {:x?}", index, uirs);
 
+            // user configurations
+            utvec::write(uintr_inner.utvec, utvec::TrapMode::Direct);
+            uscratch::write(uintr_inner.uscratch);
+            uie::set_usoft();
+
+            // supervisor configurations
+            suirs::write((1 << 63) | (index & 0xffff));
+            sideleg::set_usoft();
             if uirs.irq != 0 {
-                unsafe { sip::set_usoft() };
-                return;
+                sip::set_usoft();
+            } else {
+                sip::clear_usoft();
             }
-
-            uintr::suirs::write((1 << 63) | (index & 0xffff));
+        } else {
+            // supervisor configurations
+            suirs::write(0);
+            sideleg::clear_usoft();
+            sip::clear_usoft();
         }
-        unsafe { sip::clear_usoft() };
     }
 
     /// Initialize starting frame number of sender status table.
@@ -346,11 +371,8 @@ mod syscall {
 
     /// Called during trap return.
     pub fn uintr_return() {
-        // UINTC
-        uintr::suicfg::write(UINTC_BASE);
-
         // receiver
-        uirs_sync();
+        unsafe { uirs_sync() };
 
         // sender
         uist_init();
@@ -413,3 +435,47 @@ pub const UINTR_TESTCASES: &[&str] = &[
     "pthread_cancel_points",
     "pthread_cancel",
 ];
+
+/// Task inner member for user interrupt status.
+#[cfg(feature = "uintr")]
+pub struct TaskUIntrInner {
+    /// Sender status
+    pub uist: Option<UIntrSender>,
+
+    /// Receiver status
+    pub uirs: Option<UIntrReceiverTracker>,
+
+    /// Sender vector mask
+    pub mask: u64,
+
+    /// User interrupt entry
+    pub utvec: usize,
+
+    /// User interrupt handler
+    pub uscratch: usize,
+}
+
+#[cfg(feature = "uintr")]
+impl TaskUIntrInner {
+    pub fn new() -> Self {
+        Self {
+            uist: None,
+            uirs: None,
+            mask: 0,
+            utvec: 0,
+            uscratch: 0,
+        }
+    }
+
+    /// Allocates a sender vector.
+    pub fn alloc(&mut self) -> usize {
+        let i = self.mask.leading_ones() as usize;
+        self.mask.set_bit(i, true);
+        i
+    }
+
+    /// Deallocates a sender vector
+    pub fn dealloc(&mut self, i: usize) {
+        self.mask.set_bit(i, false);
+    }
+}

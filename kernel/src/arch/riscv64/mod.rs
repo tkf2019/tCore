@@ -123,8 +123,10 @@ pub fn init(hartid: usize, is_main: bool) {
     flush_tlb(None);
 
     // Test user interrupt supports.
-    // #[cfg(feature = "uintr")]
-    // unsafe {
-    //     test_uintr(hartid)
-    // };
+    #[cfg(feature = "uintr")]
+    unsafe {
+        // UINTC
+        uintr::suicfg::write(UINTC_BASE);
+        // test_uintr(hartid)
+    };
 }

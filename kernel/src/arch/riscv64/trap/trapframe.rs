@@ -37,7 +37,6 @@ impl TrapFrame {
         trap_handler: usize,
         user_epc: usize,
         user_sp: usize,
-        cpu_id: usize,
     ) -> Self {
         unsafe { set_spp(SPP::User) };
         let mut trapframe = Self {
@@ -47,7 +46,7 @@ impl TrapFrame {
             user_epc,
             user_status: sstatus::read(),
             user_regs: [0; 31],
-            cpu_id,
+            cpu_id: usize::MAX,
         };
         trapframe.user_regs[1] = user_sp;
         trapframe

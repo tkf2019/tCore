@@ -134,10 +134,6 @@ impl SyscallFile for SyscallImpl {
     fn readv(fd: usize, iov: *const IoVec, iovcnt: usize) -> SyscallResult {
         let iov_size = size_of::<IoVec>();
         let iov = VirtAddr::from(iov as usize);
-        if iov.value() & (iov_size - 1) != 0 {
-            return Err(Errno::EINVAL);
-        }
-
         let buf = cpu()
             .curr
             .as_ref()
@@ -159,10 +155,6 @@ impl SyscallFile for SyscallImpl {
     fn writev(fd: usize, iov: *const IoVec, iovcnt: usize) -> SyscallResult {
         let iov_size = size_of::<IoVec>();
         let iov = VirtAddr::from(iov as usize);
-        if iov.value() & (iov_size - 1) != 0 {
-            return Err(Errno::EINVAL);
-        }
-
         let buf = cpu()
             .curr
             .as_ref()
