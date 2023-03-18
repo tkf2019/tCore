@@ -39,7 +39,7 @@ mm-rv = { path = "../crates/mm-rv" }
 uintr = { path = "../crates/uintr" }
 
 [features]
-default = ["oscomp", "test", "uintr"]
+default = ["oscomp", "test"]
 test = []
 oscomp = []
 uintr = []

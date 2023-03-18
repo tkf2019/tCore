@@ -6,16 +6,18 @@ use alloc::{
 };
 use core::{cell::SyncUnsafeCell, fmt};
 use errno::Errno;
+use id_alloc::*;
 use kernel_sync::{SpinLock, SpinLockGuard};
 use log::trace;
 use signal_defs::*;
+use spin::Lazy;
 use syscall_interface::AT_FDCWD;
 use vfs::Path;
 
 use crate::{
     arch::{
         TaskContext, __switch,
-        mm::{frame_dealloc, AllocatedFrame, Frame, PTEFlags, Page, PhysAddr, VirtAddr, PAGE_SIZE},
+        mm::*,
         trap::{user_trap_handler, user_trap_return, TrapFrame},
     },
     config::*,
@@ -23,7 +25,7 @@ use crate::{
     fs::{FDManager, FSInfo},
     loader::from_elf,
     mm::{KERNEL_MM, MM},
-    task::{kstack_alloc, sched::Scheduler},
+    task::sched::Scheduler,
 };
 
 #[cfg(feature = "uintr")]
@@ -68,9 +70,43 @@ bitflags::bitflags! {
 #[derive(Debug, PartialEq, Eq)]
 pub struct TID(pub usize);
 
+impl TID {
+    /// Creates a new [`TID`].
+    pub fn new() -> Self {
+        Self(TID_ALLOCATOR.lock().alloc())
+    }
+}
+
 impl Drop for TID {
     fn drop(&mut self) {
-        kstack_dealloc(self.0)
+        TID_ALLOCATOR.lock().dealloc(self.0)
+    }
+}
+
+/// Global allocator for [`TID`].
+static TID_ALLOCATOR: Lazy<SpinLock<RecycleAllocator>> =
+    Lazy::new(|| SpinLock::new(RecycleAllocator::new(1)));
+
+/// A wrapper for kernel stack.
+pub struct KernelStack(AllocatedFrameRange);
+
+impl KernelStack {
+    /// Creates a new kernel stack.
+    pub fn new() -> KernelResult<Self> {
+        Ok(Self(
+            AllocatedFrameRange::new(KERNEL_STACK_PAGES, true)
+                .map_err(|_| KernelError::FrameAllocFailed)?,
+        ))
+    }
+
+    /// Returns base address of [`KernelStack`].
+    pub fn base(&self) -> usize {
+        self.0.start_address().value() + KERNEL_STACK_SIZE - ADDR_ALIGN
+    }
+
+    /// Returns top address of [`KernelStack`].
+    pub fn top(&self) -> usize {
+        self.0.start_address().value()
     }
 }
 
@@ -90,6 +126,9 @@ pub struct TaskInner {
 
     /// Task context
     pub ctx: TaskContext,
+
+    /// Kernel stack
+    pub kstack: KernelStack,
 
     /// If a thread is started using `clone(2)` with the `CLONE_CHILD_SETTID` flag,
     /// set_child_tid is set to the value passed in the ctid argument of that system call.
@@ -231,6 +270,7 @@ impl Task {
             inner: SyncUnsafeCell::new(TaskInner {
                 exit_code: 0,
                 ctx: TaskContext::zero(),
+                kstack: KernelStack::new()?,
                 set_child_tid: 0,
                 clear_child_tid: 0,
                 sig_pending: SigPending::new(),
@@ -244,37 +284,34 @@ impl Task {
     }
     /// Create a new task from ELF data.
     pub fn new(dir: String, elf_data: &[u8], args: Vec<String>) -> KernelResult<Self> {
-        // Get task name
         let name = args.join(" ");
 
-        // Init address space
         let mut mm = MM::new()?;
         let sp = from_elf(elf_data, args, &mut mm)?;
         trace!("\nTask [{}]\n{:#?}", &name, mm);
 
-        // New kernel stack for user task
-        let kstack = kstack_alloc();
-        let tid = TID(kstack); // for unwinding
-        let kstack_base = kstack_vm_alloc(kstack)?;
+        let kstack = KernelStack::new()?;
+        let kstack_base = kstack.base();
 
-        // Init trapframe
+        let tid = TID::new();
+        let tid_num = tid.0;
+
         let trapframe_pa = init_trapframe(&mut mm, tid.0)?;
         let trapframe = TrapFrame::from(trapframe_pa);
         *trapframe = TrapFrame::new(
             KERNEL_MM.lock().page_table.satp(),
-            kstack_base,
+            kstack.base(),
             user_trap_handler as usize,
             mm.entry.value(),
             sp.into(),
         );
 
-        // Init file descriptor table
         let fd_manager = FDManager::new();
 
         let task = Self {
             name,
             tid,
-            pid: kstack,
+            pid: tid_num,
             trapframe: Some(TrapFrameTracker(trapframe_pa)),
             exit_signal: SIGNONE,
             fs_info: Arc::new(SpinLock::new(FSInfo {
@@ -286,6 +323,7 @@ impl Task {
             inner: SyncUnsafeCell::new(TaskInner {
                 exit_code: 0,
                 ctx: TaskContext::new(user_trap_return as usize, kstack_base),
+                kstack,
                 set_child_tid: 0,
                 clear_child_tid: 0,
                 sig_pending: SigPending::new(),

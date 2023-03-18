@@ -49,7 +49,6 @@ impl AllocatedFrame {
                     core::ptr::write_bytes(frame.start_address().value() as *mut u8, 0, PAGE_SIZE)
                 };
             }
-            // trace!("AllocatedFrame {:?}", frame);
             Ok(Self { frame })
         } else {
             Err("Failed to allocate frame.")

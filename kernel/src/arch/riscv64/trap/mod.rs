@@ -45,6 +45,7 @@ pub fn set_user_trap() {
 pub fn enable_timer_intr() {
     unsafe {
         sie::set_stimer();
+        // sstatus::set_sie();
     }
 }
 
@@ -137,6 +138,7 @@ pub fn user_trap_handler() -> ! {
 pub fn user_trap_return() -> ! {
     // crate::tests::sleeplock::test();
 
+    #[cfg(feature = "uintr")]
     uintr_return();
 
     extern "C" {

@@ -118,14 +118,15 @@ pub fn do_clone(
     };
 
     // New kernel stack
-    let kstack = kstack_alloc();
-    let tid = TID(kstack);
-    let kstack_base = kstack_vm_alloc(kstack)?;
+    let kstack = KernelStack::new()?;
+    let tid = TID::new();
+    let tid_num = tid.0;
+    let kstack_base = kstack.base();
 
     // Init trapframe
     let trapframe_pa = {
         let mut mm = mm.lock();
-        let trapframe_pa = init_trapframe(&mut mm, kstack)?;
+        let trapframe_pa = init_trapframe(&mut mm, tid_num)?;
         let trapframe = TrapFrame::from(trapframe_pa);
         trapframe.copy_from(curr.trapframe(), flags, stack, tls, kstack_base);
         trapframe_pa
@@ -143,7 +144,7 @@ pub fn do_clone(
         pid: if flags.contains(CloneFlags::CLONE_THREAD) {
             curr.pid
         } else {
-            kstack
+            tid_num
         },
         trapframe: Some(TrapFrameTracker(trapframe_pa)),
         exit_signal: if flags.contains(CloneFlags::CLONE_THREAD) {
@@ -181,6 +182,7 @@ pub fn do_clone(
         inner: SyncUnsafeCell::new(TaskInner {
             exit_code: 0,
             ctx: TaskContext::new(user_trap_return as usize, kstack_base),
+            kstack,
             set_child_tid: if flags.contains(CloneFlags::CLONE_CHILD_SETTID) {
                 ctid.value()
             } else {
@@ -207,7 +209,7 @@ pub fn do_clone(
     // Set tid in parent address space
     if flags.contains(CloneFlags::CLONE_PARENT_SETTID) {
         let ptid = curr.mm().alloc_frame(ptid)?.start_address() + ptid.page_offset();
-        unsafe { *(ptid.get_mut() as *mut i32) = kstack as i32 };
+        unsafe { *(ptid.get_mut() as *mut i32) = tid_num as i32 };
     }
 
     // Set tid in child address space (COW)
@@ -215,7 +217,7 @@ pub fn do_clone(
         let ctid = new_task.mm().alloc_frame(ctid)?.start_address() + ctid.page_offset();
         unsafe {
             *(ctid.get_mut() as *mut i32) = if flags.contains(CloneFlags::CLONE_CHILD_SETTID) {
-                kstack as i32
+                tid_num as i32
             } else {
                 0
             }
@@ -235,7 +237,7 @@ pub fn do_clone(
         }
     }
 
-    Ok(kstack)
+    Ok(tid_num)
 }
 
 /// A helper for [`syscall_interface::SyscallProc::execve`]
@@ -247,8 +249,11 @@ pub fn do_exec(dir: String, elf_data: &[u8], args: Vec<String>) -> KernelResult 
     let mut mm = MM::new()?;
     let sp = from_elf(elf_data, args, &mut mm)?;
 
+    // re-initialize kernel stack
+    curr.inner().kstack = KernelStack::new()?;
+    let kstack_base = curr.inner().kstack.base();
+
     // re-initialize trapframe
-    let kstack_base = kstack_layout(curr.tid.0).1;
     let trapframe = curr.trapframe();
     *trapframe = TrapFrame::new(
         KERNEL_MM.lock().page_table.satp(),

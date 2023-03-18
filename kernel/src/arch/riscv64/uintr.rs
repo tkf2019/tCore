@@ -437,7 +437,6 @@ pub const UINTR_TESTCASES: &[&str] = &[
 ];
 
 /// Task inner member for user interrupt status.
-#[cfg(feature = "uintr")]
 pub struct TaskUIntrInner {
     /// Sender status
     pub uist: Option<UIntrSender>,
@@ -455,7 +454,6 @@ pub struct TaskUIntrInner {
     pub uscratch: usize,
 }
 
-#[cfg(feature = "uintr")]
 impl TaskUIntrInner {
     pub fn new() -> Self {
         Self {
