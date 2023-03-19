@@ -68,6 +68,7 @@ impl UIntrSender {
 }
 
 /// User interrupt send status table entry.
+#[derive(Debug)]
 pub struct UISTE(u64);
 
 impl UISTE {
@@ -78,11 +79,7 @@ impl UISTE {
 
     /// Enables or disables this entry.
     pub fn set_valid(&mut self, valid: bool) {
-        if valid {
-            self.0 |= 1u64 << 63;
-        } else {
-            self.0 &= !(1u64 << 63);
-        }
+        self.0.set_bit(0, valid);
     }
 
     /// Sets sender vector of this entry.
@@ -396,9 +393,7 @@ mod syscall {
         if let Some(uist) = &curr.uintr_inner().uist {
             log::trace!("uist_init {:x?}", uist.frames);
 
-            uintr::suist::write(
-                (1 << 63) | (1 << 44) | uist.frames.first().unwrap().start_address().value(),
-            );
+            uintr::suist::write((1 << 63) | (1 << 44) | uist.frames.first().unwrap().number());
         }
     }
 

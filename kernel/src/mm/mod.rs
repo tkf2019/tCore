@@ -672,8 +672,6 @@ pub fn do_mprotect(mm: &mut MM, start: VirtAddr, len: usize, prot: MmapProt) -> 
             return Err(Errno::ENOMEM);
         }
 
-        log::warn!("{:?} {:?} {:?} {:?}", start, end, vma.start_va, vma.end_va);
-
         // intersection cases
         if vma.start_va >= start && vma.end_va <= end {
             vma.flags = new_flags;
@@ -742,7 +740,6 @@ pub fn do_mmap(
     if flags.contains(MmapFlags::MAP_ANONYMOUS) {
         if fd as isize == -1 && off == 0 {
             if let Ok(start) = mm.alloc_vma(hint, hint + len, prot.into(), anywhere, None) {
-                log::info!("Mmap new area [{:x}, {:x})", start, start + len);
                 return Ok(start.value());
             } else {
                 return Err(Errno::ENOMEM);
