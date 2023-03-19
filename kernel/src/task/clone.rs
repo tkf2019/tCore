@@ -52,6 +52,9 @@ bitflags::bitflags! {
         /// If set, the cloned child is started in a new mount namespace, initialized with a copy of
         /// the namespace of the parent.
         const CLONE_NEWNS = 0x00020000;
+        /// If CLONE_SYSVSEM is set, then the child and the calling process share a single list of
+        /// System V semaphore adjustment (semadj) values (see semop(2)).
+        const CLONE_SYSVSEM = 0x00040000;
         /// If set, create a new TLS for the child
         const CLONE_SETTLS = 0x00080000;
         /// Store the child thread ID at the location pointed to by `parent_tid`.
@@ -59,6 +62,10 @@ bitflags::bitflags! {
         /// Clear the child thread ID at the location pointed to by `child_tid` in child's memory
         /// when child exits, and do a wakeup on the futex at that address.
         const CLONE_CHILD_CLEARTID = 0x00200000;
+        /// This flag is still defined, but it is usually ignored when calling clone().
+        const CLONE_DETACHED = 0x00400000;
+        /// A tracing process cannot force CLONE_PTRACE on this child process.
+        const CLONE_UNTRACED = 0x00800000;
         /// Store the child thread ID at the location pointed to by `child_tid` in child's memory.
         const CLONE_CHILD_SETTID = 0x01000000;
         /// New cgroup namespace
@@ -89,7 +96,7 @@ pub fn do_clone(
     let curr = cpu().curr.as_ref().unwrap();
     log::trace!("CLONE {:?} {:?}", &curr, flags);
 
-    if flags.intersects(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_FS) {
+    if flags.contains(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_FS) {
         return Err(Errno::EINVAL);
     }
 

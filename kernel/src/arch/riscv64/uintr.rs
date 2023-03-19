@@ -169,12 +169,45 @@ impl UIntrReceiver {
     }
 }
 
-/// User interrupt tests.
-cfg_if::cfg_if! {
-    if #[cfg(feature = "uintr")] {
-        pub const TEST_UINTR: bool = true;
-    } else {
-        pub const TEST_UINTR: bool = false;
+/// Task inner member for user interrupt status.
+pub struct TaskUIntrInner {
+    /// Sender status
+    pub uist: Option<UIntrSender>,
+
+    /// Receiver status
+    pub uirs: Option<UIntrReceiverTracker>,
+
+    /// Sender vector mask
+    pub mask: u64,
+
+    /// User interrupt entry
+    pub utvec: usize,
+
+    /// User interrupt handler
+    pub uscratch: usize,
+}
+
+impl TaskUIntrInner {
+    pub fn new() -> Self {
+        Self {
+            uist: None,
+            uirs: None,
+            mask: 0,
+            utvec: 0,
+            uscratch: 0,
+        }
+    }
+
+    /// Allocates a sender vector.
+    pub fn alloc(&mut self) -> usize {
+        let i = self.mask.leading_ones() as usize;
+        self.mask.set_bit(i, true);
+        i
+    }
+
+    /// Deallocates a sender vector
+    pub fn dealloc(&mut self, i: usize) {
+        self.mask.set_bit(i, false);
     }
 }
 
@@ -266,16 +299,16 @@ mod syscall {
 
             curr.uintr_inner().uirs = Some(UIntrReceiverTracker::new());
 
-            // Flush pending bits (low bits will be set during trap return).
+            // flush pending bits (low bits will be set during trap return).
             let uintr_inner = curr.uintr_inner();
 
-            // Initialize receiver status in UINTC
+            // init receiver status in UINTC
             let index = uintr_inner.uirs.as_ref().unwrap().0;
             let mut uirs = UIntrReceiver::from(index);
-            uirs.irq = 1; // TODO
+            uirs.irq = 0;
             uirs.sync(index);
 
-            // Save user status
+            // save user status
             uintr_inner.utvec = utvec::read().bits();
             uintr_inner.uscratch = uscratch::read();
 
@@ -435,45 +468,3 @@ pub const UINTR_TESTCASES: &[&str] = &[
     "pthread_cancel_points",
     "pthread_cancel",
 ];
-
-/// Task inner member for user interrupt status.
-pub struct TaskUIntrInner {
-    /// Sender status
-    pub uist: Option<UIntrSender>,
-
-    /// Receiver status
-    pub uirs: Option<UIntrReceiverTracker>,
-
-    /// Sender vector mask
-    pub mask: u64,
-
-    /// User interrupt entry
-    pub utvec: usize,
-
-    /// User interrupt handler
-    pub uscratch: usize,
-}
-
-impl TaskUIntrInner {
-    pub fn new() -> Self {
-        Self {
-            uist: None,
-            uirs: None,
-            mask: 0,
-            utvec: 0,
-            uscratch: 0,
-        }
-    }
-
-    /// Allocates a sender vector.
-    pub fn alloc(&mut self) -> usize {
-        let i = self.mask.leading_ones() as usize;
-        self.mask.set_bit(i, true);
-        i
-    }
-
-    /// Deallocates a sender vector
-    pub fn dealloc(&mut self, i: usize) {
-        self.mask.set_bit(i, false);
-    }
-}

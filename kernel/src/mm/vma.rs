@@ -274,11 +274,7 @@ impl VMArea {
     /// - the left part in case 6.
     ///
     /// The second area is the third part in case 4.
-    pub fn split(
-        &mut self,
-        start: VirtAddr,
-        end: VirtAddr,
-    ) -> KernelResult<(Option<VMArea>, Option<VMArea>)> {
+    pub fn split(&mut self, start: VirtAddr, end: VirtAddr) -> (Option<VMArea>, Option<VMArea>) {
         let start_idx = page_index(self.start_va, start);
         let end_idx = page_index(self.start_va, end);
 
@@ -286,7 +282,7 @@ impl VMArea {
             || self.end_va <= start
             || start <= self.start_va && self.end_va <= end
         {
-            Ok((None, None))
+            (None, None)
         } else if self.start_va < start && end < self.end_va {
             let right_vma = Some(
                 Self::new(
@@ -315,8 +311,8 @@ impl VMArea {
 
             self.end_va = start;
 
-            Ok((mid_vma, right_vma))
-        } else if self.start_va < start && self.end_va < end {
+            (mid_vma, right_vma)
+        } else if self.start_va < start && self.end_va <= end {
             let right_vma = Some(
                 Self::new(
                     start,
@@ -332,8 +328,8 @@ impl VMArea {
 
             self.end_va = start;
 
-            Ok((right_vma, None))
-        } else if start < self.start_va && end < self.end_va {
+            (right_vma, None)
+        } else if start <= self.start_va && end < self.end_va {
             let left_vma = Some(
                 Self::new(
                     self.start_va,
@@ -351,9 +347,9 @@ impl VMArea {
                 .as_ref()
                 .map(|file| Arc::new(file.split(end_idx * PAGE_SIZE)));
 
-            Ok((left_vma, None))
+            (left_vma, None)
         } else {
-            Err(KernelError::InvalidArgs)
+            (None, None)
         }
     }
 }

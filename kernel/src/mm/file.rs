@@ -1,6 +1,8 @@
 use alloc::sync::Arc;
 use vfs::File;
 
+use super::MmapProt;
+
 /// Memory mapped file.
 #[derive(Clone)]
 pub struct MmapFile {
@@ -27,16 +29,17 @@ impl MmapFile {
         self.file.write_at_off(off + self.offset, buf)
     }
 
-    // /// Seeks to `off` starting from `self.offset`.
-    // pub fn seek(&mut self, off: usize) {
-    //     self.offset += off;
-    // }
-
     /// Split at `off` starting from `self.offset`
     pub fn split(&self, off: usize) -> Self {
         Self {
             file: self.file.clone(),
             offset: self.offset + off,
         }
+    }
+
+    /// Checks the given access flags.
+    pub fn mprot(&self, prot: MmapProt) -> bool {
+        (self.file.readable() || !prot.contains(MmapProt::PROT_READ))
+            && (self.file.writable() || !prot.contains(MmapProt::PROT_WRITE))
     }
 }

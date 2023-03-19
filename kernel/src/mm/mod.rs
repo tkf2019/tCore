@@ -6,7 +6,6 @@ pub mod vma;
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::{fmt, mem::size_of, slice};
 use errno::Errno;
-use log::{trace, warn};
 use syscall_interface::SyscallResult;
 use ubuf::UserBuffer;
 
@@ -81,7 +80,7 @@ impl MM {
                         PTEFlags::READABLE | PTEFlags::EXECUTABLE | PTEFlags::VALID,
                     )
                     .map_err(|err| {
-                        warn!("{}", err);
+                        log::warn!("{}", err);
                         KernelError::PageTableInvalid
                     })
                     .and(Ok(mm))
@@ -128,7 +127,7 @@ impl MM {
                 PTEFlags::READABLE | PTEFlags::EXECUTABLE | PTEFlags::VALID,
             )
             .map_err(|err| {
-                warn!("{}", err);
+                log::warn!("{}", err);
                 KernelError::PageTableInvalid
             })?;
         Ok(Self {
@@ -192,7 +191,7 @@ impl MM {
                 ))
             });
             if dst.is_err() {
-                warn!("{:?}", dst.err());
+                log::warn!("{:?}", dst.err());
                 return Err(KernelError::PageTableInvalid);
             }
             dst.unwrap().copy_from_slice(src);
@@ -587,6 +586,9 @@ pub fn do_munmap(mm: &mut MM, start: VirtAddr, len: usize) -> KernelResult {
     }
     let end = start + len;
 
+    // avoid crashes
+    mm.vma_cache = None;
+
     let vma_range = mm.get_vma_range(start, end)?;
     for index in vma_range {
         let mut need_remove = false;
@@ -597,23 +599,23 @@ pub fn do_munmap(mm: &mut MM, start: VirtAddr, len: usize) -> KernelResult {
             return Err(KernelError::VMAAllocFailed);
         }
 
-        // Handle intersection cases.
+        // intersection cases
         if vma.start_va >= start && vma.end_va <= end {
-            vma.unmap_all(&mut mm.page_table)?;
+            vma.unmap_all(&mut mm.page_table).unwrap();
             need_remove = true;
         } else if vma.start_va < start && vma.end_va > end {
-            let (mid, right) = vma.split(start, end)?;
-            mid.unwrap().unmap_all(&mut mm.page_table)?;
+            let (mid, right) = vma.split(start, end);
+            mid.unwrap().unmap_all(&mut mm.page_table).unwrap();
             new_vma = right;
         } else if vma.end_va > end {
             // vma starting address modified to end
             mm.vma_map.remove(&vma.start_va);
-            let (left, _) = vma.split(start, end)?;
+            let (left, _) = vma.split(start, end);
             mm.vma_map.insert(vma.start_va, index);
-            left.unwrap().unmap_all(&mut mm.page_table)?;
+            left.unwrap().unmap_all(&mut mm.page_table).unwrap();
         } else {
-            let (right, _) = vma.split(start, end)?;
-            right.unwrap().unmap_all(&mut mm.page_table)?;
+            let (right, _) = vma.split(start, end);
+            right.unwrap().unmap_all(&mut mm.page_table).unwrap();
         }
 
         if need_remove {
@@ -622,30 +624,79 @@ pub fn do_munmap(mm: &mut MM, start: VirtAddr, len: usize) -> KernelResult {
             mm.vma_map.remove(&vma.start_va);
         }
 
-        // Avoid crashes.
-        mm.vma_cache = None;
-
         if let Some(new_vma) = new_vma {
-            mm.add_vma(new_vma)?;
+            mm.add_vma(new_vma).unwrap();
         }
     }
     Ok(())
 }
 
 /// A helper for [`syscall_interface::SyscallProc::mprotect`].
-pub fn do_mprotect(mm: &mut MM, start: VirtAddr, len: usize, prot: MmapProt) -> KernelResult {
+pub fn do_mprotect(mm: &mut MM, start: VirtAddr, len: usize, prot: MmapProt) -> SyscallResult {
+    log::trace!("MPROTECT [{:?}, {:?}), {:#?}", start, start + len, prot);
+
     let len = page_align(len);
     if !start.is_aligned() || len == 0 {
-        return Err(KernelError::InvalidArgs);
+        return Err(Errno::EINVAL);
     }
     let end = start + len;
 
-    mm.get_vma(start, |vma, _, _| {
-        if vma.end_va < end {
-            return Err(KernelError::VMANotFound);
+    // avoid crashes
+    mm.vma_cache = None;
+
+    // search vmas
+    let vma_range = mm.get_vma_range(start, end)?;
+    if vma_range.is_empty() {
+        return Err(Errno::ENOMEM);
+    }
+
+    let new_flags = VMFlags::from(prot);
+    for index in vma_range {
+        let vma = mm.vma_list[index].as_mut().unwrap();
+
+        // checks file access
+        if let Some(file) = &vma.file {
+            if !file.mprot(prot) {
+                return Err(Errno::EACCES);
+            }
         }
-        Ok(())
-    })
+
+        // checks flag difference
+        let new_flags = new_flags | vma.flags & !(VMFlags::READ | VMFlags::WRITE | VMFlags::EXEC);
+        if new_flags == vma.flags {
+            continue;
+        }
+
+        // checks map limit
+        if (start > vma.start_va || end < vma.end_va) && mm.vma_map.len() + 1 >= MAX_MAP_COUNT {
+            return Err(Errno::ENOMEM);
+        }
+
+        log::warn!("{:?} {:?} {:?} {:?}", start, end, vma.start_va, vma.end_va);
+
+        // intersection cases
+        if vma.start_va >= start && vma.end_va <= end {
+            vma.flags = new_flags;
+        } else if vma.start_va < start && vma.end_va > end {
+            let (mut mid, right) = vma.split(start, end);
+            mid.as_mut().unwrap().flags = new_flags;
+            mm.add_vma(mid.unwrap()).unwrap();
+            mm.add_vma(right.unwrap()).unwrap();
+        } else if vma.end_va > end {
+            // vma starting address modified to end
+            mm.vma_map.remove(&vma.start_va);
+            let mut left = vma.split(start, end).0.unwrap();
+            mm.vma_map.insert(vma.start_va, index);
+            left.flags = new_flags;
+            mm.add_vma(left).unwrap();
+        } else {
+            let mut right = vma.split(start, end).0.unwrap();
+            right.flags = new_flags;
+            mm.add_vma(right).unwrap();
+        }
+    }
+
+    Ok(0)
 }
 
 /// A helper for [`syscall_interface::SyscallProc::mmap`].
@@ -660,10 +711,10 @@ pub fn do_mmap(
     fd: usize,
     off: usize,
 ) -> SyscallResult {
-    trace!(
-        "MMAP {:?}, 0x{:X?} {:#?} {:#?} 0x{:X} 0x{:X}",
+    log::trace!(
+        "MMAP [{:?}, {:?}) {:#?} {:#?} 0x{:X} 0x{:X}",
         hint,
-        len,
+        hint + len,
         prot,
         flags,
         fd,
@@ -691,6 +742,7 @@ pub fn do_mmap(
     if flags.contains(MmapFlags::MAP_ANONYMOUS) {
         if fd as isize == -1 && off == 0 {
             if let Ok(start) = mm.alloc_vma(hint, hint + len, prot.into(), anywhere, None) {
+                log::info!("Mmap new area [{:x}, {:x})", start, start + len);
                 return Ok(start.value());
             } else {
                 return Err(Errno::ENOMEM);

@@ -165,7 +165,6 @@ impl SyscallProc for SyscallImpl {
             addr.into(),
             len,
             prot.unwrap(),
-        )?;
-        Ok(0)
+        )
     }
 }

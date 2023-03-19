@@ -63,10 +63,10 @@ pub enum KernelError {
 
     /// Page fault cannot be handled.
     FatalPageFault,
-    
+
     /// Cannot find the virtual memory area.
     VMANotFound,
-    
+
     /// VMA failed to read ot write file.
     VMAFailedIO,
 
@@ -84,6 +84,7 @@ impl From<KernelError> for Errno {
             KernelError::InvalidArgs => Errno::EINVAL,
             KernelError::FDNotFound => Errno::EBADF,
             KernelError::VMANotFound | KernelError::VMAAllocFailed => Errno::ENOMEM,
+            KernelError::VMAFailedIO => Errno::EACCES,
             
             // TODO
             _ => Errno::EINVAL,
