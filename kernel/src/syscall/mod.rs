@@ -31,6 +31,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
         SyscallNO::WRITEV => SyscallImpl::writev(args[0], args[1] as *const IoVec, args[2]),
         SyscallNO::EXIT | SyscallNO::EXIT_GROUP => SyscallImpl::exit(args[0]),
         SyscallNO::SET_TID_ADDRESS => SyscallImpl::set_tid_address(args[0]),
+        SyscallNO::NANOSLEEP => SyscallImpl::nanosleep(args[0], args[1]),
         SyscallNO::CLOCK_GET_TIME => SyscallImpl::clock_gettime(args[0], args[1]),
         SyscallNO::SIGACTION => SyscallImpl::sigaction(args[0], args[1], args[2]),
         SyscallNO::SIGPROCMASK => SyscallImpl::sigprocmask(args[0], args[1], args[2], args[3]),

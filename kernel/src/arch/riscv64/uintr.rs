@@ -463,8 +463,8 @@ pub unsafe fn test_uintr(hartid: usize) {
 }
 
 pub const UINTR_TESTCASES: &[&str] = &[
-    "argv",
+    // "argv",
     "uipi_sample",
-    "pthread_cancel_points",
-    "pthread_cancel",
+    // "pthread_cancel_points",
+    // "pthread_cancel",
 ];

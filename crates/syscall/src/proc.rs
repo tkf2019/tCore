@@ -18,7 +18,7 @@ pub const P_PIDFD: usize = 3;
 pub struct Rlimit {
     /// The soft limit is the value that the kernel enforces for the corresponding resource.
     pub rlim_cur: u64,
-    
+
     /// The hard limit acts as a ceiling for the soft limit: an unprivileged process may set
     /// only its soft limit to a value in the range from 0 up to the hard limit, and (irreversibly)
     /// lower its hard limit.
@@ -27,7 +27,7 @@ pub struct Rlimit {
 
 /// This is the maximum size of the process stack, in bytes. Upon reaching this limit, a SIGSEGV
 /// signal is generated. To handle this signal, a process must employ an alternate signal stack.
-/// 
+///
 /// Since Linux 2.6.23, this limit also determines the amount of space used for the process's
 /// command-line arguments and environment variables; for details, see execve(2).
 pub const RLIMIT_STACK: i32 = 3;
@@ -55,10 +55,10 @@ pub trait SyscallProc {
     /// This causes the program that is currently being run by the calling
     /// process to be replaced with a new program, with newly initialized
     /// stack, heap, and (initialized and uninitialized) data segments.
-    /// 
+    ///
     /// # Error
-    /// 
-    /// - `EACCESS`: 
+    ///
+    /// - `EACCESS`:
     ///     - Search permission is denied on a component of the path prefix of pathname or the name
     ///     of a script interpreter.
     ///     - The file or a script interpreter is not a regular file.
@@ -92,12 +92,12 @@ pub trait SyscallProc {
     }
 
     /// Sets and gets the resource limits of an arbitrary process.
-    /// 
+    ///
     /// If the new_limit argument is not NULL, then the rlimit structure to which it points is used to set new
     /// values for the soft and hard limits for resource. If the old_limit argument is not NULL, then a successful
     /// call to prlimit() places the previous soft and hard limits for resource in the rlimit structure pointed to
     /// by old_limit.
-    /// 
+    ///
     /// The pid argument specifies the ID of the process on which the call is to operate. If pid is 0, then the call
     /// applies to the calling process.
     fn prlimit64(pid: isize, resource: i32, new_limit: usize, old_limit: usize) -> SyscallResult {

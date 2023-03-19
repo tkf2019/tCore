@@ -41,19 +41,30 @@ pub trait SyscallTimer {
     /// # Error
     /// - `EFAULT`: `new_value` or `old_value` is not a valid pointer.
     /// - `EINVAL`: `which` is not one of [`ITimerType`]
-    fn setitimer(
-        which: usize,
-        new_value: usize,
-        old_value: usize,
-    ) -> SyscallResult {
+    fn setitimer(which: usize, new_value: usize, old_value: usize) -> SyscallResult {
         Ok(0)
     }
 
     /// Gets the time as well as the timezone.
-    /// 
+    ///
     /// # Error
     /// - `EFAULT`: outside the accessible address
     fn gettimeofday(tv: usize) -> SyscallResult {
+        Ok(0)
+    }
+
+    /// Suspends the execution of the calling thread until either at least the time specified
+    /// in *req has elapsed, or the delivery of a signal that triggers the invocation of a handler
+    /// in the calling thread or that terminates the process.
+    /// 
+    /// # Error
+    /// 
+    /// - `EFAULT`: Problem with copying information from user space.
+    /// - `EINTR`： The pause has been interrupted by a signal that was delivered to the thread (see
+    /// signal(7)). The remaining sleep time has been written into *rem so that the thread can easily
+    /// call nanosleep() again and continue with the pause.
+    /// - `EINVAL`: The value in the tv_nsec field was not in the range 0 to 999999999 or tv_sec was negative.
+    fn nanosleep(req: usize, rem: usize) -> SyscallResult {
         Ok(0)
     }
 }
