@@ -18,7 +18,7 @@ impl Log for Logger {
             Level::Warn => 93,  // BrightYellow
             Level::Info => 34,  // Blue
             Level::Debug => 32, // Green
-            Level::Trace => 90, // BrightBlack
+            Level::Trace => 33, // BrightBlack
         };
         let cpu_id = get_cpu_id();
         println!(

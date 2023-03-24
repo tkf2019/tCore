@@ -182,6 +182,9 @@ pub struct TaskUIntrInner {
 
     /// User interrupt handler
     pub uscratch: usize,
+
+    /// User error pc
+    pub uepc: usize,
 }
 
 impl TaskUIntrInner {
@@ -192,6 +195,7 @@ impl TaskUIntrInner {
             mask: 0,
             utvec: 0,
             uscratch: 0,
+            uepc: 0,
         }
     }
 
@@ -355,7 +359,11 @@ mod syscall {
 
     /// Synchronize receiver status to UINTC and raise user interrupt if kernel returns to
     /// a receiver with pending interrupt requests.
-    pub unsafe fn uirs_sync() {
+    /// 
+    /// Each time a receiver traps into a U-mode trap handler, it can be migrated to another hart
+    /// caused by U-ecall or other exceptions thus we must save and restore CPU-local registers such
+    /// as `upec`, `utvec` and `uscratch`. 
+    pub unsafe fn uirs_restore() {
         let uintr_inner = cpu().curr.as_ref().unwrap().uintr_inner();
         if let Some(uirs) = &uintr_inner.uirs {
             let index = uirs.0;
@@ -364,9 +372,10 @@ mod syscall {
             uirs.mode |= 0x2; // 64 bits
             uirs.sync(index);
 
-            log::trace!("uirs_sync {:x} {:x?}", index, uirs);
+            log::trace!("uirs_restore {:x} {:x?}", index, uirs);
 
             // user configurations
+            uepc::write(uintr_inner.uepc);
             utvec::write(uintr_inner.utvec, utvec::TrapMode::Direct);
             uscratch::write(uintr_inner.uscratch);
             uie::set_usoft();
@@ -400,10 +409,17 @@ mod syscall {
     /// Called during trap return.
     pub fn uintr_return() {
         // receiver
-        unsafe { uirs_sync() };
+        unsafe { uirs_restore() };
 
         // sender
         uist_init();
+    }
+
+    /// Called when task traps into kernel.
+    pub fn uintr_save() {
+        let curr = cpu().curr.as_ref().unwrap();
+        
+        curr.uintr_inner().uepc = uepc::read();
     }
 
     pub struct UIntrFile {

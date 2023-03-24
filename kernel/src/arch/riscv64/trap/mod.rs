@@ -55,6 +55,9 @@ pub fn enable_timer_intr() {
 /// 2. Handles page fault caused by Instruction Fetch, Load or Store.
 #[no_mangle]
 pub fn user_trap_handler() -> ! {
+    #[cfg(feature = "uintr")]
+    uintr_save();
+
     set_kernel_trap();
 
     let scause = scause::read();
@@ -136,7 +139,8 @@ pub fn user_trap_handler() -> ! {
 /// current task. We must drop them before changing the control flow without unwinding.
 #[no_mangle]
 pub fn user_trap_return() -> ! {
-    // crate::tests::sleeplock::test();
+    #[cfg(feature = "sleeplock")]
+    crate::tests::sleeplock::test();
 
     #[cfg(feature = "uintr")]
     uintr_return();

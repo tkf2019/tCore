@@ -76,9 +76,11 @@ pub extern "C" fn rust_main(hartid: usize) -> ! {
 #[no_mangle]
 pub extern "C" fn rust_main_others(hartid: usize) -> ! {
     // Other initializations.
-
     arch::init(hartid, false);
     info!("(Secondary) Start executing tasks.");
+    // Enable timer interrupt
+    arch::trap::enable_timer_intr();
+    timer::set_next_trigger();
     // IDLE loop
     unsafe { task::idle() };
 }
