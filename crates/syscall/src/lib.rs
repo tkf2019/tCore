@@ -74,9 +74,9 @@ numeric_enum! {
         PRLIMIT64 = 261,
 
         // UINTR
-        UINTR_REGISTER_RECEIVER = 449,
-        UINTR_CREATE_FD = 451,
-        UINTR_REGISTER_SENDER = 452,
+        UINTR_REGISTER_RECEIVER = 244,
+        UINTR_CREATE_FD = 246,
+        UINTR_REGISTER_SENDER = 247,
     }
 }
 
