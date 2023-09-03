@@ -18,7 +18,7 @@ use super::*;
 ///
 /// Unsafe context switch will be called in this function.
 pub unsafe fn do_exit(exit_code: i32) {
-    let curr = cpu().curr.take().unwrap();
+    let curr = cpu().curr.as_ref().unwrap();
     log::trace!("{:?} exited with code {}", curr, exit_code);
     let curr_ctx = {
         let mut locked_inner = curr.locked_inner();
@@ -26,8 +26,6 @@ pub unsafe fn do_exit(exit_code: i32) {
         locked_inner.state = TaskState::ZOMBIE;
         &curr.inner().ctx as *const TaskContext
     };
-
-    handle_zombie(curr);
 
     __move_to_next(idle_ctx());
 }
@@ -69,7 +67,6 @@ pub fn handle_zombie(task: Arc<Task>) {
         init_task_inner.children.push_back(child.clone());
     }
     locked_inner.children.clear();
-    locked_inner.state = TaskState::ZOMBIE;
 
     let orphan = locked_inner.parent.is_none();
     drop(locked_inner);

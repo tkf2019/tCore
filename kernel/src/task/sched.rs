@@ -4,7 +4,7 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
-use core::cell::SyncUnsafeCell;
+use core::{cell::SyncUnsafeCell, panic};
 use kernel_sync::{CPUs, SpinLock};
 use oscomp::fetch_test;
 use spin::Lazy;
@@ -15,7 +15,7 @@ use crate::{
     loader::from_args,
 };
 
-use super::{Task, TaskState};
+use super::{Task, TaskState, handle_zombie};
 
 /// Possible interfaces for task schedulers.
 pub trait Scheduler {
@@ -163,6 +163,16 @@ pub unsafe fn idle() -> ! {
             drop(task_manager);
 
             __switch(idle_ctx(), next_ctx);
+            
+            let curr = cpu().curr.take().unwrap();
+            let state = curr.get_state();
+            if state == TaskState::RUNNABLE {
+                TASK_MANAGER.lock().add(curr);
+            } else if state == TaskState::ZOMBIE {
+                handle_zombie(curr);
+            } else {
+                panic!("Unexpected state {:#?}", state);
+            }
         }
     }
 }
@@ -173,16 +183,13 @@ pub unsafe fn idle() -> ! {
 ///
 /// Unsafe context switch will be called in this function.
 pub unsafe fn do_yield() {
-    let curr = cpu().curr.take().unwrap();
+    let curr = cpu().curr.as_ref().unwrap();
     log::trace!("{:#?} suspended", curr);
     let curr_ctx = {
         let mut locked_inner = curr.locked_inner();
         locked_inner.state = TaskState::RUNNABLE;
         &curr.inner().ctx as *const TaskContext
     };
-
-    // push back to scheduler
-    TASK_MANAGER.lock().add(curr);
 
     // Saves and restores CPU local variable, intena.
     let intena = CPUs[get_cpu_id()].intena;
